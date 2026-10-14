@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../core/app_colors.dart';
+import '../widgets/app_background.dart';
 import 'login_screen.dart';
 
 class SplashScreen extends StatelessWidget {
@@ -7,59 +10,87 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F9FD),
-      body: SafeArea(
+      body: AppBackground(
         child: Column(
           children: [
-            const SizedBox(height: 60),
-            // Logo and Title
-            Image.asset('assets/images/logo.png', height: 120, errorBuilder: (c, e, s) => const Icon(Icons.public, color: Color(0xFF1E3A8A), size: 100)),
-            const SizedBox(height: 24),
-            const Text(
-              'CONTINENTAL',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
-                letterSpacing: 2,
-              ),
-            ),
-            const Text(
-              'TRUFI 101 - 127',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF3B82F6),
-              ),
-            ),
-            const SizedBox(height: 40),
-            
-            // Decorative Wave (Simplified as empty space or could be a CustomPaint)
-            // But we'll just add the text and buttons
-            const Spacer(),
-            
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40.0),
-              child: const Text(
-                'Control y gestión del servicio\nde transporte del Grupo Continental',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF1E3A8A),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 80), // Lo bajamos un poco (intermedio entre 40 y 120)
+                    // Logo principal
+                    Center(
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        height: 180, // Lo hacemos un poco más grande
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(Icons.public, color: AppColors.primaryDark, size: 100);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    
+                    // Títulos
+                    Text(
+                      'CONTINENTAL',
+                      style: GoogleFonts.russoOne(
+                        fontSize: 34,
+                        color: AppColors.primaryDark,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'TRUFI 101 - 127',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryBlue,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    Container(
+                      width: 45,
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF93C5FD), // Un poco más claro y fino
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Descripción
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 40.0),
+                      child: Text(
+                        'Control y gestión del servicio\nde transporte del Grupo Continental',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.textGray,
+                          fontSize: 15, // Restaurado al tamaño original
+                          fontWeight: FontWeight.w400,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 40),
             
-            // Buttons
+            // Botones y pie de página
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40.0),
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
               child: Column(
                 children: [
+                  // Botón Principal
                   SizedBox(
                     width: double.infinity,
-                    height: 55,
+                    height: 56,
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.push(
@@ -68,58 +99,83 @@ class SplashScreen extends StatelessWidget {
                         );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3B82F6),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        elevation: 0,
+                        backgroundColor: AppColors.primaryBlue,
+                        foregroundColor: Colors.white,
+                        elevation: 6,
+                        shadowColor: AppColors.primaryBlue.withOpacity(0.4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('Iniciar sesión', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text('Iniciar sesión', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                           SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+                          Icon(Icons.arrow_forward, size: 22),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: OutlinedButton(
-                      onPressed: () {},
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF3B82F6),
-                        side: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  
+                  // Acceso Secundario
+                  TextButton(
+                    onPressed: () {},
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primaryBlue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('Acceder al sistema', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                    ),
+                    child: const Text(
+                      'Acceder al sistema',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                   ),
+                  
+                  const SizedBox(height: 40),
+                  
+                  // Ícono de auto con líneas
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(width: 40, height: 1, color: const Color(0xFFBFDBFE)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Image.asset(
+                          'assets/images/icono_auto_al_frente.png',
+                          height: 40, // Ícono ahora sí más grande
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                      Container(width: 40, height: 1, color: const Color(0xFFBFDBFE)),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Ubicación
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.location_on, color: AppColors.primaryBlue, size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        'El Alto · La Paz',
+                        style: TextStyle(
+                          color: AppColors.textGray,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
-            
-            const SizedBox(height: 40),
-            // Vans Image placeholder
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(4, (index) => const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4.0),
-                child: Icon(Icons.directions_bus, color: Color(0xFF94A3B8), size: 40),
-              )),
-            ),
-            const SizedBox(height: 20),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.location_on, color: Color(0xFF1E3A8A), size: 16),
-                SizedBox(width: 4),
-                Text('El Alto - La Paz', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 20),
           ],
         ),
       ),

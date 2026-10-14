@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'core/app_theme.dart';
 import 'screens/splash_screen.dart';
 
 void main() {
@@ -13,10 +14,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Continental Trufi',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme, // Aplicando nuestro tema global
       home: const SplashScreen(),
     );
   }

@@ -1,156 +1,151 @@
 import 'package:flutter/material.dart';
+import '../core/app_colors.dart';
+import '../models/usuario_model.dart';
+import '../widgets/app_background.dart';
+import '../widgets/custom_app_bar.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/info_row.dart';
+import '../widgets/custom_list_tile.dart';
 
 class PerfilScreen extends StatelessWidget {
   const PerfilScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Obtenemos el usuario (simulado desde el modelo)
+    final usuario = Usuario.currentUser;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F9FD),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Mi perfil', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Image.asset('assets/images/logo.png', height: 32, errorBuilder: (c, e, s) => const Icon(Icons.public, color: Color(0xFF1E3A8A))),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Profile Header
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 30,
-                    backgroundColor: Color(0xFFEFF6FF),
-                    child: Icon(Icons.person, color: Color(0xFF3B82F6), size: 30),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Michael Crispin Mamani', style: TextStyle(color: Color(0xFF1E3A8A), fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text('Encargado', style: TextStyle(color: Color(0xFF64748B), fontSize: 14)),
-                      ],
+      extendBodyBehindAppBar: true,
+      appBar: const CustomAppBar(title: 'Mi perfil'),
+      body: AppBackground(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              // Encabezado del Perfil
+              GlassCard(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.iconBgBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFBFDBFE), width: 2),
+                      ),
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.white,
+                        child: Icon(Icons.person, color: AppColors.primaryBlue, size: 30),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // Info block
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  _buildInfoRow(Icons.badge_outlined, 'CI', '12345678'),
-                  const Divider(height: 30, color: Color(0xFFF1F5F9)),
-                  _buildInfoRow(Icons.directions_bus_outlined, 'Trufi', '115'),
-                  const Divider(height: 30, color: Color(0xFFF1F5F9)),
-                  Row(
-                    children: [
-                      const Icon(Icons.check_circle_outline, color: Color(0xFF10B981)),
-                      const SizedBox(width: 16),
-                      const Column(
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Estado', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-                          Text('Activo', style: TextStyle(color: Color(0xFF10B981), fontSize: 14, fontWeight: FontWeight.bold)),
+                          Text(
+                            usuario.nombre, 
+                            style: const TextStyle(
+                              color: AppColors.primaryDark, 
+                              fontSize: 18, 
+                              fontWeight: FontWeight.w800
+                            )
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            usuario.rol, 
+                            style: const TextStyle(
+                              color: AppColors.textGray, 
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500
+                            )
+                          ),
                         ],
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // List options
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  _buildListTile(Icons.history, 'Historial de asistencia'),
-                  const Divider(height: 1, color: Color(0xFFF1F5F9), indent: 50),
-                  _buildListTile(Icons.warning_amber_rounded, 'Historial de sanciones'),
-                  const Divider(height: 1, color: Color(0xFFF1F5F9), indent: 50),
-                  _buildListTile(Icons.account_balance_wallet_outlined, 'Historial de cuotas'),
-                  const Divider(height: 1, color: Color(0xFFF1F5F9), indent: 50),
-                  _buildListTile(Icons.settings_outlined, 'Configuración'),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 30),
-            
-            // Logout button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFEF4444),
-                  side: const BorderSide(color: Color(0xFFEF4444)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                    ),
+                  ],
                 ),
-                icon: const Icon(Icons.logout),
-                label: const Text('Cerrar sesión', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              
+              // Bloque de Información
+              GlassCard(
+                child: Column(
+                  children: [
+                    InfoRow(icon: Icons.badge_outlined, label: 'CI', value: usuario.ci),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Divider(height: 1, color: AppColors.dividerColor),
+                    ),
+                    InfoRow(icon: Icons.directions_bus_outlined, label: 'Trufi', value: usuario.numeroTrufi),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Divider(height: 1, color: AppColors.dividerColor),
+                    ),
+                    InfoRow(
+                      icon: Icons.check_circle_outline, 
+                      label: 'Estado', 
+                      value: usuario.estado,
+                      iconColor: AppColors.success,
+                      iconBackgroundColor: AppColors.iconBgGreen,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Opciones de Configuración
+              GlassCard(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    CustomListTile(
+                      icon: Icons.history, 
+                      title: 'Historial de asistencia', 
+                      onTap: () {}
+                    ),
+                    const Divider(height: 1, color: AppColors.dividerColor, indent: 56, endIndent: 16),
+                    CustomListTile(
+                      icon: Icons.warning_amber_rounded, 
+                      title: 'Historial de sanciones', 
+                      onTap: () {}
+                    ),
+                    const Divider(height: 1, color: AppColors.dividerColor, indent: 56, endIndent: 16),
+                    CustomListTile(
+                      icon: Icons.account_balance_wallet_outlined, 
+                      title: 'Historial de cuotas', 
+                      onTap: () {}
+                    ),
+                    const Divider(height: 1, color: AppColors.dividerColor, indent: 56, endIndent: 16),
+                    CustomListTile(
+                      icon: Icons.settings_outlined, 
+                      title: 'Configuración', 
+                      onTap: () {}
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 32),
+              
+              // Botón de Cerrar Sesión
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.logout, size: 20),
+                  label: const Text('Cerrar sesión'),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF64748B)),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-            Text(value, style: const TextStyle(color: Color(0xFF1E3A8A), fontSize: 14, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildListTile(IconData icon, String title) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0xFF1E3A8A)),
-      title: Text(title, style: const TextStyle(color: Color(0xFF1E3A8A), fontSize: 14, fontWeight: FontWeight.w600)),
-      trailing: const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-      onTap: () {},
     );
   }
 }

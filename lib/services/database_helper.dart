@@ -6,13 +6,11 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
   
-  // Base de datos simulada para cuando se compila en Web (Chrome)
-  // ya que SQLite (sqflite) no funciona en navegadores web sin configuración adicional.
+  // Base de datos simulada para Web
   final List<Map<String, dynamic>> _webDb = [];
 
   DatabaseHelper._init() {
     if (kIsWeb) {
-      // Usuario por defecto para Web
       _webDb.add({'id': 1, 'username': 'admin', 'password': '123'});
       _webDb.add({'id': 2, 'username': '1234567', 'password': 'password'});
     }
@@ -22,7 +20,7 @@ class DatabaseHelper {
     if (_database != null) return _database!;
     
     if (kIsWeb) {
-      throw UnsupportedError('SQLite is not supported on Web. Use the mock layer.');
+      throw UnsupportedError('SQLite is not supported on Web.');
     }
     
     _database = await _initDB('continental.db');
@@ -48,17 +46,14 @@ CREATE TABLE users (
 )
 ''');
 
-    // Insertar usuarios por defecto en SQLite (Android/iOS)
     await db.insert('users', {'username': 'admin', 'password': '123'});
     await db.insert('users', {'username': '1234567', 'password': 'password'});
   }
 
   Future<bool> login(String username, String password) async {
     if (kIsWeb) {
-      // Validación mockeada para Web
       return _webDb.any((u) => u['username'] == username && u['password'] == password);
     } else {
-      // Validación real en SQLite para Android/iOS
       final db = await instance.database;
       final result = await db.query(
         'users',
