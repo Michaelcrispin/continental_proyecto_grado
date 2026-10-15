@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
 import '../core/app_colors.dart';
+import '../core/permisos.dart';
 import '../models/usuario_model.dart';
 import '../widgets/app_background.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/info_row.dart';
 import '../widgets/custom_list_tile.dart';
+import '../services/sesion_service.dart';
+import 'usuarios_screen.dart';
 
 class PerfilScreen extends StatelessWidget {
   const PerfilScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos el usuario (simulado desde el modelo)
+    // Obtenemos el usuario autenticado actualmente desde SQLite
     final usuario = Usuario.currentUser;
+
+    final nombre = usuario?.nombre ?? SesionService.instance.nombre ?? 'Sin sesión activa';
+    final rol = usuario?.rol ?? SesionService.instance.rol ?? 'Invitado';
+    final correo = usuario?.gmail ?? SesionService.instance.gmail;
+    final ci = usuario?.ci ?? SesionService.instance.ci;
+    final trufi = usuario?.numeroTrufi;
+    final estado = usuario?.estado ?? 'Activo';
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -47,7 +57,7 @@ class PerfilScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            usuario.nombre, 
+                            nombre, 
                             style: const TextStyle(
                               color: AppColors.primaryDark, 
                               fontSize: 18, 
@@ -56,10 +66,10 @@ class PerfilScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            usuario.rol, 
+                            rol.toUpperCase(), 
                             style: const TextStyle(
                               color: AppColors.textGray, 
-                              fontSize: 14,
+                              fontSize: 14, 
                               fontWeight: FontWeight.w500
                             )
                           ),
@@ -75,22 +85,33 @@ class PerfilScreen extends StatelessWidget {
               GlassCard(
                 child: Column(
                   children: [
-                    InfoRow(icon: Icons.badge_outlined, label: 'CI', value: usuario.ci),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12.0),
-                      child: Divider(height: 1, color: AppColors.dividerColor),
-                    ),
-                    InfoRow(icon: Icons.directions_bus_outlined, label: 'Trufi', value: usuario.numeroTrufi),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12.0),
-                      child: Divider(height: 1, color: AppColors.dividerColor),
-                    ),
+                    if (correo != null && correo.isNotEmpty) ...[
+                      InfoRow(icon: Icons.email_outlined, label: 'Correo', value: correo),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12.0),
+                        child: Divider(height: 1, color: AppColors.dividerColor),
+                      ),
+                    ],
+                    if (ci != null && ci.isNotEmpty) ...[
+                      InfoRow(icon: Icons.badge_outlined, label: 'CI', value: ci),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12.0),
+                        child: Divider(height: 1, color: AppColors.dividerColor),
+                      ),
+                    ],
+                    if (trufi != null && trufi.isNotEmpty) ...[
+                      InfoRow(icon: Icons.directions_bus_outlined, label: 'Trufi / Unidad', value: trufi),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12.0),
+                        child: Divider(height: 1, color: AppColors.dividerColor),
+                      ),
+                    ],
                     InfoRow(
                       icon: Icons.check_circle_outline, 
                       label: 'Estado', 
-                      value: usuario.estado,
-                      iconColor: AppColors.success,
-                      iconBackgroundColor: AppColors.iconBgGreen,
+                      value: estado,
+                      iconColor: estado.toLowerCase() == 'activo' ? AppColors.success : AppColors.danger,
+                      iconBackgroundColor: estado.toLowerCase() == 'activo' ? AppColors.iconBgGreen : AppColors.dangerBg,
                     ),
                   ],
                 ),
@@ -120,6 +141,16 @@ class PerfilScreen extends StatelessWidget {
                       onTap: () {}
                     ),
                     const Divider(height: 1, color: AppColors.dividerColor, indent: 56, endIndent: 16),
+                    if (Permisos.puedeVer(rol, Permisos.moduloUsuarios)) ...[
+                      CustomListTile(
+                        icon: Icons.manage_accounts_outlined, 
+                        title: 'Gestión de usuarios', 
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const UsuariosScreen()));
+                        }
+                      ),
+                      const Divider(height: 1, color: AppColors.dividerColor, indent: 56, endIndent: 16),
+                    ],
                     CustomListTile(
                       icon: Icons.settings_outlined, 
                       title: 'Configuración', 
@@ -136,7 +167,7 @@ class PerfilScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 56,
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => SesionService.instance.cerrarSesion(context),
                   icon: const Icon(Icons.logout, size: 20),
                   label: const Text('Cerrar sesión'),
                 ),

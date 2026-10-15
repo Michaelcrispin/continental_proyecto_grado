@@ -3,6 +3,7 @@ import '../core/app_colors.dart';
 import '../widgets/app_background.dart';
 import 'home_screen.dart';
 import '../services/database_helper.dart';
+import '../services/sesion_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,19 +13,29 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _identificadorController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
   bool _obscureText = true;
-  bool _keepSession = true;
   bool _isLoading = false;
   String? _errorMessage;
 
+  @override
+  void dispose() {
+    _identificadorController.dispose();
+    _passController.dispose();
+    super.dispose();
+  }
+
   void _handleLogin() async {
-    final user = _userController.text.trim();
+    // Evita doble toque concurrente
+    if (_isLoading) return;
+
+    final identificador = _identificadorController.text.trim();
     final pass = _passController.text.trim();
 
-    if (user.isEmpty || pass.isEmpty) {
-      setState(() => _errorMessage = 'Por favor, llena ambos campos.');
+    // 1. Validar que ninguno esté vacío
+    if (identificador.isEmpty || pass.isEmpty) {
+      setState(() => _errorMessage = 'Por favor, completa ambos campos.');
       return;
     }
 
@@ -33,20 +44,30 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
 
-    final isValid = await DatabaseHelper.instance.login(user, pass);
+    try {
+      // 2. Consulta de credenciales en SQLite (soporta correo o CI de chofer)
+      final usuarioMap = await DatabaseHelper.instance.login(identificador, pass);
 
-    setState(() {
-      _isLoading = false;
-    });
+      if (usuarioMap != null) {
+        // 3. Guardar y persistir la sesión con SharedPreferences y resolver id_conductor si corresponde
+        await SesionService.instance.iniciarSesion(usuarioMap);
 
-    if (isValid) {
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
-    } else {
-      setState(() => _errorMessage = 'Usuario o contraseña incorrectos.');
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Credenciales incorrectas o cuenta inactiva';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error de conexión: $e';
+      });
     }
   }
 
@@ -118,12 +139,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             const Icon(Icons.error_outline, color: AppColors.danger, size: 20),
                             const SizedBox(width: 8),
-                            Expanded(child: Text(_errorMessage!, style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.bold))),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!, 
+                                style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.bold)
+                              ),
+                            ),
                           ],
                         ),
                       ),
 
-                    // User Input
+                    // Campo único: CI o Correo
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -133,10 +159,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                       child: TextField(
-                        controller: _userController,
+                        controller: _identificadorController,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
                           prefixIcon: Icon(Icons.person_outline, color: AppColors.primaryBlue),
-                          hintText: 'CI / Usuario',
+                          hintText: 'CI o correo',
                           hintStyle: TextStyle(color: AppColors.textLight),
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(vertical: 16),
@@ -144,10 +171,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text('Ingresa tu número de CI o usuario', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
+                    const Text('Ingresa tu CI (conductor) o correo institucional', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
                     const SizedBox(height: 20),
                     
-                    // Password Input
+                    // Password Input con botón mostrar/ocultar
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -178,34 +205,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text('Ingresa tu contraseña', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
-                    const SizedBox(height: 20),
-                    
-                    // Remember & Forgot
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: Checkbox(
-                                value: _keepSession,
-                                onChanged: (v) => setState(() => _keepSession = v!),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                activeColor: AppColors.primaryBlue,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text('Mantener sesión', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold, fontSize: 13)),
-                          ],
-                        ),
-                        const Text('¿Olvidaste tu contraseña?', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ],
-                    ),
                     const SizedBox(height: 40),
                     
-                    // Login Button (Mismo estilo que splash_screen)
+                    // Botón Iniciar Sesión con prevención de doble toque e indicador de carga
                     SizedBox(
                       width: double.infinity,
                       height: 56,
@@ -221,7 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         child: _isLoading 
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                           : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -236,14 +238,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               
-              // Bottom text
-              Positioned(
+              // Pie de página (Ubicación)
+              const Positioned(
                 bottom: 20,
                 left: 0,
                 right: 0,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
+                  children: [
                     Icon(Icons.location_on, color: AppColors.primaryBlue, size: 16),
                     SizedBox(width: 4),
                     Text('El Alto - La Paz', style: TextStyle(color: AppColors.textGray, fontWeight: FontWeight.bold, fontSize: 13)),

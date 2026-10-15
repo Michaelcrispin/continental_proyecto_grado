@@ -10,6 +10,17 @@ class Parada {
     required this.horarioPrevisto,
     required this.ubicacion,
   });
+
+  factory Parada.fromMap(Map<String, dynamic> map) {
+    return Parada(
+      nombre: map['nombre']?.toString() ?? '',
+      horarioPrevisto: map['horarioPrevisto']?.toString() ?? '',
+      ubicacion: LatLng(
+        (map['lat'] as num?)?.toDouble() ?? 0.0,
+        (map['lng'] as num?)?.toDouble() ?? 0.0,
+      ),
+    );
+  }
 }
 
 class Ruta {
@@ -29,24 +40,14 @@ class Ruta {
     required this.paradas,
   });
 
-  // Mock data para reemplazar el diseño de gps_screen
-  static Ruta get currentRuta => Ruta(
-        id: 'R001',
-        conductorNombre: 'Juan Pérez',
-        numeroTrufi: '115',
-        estado: 'En ruta',
-        velocidadActual: 32.0,
-        paradas: [
-          Parada(
-            nombre: 'Cruce Viladela',
-            horarioPrevisto: '07:00 - 07:30',
-            ubicacion: const LatLng(-16.5100, -68.1550),
-          ),
-          Parada(
-            nombre: 'Teleférico Amarillo',
-            horarioPrevisto: '07:30 - 08:00',
-            ubicacion: const LatLng(-16.4950, -68.1400),
-          ),
-        ],
-      );
+  factory Ruta.fromMap(Map<String, dynamic> map, {List<Parada> paradas = const []}) {
+    return Ruta(
+      id: map['id_punto']?.toString() ?? map['id']?.toString() ?? '',
+      conductorNombre: map['conductor_nombre']?.toString() ?? '',
+      numeroTrufi: map['placa']?.toString() ?? '',
+      estado: map['estado']?.toString() ?? 'En ruta',
+      velocidadActual: (map['velocidad'] as num?)?.toDouble() ?? 0.0,
+      paradas: paradas,
+    );
+  }
 }
