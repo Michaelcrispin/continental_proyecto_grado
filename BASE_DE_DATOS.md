@@ -50,6 +50,14 @@ erDiagram
         TEXT nombre
         TEXT ci UK
         TEXT licencia
+        TEXT telefono "Nuevo v2"
+        TEXT fecha_nacimiento "Nuevo v2"
+        TEXT direccion "Nuevo v2"
+        TEXT estado_civil "Nuevo v2"
+        TEXT foto "Nuevo v2"
+        TEXT licencia_categoria "Nuevo v2"
+        TEXT licencia_emision "Nuevo v2"
+        TEXT licencia_vencimiento "Nuevo v2"
         TEXT fecha_incorporacion
         TEXT estado
         TEXT created_at
@@ -63,6 +71,10 @@ erDiagram
         TEXT ruat
         TEXT soat
         TEXT fecha_vencimiento_soat
+        TEXT marca "Nuevo v2"
+        TEXT modelo "Nuevo v2"
+        TEXT color "Nuevo v2"
+        INTEGER capacidad "Nuevo v2"
         TEXT foto
         TEXT created_at
         TEXT updated_at
@@ -161,11 +173,25 @@ Almacena las credenciales principales del sistema.
 
 ### 2. `conductor`
 Ficha técnica del afiliado / chofer. Vinculado a `usuario` mediante `id_usuario` (`FOREIGN KEY ... ON DELETE CASCADE`).
-* Registra nombre, CI único, licencia de conducir, fecha de incorporación y estado operativo.
+* **Columnas base:** `id_conductor`, `id_usuario`, `nombre`, `ci`, `licencia`, `fecha_incorporacion`, `estado`.
+* **Nuevas columnas v2 (Ficha del Conductor):**
+  * `telefono` (TEXT): Número de contacto telefónico / celular.
+  * `fecha_nacimiento` (TEXT en formato ISO `YYYY-MM-DD`).
+  * `direccion` (TEXT): Domicilio particular del chofer.
+  * `estado_civil` (TEXT): Soltero(a), Casado(a), etc.
+  * `foto` (TEXT): Ruta local del archivo de foto de perfil.
+  * `licencia_categoria` (TEXT): Ej. *Categoría Profesional C*, *Categoría B*.
+  * `licencia_emision` (TEXT en formato ISO `YYYY-MM-DD`).
+  * `licencia_vencimiento` (TEXT en formato ISO `YYYY-MM-DD`): Utilizado para cálculo automático de caducidad.
 
 ### 3. `automovil`
 Vehículos pertenecientes a la línea/sindicato Continental.
-* Contiene placa única, RUAT, SOAT, fecha de vencimiento y registro fotográfico.
+* **Columnas base:** `id_auto`, `placa`, `ruat`, `soat`, `fecha_vencimiento_soat`, `foto`.
+* **Nuevas columnas v2 (Ficha Técnica de Unidad):**
+  * `marca` (TEXT): Marca del trufi/minibús (ej. *Toyota*).
+  * `modelo` (TEXT): Modelo (ej. *Hiace*).
+  * `color` (TEXT): Ej. *Blanco / Azul*.
+  * `capacidad` (INTEGER): Cantidad de pasajeros (ej. *14*).
 
 ### 4. `conductor_automovil`
 Tabla de asociación de muchos a muchos (N:M) con llave primaria compuesta `(id_conductor, id_auto)` para gestionar qué conductor maneja qué unidad o cambio de turnos de vehículos.
@@ -288,6 +314,43 @@ A continuación se detalla todo el trabajo realizado archivo por archivo:
 ### 15. `lib/screens/perfil_screen.dart`
 * **Antes:** Invocaba el mock hardcodeado.
 * **Ahora:** Lee los datos de `Usuario.currentUser`, muestra el rol y datos reales, y al presionar "Cerrar sesión" limpia la sesión y redirige a `LoginScreen`.
+
+### 16. `lib/core/documentos_alerta.dart` (Nuevo)
+* Módulo centralizado para cálculo dinámico del estado de vigencia de licencias y pólizas SOAT (`Vigente`, `Por vencer`, `Vencida`, `No registrado`).
+* Define los colores semánticos y fondos de advertencia (rojo para vencido, ámbar para <= 30 días restantes, verde para vigentes).
+
+### 17. `lib/screens/conductor_detalle_screen.dart` (Ficha del Conductor / "Ojito")
+* **Antes:** Pantalla con datos estáticos de prueba (mock).
+* **Ahora:** Conectada a `DatabaseHelper.instance.fichaConductor(idConductor)`.
+  * Muestra banner reactivo superior de alertas de vencimiento si la Licencia o el SOAT están vencidos o próximos a caducar.
+  * Pestaña *Información General*: Datos personales reales (teléfono, nacimiento, dirección, estado civil, correo vinculado) con fallback limpio a "No registrado".
+  * Pestaña *Documentos*: Número de licencia, categoría, fechas de emisión y vencimiento con badge dinámico de validez.
+  * Pestaña *Trufi*: Placa, marca, modelo, color, capacidad de pasajeros, SOAT y RUAT extraídos de SQLite.
+  * Pestañas *Asistencias* y *Observaciones*: Conectadas al historial real en base de datos.
+
+---
+
+## 🚀 Migración a Versión 2 de la Base de Datos
+
+Para dispositivos con bases de datos ya creadas, se implementó el manejador `onUpgrade` en [`DatabaseHelper`](file:///d:/PROYECTO_GRADO/continental/lib/services/database_helper.dart) que ejecuta las siguientes sentencias DDL de manera no destructiva:
+
+```sql
+-- Versión 2: Columnas de Ficha y Documentos en conductor
+ALTER TABLE conductor ADD COLUMN telefono TEXT;
+ALTER TABLE conductor ADD COLUMN fecha_nacimiento TEXT;
+ALTER TABLE conductor ADD COLUMN direccion TEXT;
+ALTER TABLE conductor ADD COLUMN estado_civil TEXT;
+ALTER TABLE conductor ADD COLUMN foto TEXT;
+ALTER TABLE conductor ADD COLUMN licencia_categoria TEXT;
+ALTER TABLE conductor ADD COLUMN licencia_emision TEXT;
+ALTER TABLE conductor ADD COLUMN licencia_vencimiento TEXT;
+
+-- Versión 2: Columnas de Unidad Móvil en automovil
+ALTER TABLE automovil ADD COLUMN marca TEXT;
+ALTER TABLE automovil ADD COLUMN modelo TEXT;
+ALTER TABLE automovil ADD COLUMN color TEXT;
+ALTER TABLE automovil ADD COLUMN capacidad INTEGER;
+```
 
 ---
 

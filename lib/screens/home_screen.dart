@@ -10,8 +10,8 @@ import '../widgets/glass_card.dart';
 import 'asistencia_screen.dart';
 import 'vueltas_screen.dart';
 import 'sanciones_screen.dart';
-import 'conductores_screen.dart';
 import 'control_economico_screen.dart';
+import 'conductores_screen.dart';
 import 'informes_screen.dart';
 import 'gps_screen.dart';
 import 'perfil_screen.dart';
@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
     'asistencias_hoy': 0,
     'sanciones_pendientes': 0,
     'cuotas_pendientes_monto': 0,
+    'cuotas_creadas': 0,
     'asistio_hoy': 0,
     'vueltas_hoy': 0,
   };
@@ -95,6 +96,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return AppColors.primaryBlue;
       case 'supervisor':
         return const Color(0xFFF59E0B);
+      case 'tesorero':
+        return const Color(0xFF0D9488);
       case 'conductor':
         return const Color(0xFF10B981);
       default:
@@ -110,6 +113,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'ADMINISTRADOR';
       case 'supervisor':
         return 'SUPERVISOR';
+      case 'tesorero':
+        return 'SECRETARIO DE HACIENDA';
       case 'conductor':
         return 'CONDUCTOR';
       default:
@@ -128,13 +133,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      drawer: _buildDrawer(context, nombreUsuario, rol),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.refresh, color: AppColors.primaryDark),
-          tooltip: 'Actualizar datos',
-          onPressed: _cargarDatos,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: AppColors.primaryDark),
+            tooltip: 'Menú principal',
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
         title: Center(
           child: Image.asset(
@@ -150,6 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: AppColors.primaryDark),
+            tooltip: 'Actualizar datos',
+            onPressed: _cargarDatos,
+          ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: AppColors.primaryDark),
             onPressed: () {},
@@ -391,8 +404,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         Icons.account_balance_wallet,
                         const Color(0xFF8B5CF6),
                         'Cuotas',
-                        'Bs. ${_resumen['cuotas_pendientes_monto'] ?? 0}',
-                        'pendientes',
+                        '${_resumen['cuotas_creadas'] ?? 0}',
+                        'creadas',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ControlEconomicoScreen(),
+                            ),
+                          ).then((_) => _cargarDatos());
+                        },
                       ),
                     ),
                   ],
@@ -430,51 +451,21 @@ class _HomeScreenState extends State<HomeScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            final puedeVerUsuarios = Permisos.puedeVer(rol, Permisos.moduloUsuarios);
-            if (puedeVerUsuarios) {
-              if (index == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const UsuariosScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 2) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 3) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const VueltasScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 4) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PerfilScreen()),
-                ).then((_) => _cargarDatos());
-              }
-            } else {
-              if (index == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 2) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const VueltasScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 3) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GpsScreen()),
-                ).then((_) => _cargarDatos());
-              } else if (index == 4) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PerfilScreen()),
-                ).then((_) => _cargarDatos());
-              }
+            if (index == 1) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
+              ).then((_) => _cargarDatos());
+            } else if (index == 2) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const VueltasScreen()),
+              ).then((_) => _cargarDatos());
+            } else if (index == 3) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ControlEconomicoScreen()),
+              ).then((_) => _cargarDatos());
             }
           },
           type: BottomNavigationBarType.fixed,
@@ -482,23 +473,30 @@ class _HomeScreenState extends State<HomeScreen> {
           selectedItemColor: AppColors.primaryBlue,
           unselectedItemColor: const Color(0xFF94A3B8),
           showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 10),
-          items: Permisos.puedeVer(rol, Permisos.moduloUsuarios)
-              ? const [
-                  BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-                  BottomNavigationBarItem(icon: Icon(Icons.manage_accounts), label: 'Usuarios'),
-                  BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Asistencia'),
-                  BottomNavigationBarItem(icon: Icon(Icons.route), label: 'Vueltas'),
-                  BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'Más'),
-                ]
-              : const [
-                  BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-                  BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Asistencia'),
-                  BottomNavigationBarItem(icon: Icon(Icons.route), label: 'Vueltas'),
-                  BottomNavigationBarItem(icon: Icon(Icons.gps_fixed), label: 'GPS'),
-                  BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'Más'),
-                ],
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 11),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Inicio',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.groups_outlined),
+              activeIcon: Icon(Icons.groups),
+              label: 'Asistencias',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.route_outlined),
+              activeIcon: Icon(Icons.route),
+              label: 'Vueltas',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.account_balance_wallet_outlined),
+              activeIcon: Icon(Icons.account_balance_wallet),
+              label: 'Cuotas',
+            ),
+          ],
         ),
       ),
     );
@@ -517,22 +515,23 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
     }
 
-    // 2. Gestión de Usuarios (superadmin y admin)
+    // 2. Directorio (superadmin y admin)
     if (Permisos.puedeVer(rol, Permisos.moduloUsuarios)) {
       items.add(_buildQuickAccess(
-        Icons.manage_accounts,
-        'Usuarios',
+        Icons.admin_panel_settings,
+        'Directorio',
         const UsuariosScreen(),
-        colorIcono: const Color(0xFF0284C7),
+        colorIcono: const Color(0xFF1E3A8A),
       ));
     }
 
     // 3. Conductores (superadmin y admin)
     if (Permisos.puedeVer(rol, Permisos.moduloConductores)) {
       items.add(_buildQuickAccess(
-        Icons.person,
+        Icons.directions_bus,
         'Conductores',
         const ConductoresScreen(),
+        colorIcono: const Color(0xFF10B981),
       ));
     }
 
@@ -606,9 +605,10 @@ class _HomeScreenState extends State<HomeScreen> {
     Color iconColor,
     String title,
     String value,
-    String subtitle,
-  ) {
-    return GlassCard(
+    String subtitle, {
+    VoidCallback? onTap,
+  }) {
+    final card = GlassCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,6 +651,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: card);
+    }
+    return card;
   }
 
   Widget _buildQuickAccess(
@@ -694,6 +699,371 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context, String nombreUsuario, String? rol) {
+    final correo = SesionService.instance.gmail;
+    final ci = SesionService.instance.ci;
+    final identificador = (ci != null && ci.isNotEmpty)
+        ? 'CI: $ci'
+        : (correo != null && correo.isNotEmpty ? correo : 'Línea 101 - 127');
+
+    final colorRol = _colorPorRol(rol);
+    final etiquetaRol = _etiquetaRol(rol);
+
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: Column(
+        children: [
+          // Encabezado estilizado con gradiente institucional y logo en marca de agua transparente
+          ClipRRect(
+            child: Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0F265C), Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Stack(
+                children: [
+                  // Logo del sindicato en transparente / marca de agua estética de fondo
+                  Positioned(
+                    right: -25,
+                    bottom: -25,
+                    child: IgnorePointer(
+                      child: Opacity(
+                        opacity: 0.15,
+                        child: Transform.rotate(
+                          angle: -0.15,
+                          child: Image.asset(
+                            'assets/images/logo.png',
+                            width: 175,
+                            height: 175,
+                            fit: BoxFit.contain,
+                            errorBuilder: (c, e, s) => const Icon(
+                              Icons.public,
+                              size: 150,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Círculo difuminado para dar profundidad visual
+                  Positioned(
+                    right: 40,
+                    top: -30,
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.04),
+                      ),
+                    ),
+                  ),
+
+                  // Contenido principal del encabezado
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top + 18,
+                      bottom: 22,
+                      left: 20,
+                      right: 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.25),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const CircleAvatar(
+                                radius: 26,
+                                backgroundColor: Colors.white,
+                                child: Icon(Icons.person, size: 30, color: AppColors.primaryBlue),
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: colorRol.withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                              ),
+                              child: Text(
+                                etiquetaRol,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          nombreUsuario,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          identificador,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Opacity(
+                              opacity: 0.9,
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                height: 14,
+                                errorBuilder: (c, e, s) => const SizedBox.shrink(),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Grupo Continental Trufi 101 – 127',
+                              style: TextStyle(
+                                color: Color(0xFF93C5FD),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Lista de opciones del menú
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                _buildDrawerSectionHeader('NAVEGACIÓN'),
+                _buildDrawerItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  title: 'Inicio',
+                  isSelected: true,
+                  onTap: () => Navigator.pop(context),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.groups_outlined,
+                  title: 'Asistencias',
+                  onTap: () => _navegarDesdeDrawer(context, const AsistenciaScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.route_outlined,
+                  title: 'Vueltas y Recorridos',
+                  onTap: () => _navegarDesdeDrawer(context, const VueltasScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Cuotas y Finanzas',
+                  onTap: () => _navegarDesdeDrawer(context, const ControlEconomicoScreen()),
+                ),
+
+                const Divider(height: 20, indent: 16, endIndent: 16),
+                _buildDrawerSectionHeader('OPERACIONES'),
+                _buildDrawerItem(
+                  icon: Icons.warning_amber_rounded,
+                  title: 'Sanciones',
+                  colorIcono: AppColors.danger,
+                  onTap: () => _navegarDesdeDrawer(context, const SancionesScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.gps_fixed,
+                  title: 'Monitoreo GPS y Rutas',
+                  colorIcono: const Color(0xFF0284C7),
+                  onTap: () => _navegarDesdeDrawer(context, const GpsScreen()),
+                ),
+
+                // Sección Administración si tiene permisos
+                if (Permisos.puedeVer(rol, Permisos.moduloUsuarios) ||
+                    Permisos.puedeVer(rol, Permisos.moduloConductores) ||
+                    Permisos.puedeVer(rol, Permisos.moduloInformes) ||
+                    Permisos.puedeVer(rol, Permisos.moduloPanelTecnico)) ...[
+                  const Divider(height: 20, indent: 16, endIndent: 16),
+                  _buildDrawerSectionHeader('ADMINISTRACIÓN'),
+                  if (Permisos.puedeVer(rol, Permisos.moduloUsuarios))
+                    _buildDrawerItem(
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'Directorio',
+                      colorIcono: const Color(0xFF1E3A8A),
+                      onTap: () => _navegarDesdeDrawer(context, const UsuariosScreen()),
+                    ),
+                  if (Permisos.puedeVer(rol, Permisos.moduloConductores))
+                    _buildDrawerItem(
+                      icon: Icons.directions_bus_outlined,
+                      title: 'Conductores',
+                      colorIcono: const Color(0xFF10B981),
+                      onTap: () => _navegarDesdeDrawer(context, const ConductoresScreen()),
+                    ),
+                  if (Permisos.puedeVer(rol, Permisos.moduloInformes))
+                    _buildDrawerItem(
+                      icon: Icons.bar_chart_outlined,
+                      title: 'Informes y Estadísticas',
+                      colorIcono: const Color(0xFF4F46E5),
+                      onTap: () => _navegarDesdeDrawer(context, const InformesScreen()),
+                    ),
+                  if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico))
+                    _buildDrawerItem(
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'Panel Técnico (Superadmin)',
+                      colorIcono: const Color(0xFF8B5CF6),
+                      onTap: () => _navegarDesdeDrawer(context, const PanelTecnicoScreen()),
+                    ),
+                ],
+
+                const Divider(height: 20, indent: 16, endIndent: 16),
+                _buildDrawerSectionHeader('MI CUENTA'),
+                _buildDrawerItem(
+                  icon: Icons.person_outline,
+                  title: 'Mi Perfil',
+                  onTap: () => _navegarDesdeDrawer(context, const PerfilScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.logout,
+                  title: 'Cerrar Sesión',
+                  colorIcono: const Color(0xFFEF4444),
+                  onTap: () {
+                    Navigator.pop(context); // Cierra drawer
+                    SesionService.instance.cerrarSesion(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          // Pie del Drawer
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/images/logo.png',
+                  height: 18,
+                  errorBuilder: (c, e, s) => const SizedBox.shrink(),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Continental Trufi 101 – 127',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navegarDesdeDrawer(BuildContext context, Widget screen) {
+    Navigator.pop(context); // Cierra el Drawer
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
+    ).then((_) => _cargarDatos());
+  }
+
+  Widget _buildDrawerSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Color(0xFF94A3B8),
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem({
+    required IconData icon,
+    IconData? activeIcon,
+    required String title,
+    required VoidCallback onTap,
+    Color? colorIcono,
+    bool isSelected = false,
+  }) {
+    final c = isSelected ? AppColors.primaryBlue : (colorIcono ?? const Color(0xFF334155));
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        dense: true,
+        visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+        leading: Icon(
+          isSelected && activeIcon != null ? activeIcon : icon,
+          color: c,
+          size: 22,
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? AppColors.primaryBlue : const Color(0xFF1E293B),
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            fontSize: 13.5,
+          ),
+        ),
+        trailing: isSelected
+            ? Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryBlue,
+                  shape: BoxShape.circle,
+                ),
+              )
+            : null,
+        onTap: onTap,
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/permisos.dart';
 import '../services/database_helper.dart';
+import '../services/economia_repo.dart';
 import '../services/sesion_service.dart';
 
 class SancionesScreen extends StatefulWidget {
@@ -68,6 +69,8 @@ class _SancionesScreenState extends State<SancionesScreen> {
     String? conductorSeleccionado = conductores.first['id_conductor']?.toString();
     final motivoCtrl = TextEditingController();
     final vueltasCtrl = TextEditingController(text: '1');
+    final multaCtrl = TextEditingController(text: '30.00');
+    bool generarMultaEconomica = true;
 
     showDialog(
       context: context,
@@ -103,6 +106,32 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Vueltas de sanción asignadas', hintText: 'Ej. 2'),
                 ),
+                const SizedBox(height: 14),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text(
+                    'Generar multa económica en Hacienda',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E3A8A)),
+                  ),
+                  subtitle: const Text(
+                    'Crea una deuda pendiente en el estado de cuenta del chofer',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  ),
+                  value: generarMultaEconomica,
+                  onChanged: (val) => setDialogState(() => generarMultaEconomica = val ?? true),
+                ),
+                if (generarMultaEconomica) ...[
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: multaCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Monto de la Multa (Bs.)',
+                      prefixText: 'Bs. ',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -119,6 +148,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
               onPressed: () async {
                 final motivo = motivoCtrl.text.trim();
                 final vueltas = int.tryParse(vueltasCtrl.text.trim()) ?? 1;
+                final montoMulta = double.tryParse(multaCtrl.text.trim()) ?? 0.0;
                 if (motivo.isEmpty || conductorSeleccionado == null) return;
 
                 final now = DateTime.now();
@@ -135,8 +165,40 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   'hora': hora,
                 });
 
+                // Si se activa la multa económica, generar automáticamente la cuota de deuda
+                if (generarMultaEconomica && montoMulta > 0) {
+                  final db = await DatabaseHelper.instance.database;
+                  final tipoMulta = await db.query(
+                    'tipo_cuota',
+                    where: "nombre = 'Multa / Sanción'",
+                    limit: 1,
+                  );
+                  if (tipoMulta.isNotEmpty) {
+                    final idTipo = tipoMulta.first['id_tipo_cuota'].toString();
+                    await EconomiaRepo.instance.crearCuota(
+                      idConductor: conductorSeleccionado!,
+                      idTipoCuota: idTipo,
+                      monto: montoMulta,
+                      concepto: 'Sanción operativa: $motivo',
+                      registradoPor: SesionService.instance.idUsuario ?? 'sistema',
+                    );
+                  }
+                }
+
                 if (ctx.mounted) Navigator.pop(ctx);
                 _cargarSanciones();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        generarMultaEconomica && montoMulta > 0
+                            ? 'Sanción registrada y deuda de Bs. ${montoMulta.toStringAsFixed(2)} creada en Hacienda.'
+                            : 'Sanción registrada exitosamente.',
+                      ),
+                      backgroundColor: const Color(0xFF059669),
+                    ),
+                  );
+                }
               },
               child: const Text('Guardar', style: TextStyle(color: Colors.white)),
             ),

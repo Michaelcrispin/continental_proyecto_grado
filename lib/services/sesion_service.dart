@@ -45,6 +45,7 @@ class SesionService {
   bool get esAdmin => _rol == 'admin';
   bool get esSupervisor => _rol == 'supervisor';
   bool get esConductor => _rol == 'conductor';
+  bool get esTesorero => _rol == 'tesorero';
 
   /// Guarda la sesión del usuario al iniciar sesión exitosamente.
   Future<void> iniciarSesion(Map<String, dynamic> usuarioMap) async {

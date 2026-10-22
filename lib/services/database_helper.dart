@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+import 'seed_data.dart';
 
 /// Base de datos local (SQLite) del sistema Continental Trufi.
 ///
@@ -17,7 +18,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
   static const _dbName = 'continental.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 7;
   static const _uuid = Uuid();
 
   Database? _db;
@@ -33,6 +34,12 @@ class DatabaseHelper {
     'vueltas': 'id_vuelta',
     'tipo_cuota': 'id_tipo_cuota',
     'cuota': 'id_cuota',
+    'pago': 'id_pago',
+    'reunion': 'id_reunion',
+    'asistencia_reunion': 'id_asistencia_reunion',
+    'pasanaco': 'id_pasanaco',
+    'participante_pasanaco': 'id_participante',
+    'ronda_pasanaco': 'id_ronda',
     'sancion': 'id_sancion',
   };
 
@@ -48,7 +55,214 @@ class DatabaseHelper {
       version: _dbVersion,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // MIGRACIÓN DE BASE DE DATOS
+  // ---------------------------------------------------------------------------
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Columnas nuevas para conductor
+      await db.execute('ALTER TABLE conductor ADD COLUMN telefono TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN fecha_nacimiento TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN direccion TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN estado_civil TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN foto TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN licencia_categoria TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN licencia_emision TEXT');
+      await db.execute('ALTER TABLE conductor ADD COLUMN licencia_vencimiento TEXT');
+
+      // Columnas nuevas para automovil
+      await db.execute('ALTER TABLE automovil ADD COLUMN marca TEXT');
+      await db.execute('ALTER TABLE automovil ADD COLUMN modelo TEXT');
+      await db.execute('ALTER TABLE automovil ADD COLUMN color TEXT');
+      await db.execute('ALTER TABLE automovil ADD COLUMN capacidad INTEGER');
+    }
+
+    if (oldVersion < 3) {
+      // 1. Recrear tabla usuario para permitir el rol 'tesorero'
+      await db.execute('PRAGMA foreign_keys = OFF');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS usuario_v3 (
+          id_usuario     TEXT PRIMARY KEY,
+          rol            TEXT NOT NULL
+                         CHECK (rol IN ('superadmin','admin','supervisor','conductor','tesorero')),
+          nombre         TEXT NOT NULL,
+          estado         TEXT NOT NULL DEFAULT 'activo',
+          gmail          TEXT UNIQUE,
+          password       TEXT NOT NULL,
+          fecha_creacion TEXT NOT NULL,
+          created_at     TEXT NOT NULL,
+          updated_at     TEXT NOT NULL,
+          sincronizado   INTEGER NOT NULL DEFAULT 0,
+          CHECK (rol = 'conductor' OR gmail IS NOT NULL)
+        )
+      ''');
+      await db.execute('''
+        INSERT OR IGNORE INTO usuario_v3 (id_usuario, rol, nombre, estado, gmail, password, fecha_creacion, created_at, updated_at, sincronizado)
+        SELECT id_usuario, rol, nombre, estado, gmail, password, fecha_creacion, created_at, updated_at, sincronizado FROM usuario
+      ''');
+      await db.execute('DROP TABLE usuario');
+      await db.execute('ALTER TABLE usuario_v3 RENAME TO usuario');
+      await db.execute('PRAGMA foreign_keys = ON');
+
+      // 2. Ampliar tabla tipo_cuota
+      try {
+        await db.execute('ALTER TABLE tipo_cuota ADD COLUMN monto_sugerido REAL DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE tipo_cuota ADD COLUMN activo INTEGER NOT NULL DEFAULT 1');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE tipo_cuota ADD COLUMN es_fijo INTEGER NOT NULL DEFAULT 0');
+      } catch (_) {}
+
+      // 3. Ampliar tabla cuota
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN monto_pagado REAL NOT NULL DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN concepto TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN fecha_vencimiento TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN id_lote TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN registrado_por TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN motivo_anulacion TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN id_reunion TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE cuota ADD COLUMN id_ronda TEXT');
+      } catch (_) {}
+
+      // 4. Crear tabla pago
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pago (
+          id_pago       TEXT PRIMARY KEY,
+          id_cuota      TEXT NOT NULL,
+          monto         REAL NOT NULL,
+          fecha         TEXT NOT NULL,
+          metodo        TEXT NOT NULL DEFAULT 'efectivo',
+          nro_recibo    TEXT NOT NULL UNIQUE,
+          observacion   TEXT,
+          id_usuario    TEXT NOT NULL,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          sincronizado  INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (id_cuota) REFERENCES cuota (id_cuota) ON DELETE CASCADE,
+          FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+        )
+      ''');
+
+      // 5. Crear tablas de Reuniones y Pasanaco
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reunion (
+          id_reunion    TEXT PRIMARY KEY,
+          fecha         TEXT NOT NULL,
+          tema          TEXT NOT NULL,
+          monto_multa   REAL NOT NULL DEFAULT 50.0,
+          estado        TEXT NOT NULL DEFAULT 'pendiente',
+          cerrada_en    TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          sincronizado  INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS asistencia_reunion (
+          id_asistencia_reunion TEXT PRIMARY KEY,
+          id_reunion            TEXT NOT NULL,
+          id_conductor          TEXT NOT NULL,
+          estado                TEXT NOT NULL DEFAULT 'falta',
+          created_at            TEXT NOT NULL,
+          updated_at            TEXT NOT NULL,
+          sincronizado          INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (id_reunion) REFERENCES reunion (id_reunion) ON DELETE CASCADE,
+          FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pasanaco (
+          id_pasanaco   TEXT PRIMARY KEY,
+          nombre        TEXT NOT NULL,
+          monto_aporte  REAL NOT NULL,
+          periodicidad  TEXT NOT NULL DEFAULT 'semanal',
+          fecha_inicio  TEXT NOT NULL,
+          estado        TEXT NOT NULL DEFAULT 'activo',
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL,
+          sincronizado  INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS participante_pasanaco (
+          id_participante TEXT PRIMARY KEY,
+          id_pasanaco     TEXT NOT NULL,
+          id_conductor    TEXT NOT NULL,
+          numero_turno    INTEGER NOT NULL,
+          created_at      TEXT NOT NULL,
+          updated_at      TEXT NOT NULL,
+          sincronizado    INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (id_pasanaco) REFERENCES pasanaco (id_pasanaco) ON DELETE CASCADE,
+          FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ronda_pasanaco (
+          id_ronda                  TEXT PRIMARY KEY,
+          id_pasanaco               TEXT NOT NULL,
+          numero_ronda              INTEGER NOT NULL,
+          id_conductor_beneficiario TEXT NOT NULL,
+          fecha_limite              TEXT NOT NULL,
+          monto_total               REAL NOT NULL,
+          estado                    TEXT NOT NULL DEFAULT 'pendiente',
+          fecha_entrega             TEXT,
+          created_at                TEXT NOT NULL,
+          updated_at                TEXT NOT NULL,
+          sincronizado              INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (id_pasanaco) REFERENCES pasanaco (id_pasanaco) ON DELETE CASCADE,
+          FOREIGN KEY (id_conductor_beneficiario) REFERENCES conductor (id_conductor)
+        )
+      ''');
+
+      // Índices
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_pago_cuota ON pago (id_cuota)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_pago_fecha ON pago (fecha)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_cuota_lote ON cuota (id_lote)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_reunion_fecha ON reunion (fecha)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_pasanaco_estado ON pasanaco (estado)');
+    }
+
+    if (oldVersion < 5) {
+      // Limpiar completamente cualquier cuota previa para que el usuario inicie desde cero
+      await db.delete('pago');
+      await db.delete('cuota');
+      await db.delete('tipo_cuota');
+    }
+
+    if (oldVersion < 6) {
+      await _seedConductores(db, _now());
+    }
+
+    if (oldVersion < 7) {
+      try {
+        await db.execute('ALTER TABLE tipo_cuota ADD COLUMN descripcion TEXT');
+      } catch (_) {}
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -62,7 +276,7 @@ class DatabaseHelper {
       CREATE TABLE usuario (
         id_usuario     TEXT PRIMARY KEY,
         rol            TEXT NOT NULL
-                       CHECK (rol IN ('superadmin','admin','supervisor','conductor')),
+                       CHECK (rol IN ('superadmin','admin','supervisor','conductor','tesorero')),
         nombre         TEXT NOT NULL,
         estado         TEXT NOT NULL DEFAULT 'activo',
         gmail          TEXT UNIQUE,
@@ -78,16 +292,24 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE conductor (
-        id_conductor        TEXT PRIMARY KEY,
-        id_usuario          TEXT NOT NULL UNIQUE,
-        nombre              TEXT NOT NULL,
-        ci                  TEXT NOT NULL UNIQUE,
-        licencia            TEXT,
-        fecha_incorporacion TEXT,
-        estado              TEXT NOT NULL DEFAULT 'activo',
-        created_at          TEXT NOT NULL,
-        updated_at          TEXT NOT NULL,
-        sincronizado        INTEGER NOT NULL DEFAULT 0,
+        id_conductor         TEXT PRIMARY KEY,
+        id_usuario           TEXT NOT NULL UNIQUE,
+        nombre               TEXT NOT NULL,
+        ci                   TEXT NOT NULL UNIQUE,
+        licencia             TEXT,
+        fecha_incorporacion  TEXT,
+        estado               TEXT NOT NULL DEFAULT 'activo',
+        telefono             TEXT,
+        fecha_nacimiento     TEXT,
+        direccion            TEXT,
+        estado_civil         TEXT,
+        foto                 TEXT,
+        licencia_categoria   TEXT,
+        licencia_emision     TEXT,
+        licencia_vencimiento TEXT,
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL,
+        sincronizado         INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
           ON DELETE CASCADE
       )
@@ -101,6 +323,10 @@ class DatabaseHelper {
         soat                   TEXT,
         fecha_vencimiento_soat TEXT,
         foto                   TEXT,
+        marca                  TEXT,
+        modelo                 TEXT,
+        color                  TEXT,
+        capacidad              INTEGER,
         created_at             TEXT NOT NULL,
         updated_at             TEXT NOT NULL,
         sincronizado           INTEGER NOT NULL DEFAULT 0
@@ -170,8 +396,70 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE tipo_cuota (
-        id_tipo_cuota TEXT PRIMARY KEY,
-        nombre        TEXT NOT NULL UNIQUE,
+        id_tipo_cuota  TEXT PRIMARY KEY,
+        nombre         TEXT NOT NULL UNIQUE,
+        descripcion    TEXT,
+        monto_sugerido REAL DEFAULT 0,
+        activo         INTEGER NOT NULL DEFAULT 1,
+        es_fijo        INTEGER NOT NULL DEFAULT 0,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        sincronizado   INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE cuota (
+        id_cuota          TEXT PRIMARY KEY,
+        id_conductor      TEXT NOT NULL,
+        id_tipo_cuota     TEXT NOT NULL,
+        monto             REAL NOT NULL,
+        monto_pagado      REAL NOT NULL DEFAULT 0,
+        fecha             TEXT NOT NULL,
+        fecha_vencimiento TEXT,
+        concepto          TEXT,
+        id_lote           TEXT,
+        registrado_por    TEXT,
+        estado            TEXT NOT NULL DEFAULT 'pendiente',
+        motivo_anulacion  TEXT,
+        id_reunion        TEXT,
+        id_ronda          TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        sincronizado      INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor)
+          ON DELETE CASCADE,
+        FOREIGN KEY (id_tipo_cuota) REFERENCES tipo_cuota (id_tipo_cuota)
+          ON DELETE RESTRICT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE pago (
+        id_pago       TEXT PRIMARY KEY,
+        id_cuota      TEXT NOT NULL,
+        monto         REAL NOT NULL,
+        fecha         TEXT NOT NULL,
+        metodo        TEXT NOT NULL DEFAULT 'efectivo',
+        nro_recibo    TEXT NOT NULL UNIQUE,
+        observacion   TEXT,
+        id_usuario    TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL,
+        sincronizado  INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (id_cuota) REFERENCES cuota (id_cuota) ON DELETE CASCADE,
+        FOREIGN KEY (id_usuario) REFERENCES usuario (id_usuario)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE reunion (
+        id_reunion    TEXT PRIMARY KEY,
+        fecha         TEXT NOT NULL,
+        tema          TEXT NOT NULL,
+        monto_multa   REAL NOT NULL DEFAULT 50.0,
+        estado        TEXT NOT NULL DEFAULT 'pendiente',
+        cerrada_en    TEXT,
         created_at    TEXT NOT NULL,
         updated_at    TEXT NOT NULL,
         sincronizado  INTEGER NOT NULL DEFAULT 0
@@ -179,20 +467,62 @@ class DatabaseHelper {
     ''');
 
     await db.execute('''
-      CREATE TABLE cuota (
-        id_cuota      TEXT PRIMARY KEY,
-        id_conductor  TEXT NOT NULL,
-        id_tipo_cuota TEXT NOT NULL,
-        monto         REAL NOT NULL,
-        fecha         TEXT NOT NULL,
-        estado        TEXT NOT NULL DEFAULT 'pendiente',
+      CREATE TABLE asistencia_reunion (
+        id_asistencia_reunion TEXT PRIMARY KEY,
+        id_reunion            TEXT NOT NULL,
+        id_conductor          TEXT NOT NULL,
+        estado                TEXT NOT NULL DEFAULT 'falta',
+        created_at            TEXT NOT NULL,
+        updated_at            TEXT NOT NULL,
+        sincronizado          INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (id_reunion) REFERENCES reunion (id_reunion) ON DELETE CASCADE,
+        FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE pasanaco (
+        id_pasanaco   TEXT PRIMARY KEY,
+        nombre        TEXT NOT NULL,
+        monto_aporte  REAL NOT NULL,
+        periodicidad  TEXT NOT NULL DEFAULT 'semanal',
+        fecha_inicio  TEXT NOT NULL,
+        estado        TEXT NOT NULL DEFAULT 'activo',
         created_at    TEXT NOT NULL,
         updated_at    TEXT NOT NULL,
-        sincronizado  INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor)
-          ON DELETE CASCADE,
-        FOREIGN KEY (id_tipo_cuota) REFERENCES tipo_cuota (id_tipo_cuota)
-          ON DELETE RESTRICT
+        sincronizado  INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE participante_pasanaco (
+        id_participante TEXT PRIMARY KEY,
+        id_pasanaco     TEXT NOT NULL,
+        id_conductor    TEXT NOT NULL,
+        numero_turno    INTEGER NOT NULL,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        sincronizado    INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (id_pasanaco) REFERENCES pasanaco (id_pasanaco) ON DELETE CASCADE,
+        FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ronda_pasanaco (
+        id_ronda                  TEXT PRIMARY KEY,
+        id_pasanaco               TEXT NOT NULL,
+        numero_ronda              INTEGER NOT NULL,
+        id_conductor_beneficiario TEXT NOT NULL,
+        fecha_limite              TEXT NOT NULL,
+        monto_total               REAL NOT NULL,
+        estado                    TEXT NOT NULL DEFAULT 'pendiente',
+        fecha_entrega             TEXT,
+        created_at                TEXT NOT NULL,
+        updated_at                TEXT NOT NULL,
+        sincronizado              INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (id_pasanaco) REFERENCES pasanaco (id_pasanaco) ON DELETE CASCADE,
+        FOREIGN KEY (id_conductor_beneficiario) REFERENCES conductor (id_conductor)
       )
     ''');
 
@@ -225,13 +555,22 @@ class DatabaseHelper {
     await db.execute(
         'CREATE INDEX idx_cuota_conductor ON cuota (id_conductor, estado)');
     await db.execute(
+        'CREATE INDEX idx_cuota_lote ON cuota (id_lote)');
+    await db.execute(
+        'CREATE INDEX idx_pago_cuota ON pago (id_cuota)');
+    await db.execute(
+        'CREATE INDEX idx_pago_fecha ON pago (fecha)');
+    await db.execute(
         'CREATE INDEX idx_sancion_conductor ON sancion (id_conductor, estado)');
+    await db.execute(
+        'CREATE INDEX idx_reunion_fecha ON reunion (fecha)');
+    await db.execute(
+        'CREATE INDEX idx_pasanaco_estado ON pasanaco (estado)');
 
     await _seed(db);
   }
 
-  /// Datos iniciales: Único usuario predeterminado del sistema (superadmin) y los tipos de cuota base.
-  /// Los demás usuarios (admin, supervisor, conductor) son creados posteriormente por el superadmin/admin.
+  /// Datos iniciales: Único usuario predeterminado del sistema (superadmin) y los 7 tipos de cuota base.
   Future<void> _seed(Database db) async {
     final now = _now();
 
@@ -249,15 +588,7 @@ class DatabaseHelper {
       'sincronizado': 0,
     });
 
-    for (final nombre in ['Mensual', 'Extraordinaria', 'Multa']) {
-      await db.insert('tipo_cuota', {
-        'id_tipo_cuota': _uuid.v4(),
-        'nombre': nombre,
-        'created_at': now,
-        'updated_at': now,
-        'sincronizado': 0,
-      });
-    }
+
 
     for (final nombre in ['Parada Central', 'Terminal Central']) {
       await db.insert('punto_de_control', {
@@ -267,6 +598,87 @@ class DatabaseHelper {
         'updated_at': now,
         'sincronizado': 0,
       });
+    }
+
+    // 2. Siembra de los 20 conductores oficiales del sindicato con sus vehículos
+    await _seedConductores(db, now);
+  }
+
+  /// Siembra los 20 conductores institucionales con su usuario, licencia y vehículo asignado.
+  Future<void> _seedConductores(Database db, String now) async {
+    for (final c in conductoresSeed) {
+      final existe = await db.query(
+        'conductor',
+        where: 'ci = ?',
+        whereArgs: [c['ci']],
+        limit: 1,
+      );
+      if (existe.isNotEmpty) continue;
+
+      final idUsuario = _uuid.v4();
+      final idConductor = _uuid.v4();
+      final idAuto = _uuid.v4();
+
+      await db.insert('usuario', {
+        'id_usuario': idUsuario,
+        'rol': 'conductor',
+        'nombre': c['nombre'],
+        'estado': 'activo',
+        'gmail': c['gmail'],
+        'password': hashPassword(c['password']),
+        'fecha_creacion': now,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      await db.insert('conductor', {
+        'id_conductor': idConductor,
+        'id_usuario': idUsuario,
+        'nombre': c['nombre'],
+        'ci': c['ci'],
+        'licencia': c['licencia'],
+        'fecha_incorporacion': now.substring(0, 10),
+        'estado': 'activo',
+        'telefono': c['telefono'],
+        'fecha_nacimiento': c['fecha_nacimiento'],
+        'direccion': c['direccion'],
+        'estado_civil': c['estado_civil'],
+        'foto': null,
+        'licencia_categoria': c['licencia_categoria'],
+        'licencia_emision': c['licencia_emision'],
+        'licencia_vencimiento': c['licencia_vencimiento'],
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      await db.insert('automovil', {
+        'id_auto': idAuto,
+        'placa': c['placa'],
+        'marca': c['marca'],
+        'modelo': c['modelo'],
+        'color': c['color'],
+        'capacidad': c['capacidad'],
+        'soat': c['soat'],
+        'fecha_vencimiento_soat': c['fecha_vencimiento_soat'],
+        'ruat': c['ruat'],
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      await db.insert(
+        'conductor_automovil',
+        {
+          'id_conductor': idConductor,
+          'id_auto': idAuto,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
   }
 
@@ -476,6 +888,21 @@ class DatabaseHelper {
     String estado = 'activo',
     String? placa,
     String? licencia,
+    String? telefono,
+    String? fechaNacimiento,
+    String? direccion,
+    String? estadoCivil,
+    String? foto,
+    String? licenciaCategoria,
+    String? licenciaEmision,
+    String? licenciaVencimiento,
+    String? marca,
+    String? modelo,
+    String? color,
+    int? capacidad,
+    String? soat,
+    String? fechaVencimientoSoat,
+    String? ruat,
   }) async {
     final db = await database;
     final now = _now();
@@ -507,28 +934,78 @@ class DatabaseHelper {
           'licencia': licencia,
           'fecha_incorporacion': now.substring(0, 10),
           'estado': estado,
+          'telefono': telefono,
+          'fecha_nacimiento': fechaNacimiento,
+          'direccion': direccion,
+          'estado_civil': estadoCivil,
+          'foto': foto,
+          'licencia_categoria': licenciaCategoria,
+          'licencia_emision': licenciaEmision,
+          'licencia_vencimiento': licenciaVencimiento,
           'created_at': now,
           'updated_at': now,
           'sincronizado': 0,
         });
 
         if (placa != null && placa.trim().isNotEmpty) {
-          final idAuto = _uuid.v4();
-          await txn.insert('automovil', {
-            'id_auto': idAuto,
-            'placa': placa.trim().toUpperCase(),
-            'estado': 'activo',
-            'created_at': now,
-            'updated_at': now,
-            'sincronizado': 0,
-          });
-          await txn.insert('conductor_automovil', {
-            'id_conductor': idConductor,
-            'id_auto': idAuto,
-            'created_at': now,
-            'updated_at': now,
-            'sincronizado': 0,
-          });
+          final placaLimpia = placa.trim().toUpperCase();
+          final autoExistente = await txn.query(
+            'automovil',
+            where: 'placa = ?',
+            whereArgs: [placaLimpia],
+            limit: 1,
+          );
+
+          final String idAuto;
+          if (autoExistente.isNotEmpty) {
+            idAuto = autoExistente.first['id_auto'] as String;
+            final Map<String, dynamic> datosAuto = {
+              'updated_at': now,
+              'sincronizado': 0,
+            };
+            if (marca != null) datosAuto['marca'] = marca;
+            if (modelo != null) datosAuto['modelo'] = modelo;
+            if (color != null) datosAuto['color'] = color;
+            if (capacidad != null) datosAuto['capacidad'] = capacidad;
+            if (soat != null) datosAuto['soat'] = soat;
+            if (fechaVencimientoSoat != null) datosAuto['fecha_vencimiento_soat'] = fechaVencimientoSoat;
+            if (ruat != null) datosAuto['ruat'] = ruat;
+
+            await txn.update(
+              'automovil',
+              datosAuto,
+              where: 'id_auto = ?',
+              whereArgs: [idAuto],
+            );
+          } else {
+            idAuto = _uuid.v4();
+            await txn.insert('automovil', {
+              'id_auto': idAuto,
+              'placa': placaLimpia,
+              'marca': marca,
+              'modelo': modelo,
+              'color': color,
+              'capacidad': capacidad,
+              'soat': soat,
+              'fecha_vencimiento_soat': fechaVencimientoSoat,
+              'ruat': ruat,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            });
+          }
+
+          await txn.insert(
+            'conductor_automovil',
+            {
+              'id_conductor': idConductor,
+              'id_auto': idAuto,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
         }
       }
     });
@@ -536,7 +1013,7 @@ class DatabaseHelper {
     return idUsuario;
   }
 
-  /// Actualiza los datos de un usuario, su rol, su estado y opcionalmente su contraseña.
+  /// Actualiza los datos de un usuario, su rol, su estado y opcionalmente sus datos de conductor y vehículo.
   Future<void> actualizarUsuarioCompleto({
     required String idUsuario,
     required String nombre,
@@ -546,6 +1023,22 @@ class DatabaseHelper {
     String? newPassword,
     String? ci,
     String? licencia,
+    String? telefono,
+    String? fechaNacimiento,
+    String? direccion,
+    String? estadoCivil,
+    String? foto,
+    String? licenciaCategoria,
+    String? licenciaEmision,
+    String? licenciaVencimiento,
+    String? placa,
+    String? marca,
+    String? modelo,
+    String? color,
+    int? capacidad,
+    String? soat,
+    String? fechaVencimientoSoat,
+    String? ruat,
   }) async {
     final db = await database;
     final now = _now();
@@ -580,33 +1073,108 @@ class DatabaseHelper {
           where: 'id_usuario = ?',
           whereArgs: [idUsuario],
         );
+        String idConductor;
         if (cond.isNotEmpty) {
+          idConductor = cond.first['id_conductor'] as String;
+          final Map<String, dynamic> datosCond = {
+            'nombre': nombre,
+            'ci': ci ?? cond.first['ci'],
+            'licencia': licencia ?? cond.first['licencia'],
+            'estado': estado,
+            'updated_at': now,
+            'sincronizado': 0,
+          };
+          if (telefono != null) datosCond['telefono'] = telefono;
+          if (fechaNacimiento != null) datosCond['fecha_nacimiento'] = fechaNacimiento;
+          if (direccion != null) datosCond['direccion'] = direccion;
+          if (estadoCivil != null) datosCond['estado_civil'] = estadoCivil;
+          if (foto != null) datosCond['foto'] = foto;
+          if (licenciaCategoria != null) datosCond['licencia_categoria'] = licenciaCategoria;
+          if (licenciaEmision != null) datosCond['licencia_emision'] = licenciaEmision;
+          if (licenciaVencimiento != null) datosCond['licencia_vencimiento'] = licenciaVencimiento;
+
           await txn.update(
             'conductor',
-            {
-              'nombre': nombre,
-              'ci': ci ?? cond.first['ci'],
-              'licencia': licencia ?? cond.first['licencia'],
-              'estado': estado,
-              'updated_at': now,
-              'sincronizado': 0,
-            },
+            datosCond,
             where: 'id_usuario = ?',
             whereArgs: [idUsuario],
           );
         } else {
+          idConductor = _uuid.v4();
           await txn.insert('conductor', {
-            'id_conductor': _uuid.v4(),
+            'id_conductor': idConductor,
             'id_usuario': idUsuario,
             'nombre': nombre,
             'ci': ci ?? '',
             'licencia': licencia,
             'fecha_incorporacion': now.substring(0, 10),
             'estado': estado,
+            'telefono': telefono,
+            'fecha_nacimiento': fechaNacimiento,
+            'direccion': direccion,
+            'estado_civil': estadoCivil,
+            'foto': foto,
+            'licencia_categoria': licenciaCategoria,
+            'licencia_emision': licenciaEmision,
+            'licencia_vencimiento': licenciaVencimiento,
             'created_at': now,
             'updated_at': now,
             'sincronizado': 0,
           });
+        }
+
+        if (placa != null && placa.trim().isNotEmpty) {
+          final placaLimpia = placa.trim().toUpperCase();
+          final autos = await txn.query('automovil', where: 'placa = ?', whereArgs: [placaLimpia], limit: 1);
+          String idAuto;
+          if (autos.isNotEmpty) {
+            idAuto = autos.first['id_auto'] as String;
+            final Map<String, dynamic> datosAuto = {
+              'updated_at': now,
+              'sincronizado': 0,
+            };
+            if (marca != null) datosAuto['marca'] = marca;
+            if (modelo != null) datosAuto['modelo'] = modelo;
+            if (color != null) datosAuto['color'] = color;
+            if (capacidad != null) datosAuto['capacidad'] = capacidad;
+            if (soat != null) datosAuto['soat'] = soat;
+            if (fechaVencimientoSoat != null) datosAuto['fecha_vencimiento_soat'] = fechaVencimientoSoat;
+            if (ruat != null) datosAuto['ruat'] = ruat;
+
+            await txn.update(
+              'automovil',
+              datosAuto,
+              where: 'id_auto = ?',
+              whereArgs: [idAuto],
+            );
+          } else {
+            idAuto = _uuid.v4();
+            await txn.insert('automovil', {
+              'id_auto': idAuto,
+              'placa': placaLimpia,
+              'marca': marca,
+              'modelo': modelo,
+              'color': color,
+              'capacidad': capacidad,
+              'soat': soat,
+              'fecha_vencimiento_soat': fechaVencimientoSoat,
+              'ruat': ruat,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            });
+          }
+          await txn.insert(
+            'conductor_automovil',
+            {
+              'id_conductor': idConductor,
+              'id_auto': idAuto,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
         }
       }
     });
@@ -647,6 +1215,21 @@ class DatabaseHelper {
       'usuario',
       where: 'id_usuario = ?',
       whereArgs: [idUsuario],
+    );
+  }
+
+  /// Actualiza únicamente la foto de perfil de un conductor.
+  Future<void> actualizarFotoConductor(String idConductor, String? foto) async {
+    final db = await database;
+    await db.update(
+      'conductor',
+      {
+        'foto': (foto != null && foto.trim().isNotEmpty) ? foto.trim() : null,
+        'updated_at': _now(),
+        'sincronizado': 0,
+      },
+      where: 'id_conductor = ?',
+      whereArgs: [idConductor],
     );
   }
 
@@ -713,16 +1296,46 @@ class DatabaseHelper {
   // CONSULTAS CON JOIN (para las pantallas)
   // ---------------------------------------------------------------------------
 
-  /// conductores_screen: conductores con su(s) auto(s).
+  /// conductores_screen: conductores con su(s) auto(s) y datos ampliados.
   Future<List<Map<String, dynamic>>> conductoresConAuto() async {
     final db = await database;
     return db.rawQuery('''
-      SELECT c.*, a.id_auto, a.placa
+      SELECT 
+        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.licencia,
+        c.fecha_incorporacion, c.estado, c.telefono, c.fecha_nacimiento,
+        c.direccion, c.estado_civil, c.foto, c.licencia_categoria,
+        c.licencia_emision, c.licencia_vencimiento, c.created_at, c.updated_at,
+        u.gmail,
+        a.id_auto, a.placa, a.marca, a.modelo, a.color, a.capacidad,
+        a.ruat, a.soat, a.fecha_vencimiento_soat
       FROM conductor c
+      LEFT JOIN usuario u ON u.id_usuario = c.id_usuario
       LEFT JOIN conductor_automovil ca ON ca.id_conductor = c.id_conductor
       LEFT JOIN automovil a ON a.id_auto = ca.id_auto
       ORDER BY c.nombre
     ''');
+  }
+
+  /// Obtiene la ficha completa y detallada de un conductor por su id_conductor.
+  Future<Map<String, dynamic>?> fichaConductor(String idConductor) async {
+    final db = await database;
+    final res = await db.rawQuery('''
+      SELECT 
+        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.licencia,
+        c.fecha_incorporacion, c.estado, c.telefono, c.fecha_nacimiento,
+        c.direccion, c.estado_civil, c.foto, c.licencia_categoria,
+        c.licencia_emision, c.licencia_vencimiento, c.created_at, c.updated_at,
+        u.gmail,
+        a.id_auto, a.placa, a.marca, a.modelo, a.color, a.capacidad,
+        a.ruat, a.soat, a.fecha_vencimiento_soat
+      FROM conductor c
+      LEFT JOIN usuario u ON u.id_usuario = c.id_usuario
+      LEFT JOIN conductor_automovil ca ON ca.id_conductor = c.id_conductor
+      LEFT JOIN automovil a ON a.id_auto = ca.id_auto
+      WHERE c.id_conductor = ?
+      LIMIT 1
+    ''', [idConductor]);
+    return res.isEmpty ? null : res.first;
   }
 
   /// Asigna un auto a un conductor.
@@ -835,31 +1448,60 @@ class DatabaseHelper {
     ''', args);
   }
 
-  /// control_economico_screen: cuotas con conductor y tipo.
+  /// control_economico_screen: cuotas con conductor, tipo y saldo calculado.
   Future<List<Map<String, dynamic>>> cuotasDetalle({
     String? idConductor,
     String? estado,
+    String? idTipoCuota,
+    String? fechaDesde,
+    String? fechaHasta,
+    String? busqueda,
   }) async {
     final db = await database;
     final condiciones = <String>[];
     final args = <Object?>[];
-    if (idConductor != null) {
+
+    if (idConductor != null && idConductor.isNotEmpty) {
       condiciones.add('q.id_conductor = ?');
       args.add(idConductor);
     }
-    if (estado != null) {
-      condiciones.add('q.estado = ?');
-      args.add(estado);
+    if (estado != null && estado.isNotEmpty && estado.toLowerCase() != 'todos') {
+      condiciones.add('LOWER(q.estado) = ?');
+      args.add(estado.toLowerCase());
     }
+    if (idTipoCuota != null && idTipoCuota.isNotEmpty && idTipoCuota != 'todos') {
+      condiciones.add('q.id_tipo_cuota = ?');
+      args.add(idTipoCuota);
+    }
+    if (fechaDesde != null && fechaDesde.isNotEmpty) {
+      condiciones.add('q.fecha >= ?');
+      args.add(fechaDesde);
+    }
+    if (fechaHasta != null && fechaHasta.isNotEmpty) {
+      condiciones.add('q.fecha <= ?');
+      args.add(fechaHasta);
+    }
+    if (busqueda != null && busqueda.trim().isNotEmpty) {
+      final q = '%${busqueda.trim().toLowerCase()}%';
+      condiciones.add('(LOWER(c.nombre) LIKE ? OR LOWER(c.ci) LIKE ? OR LOWER(COALESCE(q.concepto, \'\')) LIKE ?)');
+      args.addAll([q, q, q]);
+    }
+
     final where = condiciones.isEmpty ? '' : 'WHERE ${condiciones.join(' AND ')}';
 
     return db.rawQuery('''
-      SELECT q.*, c.nombre AS conductor_nombre, t.nombre AS tipo_nombre
+      SELECT 
+        q.*, 
+        c.nombre AS conductor_nombre, 
+        c.ci AS conductor_ci, 
+        c.foto AS conductor_foto,
+        t.nombre AS tipo_nombre,
+        (q.monto - COALESCE(q.monto_pagado, 0)) AS saldo
       FROM cuota q
       JOIN conductor c ON c.id_conductor = q.id_conductor
       JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
       $where
-      ORDER BY q.fecha DESC
+      ORDER BY q.fecha DESC, q.created_at DESC
     ''', args);
   }
 
@@ -878,6 +1520,8 @@ class DatabaseHelper {
     final db = await database;
     final deuda = await db.rawQuery(
         "SELECT COALESCE(SUM(monto), 0) AS total FROM cuota WHERE estado = 'pendiente'");
+    final cuotasCreadas = await _contar(
+        "SELECT COUNT(*) FROM tipo_cuota WHERE activo = 1");
 
     return {
       'conductores_activos':
@@ -887,6 +1531,7 @@ class DatabaseHelper {
       'sanciones_pendientes': await _contar(
           "SELECT COUNT(*) FROM sancion WHERE estado = 'pendiente'"),
       'cuotas_pendientes_monto': (deuda.first['total'] as num?) ?? 0,
+      'cuotas_creadas': cuotasCreadas,
     };
   }
 

@@ -39,14 +39,14 @@ class Permisos {
         return r == 'superadmin' || r == 'admin';
 
       case moduloConductores:
-        return r == 'superadmin' || r == 'admin';
+        return r == 'superadmin' || r == 'admin' || r == 'tesorero';
 
       case moduloControlEconomico:
-        // Conductor ve sus propias cuotas; admin y superadmin ven todo el control de caja. Supervisor NO tiene acceso.
-        return r == 'superadmin' || r == 'admin' || r == 'conductor';
+        // Conductor ve sus cuotas; tesorero/admin/superadmin gestionan caja; supervisor visualiza.
+        return r == 'superadmin' || r == 'admin' || r == 'conductor' || r == 'supervisor' || r == 'tesorero';
 
       case moduloInformes:
-        return r == 'superadmin' || r == 'admin';
+        return r == 'superadmin' || r == 'admin' || r == 'tesorero';
 
       case moduloAsistencia:
       case moduloVueltas:
@@ -71,8 +71,10 @@ class Permisos {
 
       case moduloUsuarios:
       case moduloConductores:
-      case moduloControlEconomico:
         return r == 'superadmin' || r == 'admin';
+
+      case moduloControlEconomico:
+        return r == 'superadmin' || r == 'admin' || r == 'tesorero';
 
       case moduloInformes:
         return r == 'superadmin' || r == 'admin';
