@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../core/permisos.dart';
-import '../models/usuario_model.dart';
-import '../services/database_helper.dart';
-import '../services/economia_repo.dart';
-import '../services/recibo_pdf_service.dart';
-import '../services/sesion_service.dart';
-import '../widgets/avatar_conductor.dart';
+import '../../core/permisos.dart';
+import '../../models/usuario_model.dart';
+import '../../services/database_helper.dart';
+import '../../services/economia_repo.dart';
+import '../../services/recibo_pdf_service.dart';
+import '../../services/sesion_service.dart';
+import '../../widgets/avatar_conductor.dart';
 
 /// Vista E2: Cobrar (Registro de Pago en 3 toques)
 ///

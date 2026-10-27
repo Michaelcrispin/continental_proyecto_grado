@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../services/economia_repo.dart';
-import '../services/recibo_pdf_service.dart';
+import '../../services/economia_repo.dart';
+import '../../services/recibo_pdf_service.dart';
 
 /// Vista E12: Informe Económico (Recaudado vs. Pendiente por Tipo de Cuota y Período)
 class InformeEconomicoScreen extends StatefulWidget {

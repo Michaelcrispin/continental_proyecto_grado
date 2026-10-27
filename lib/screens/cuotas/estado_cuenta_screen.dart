@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../core/permisos.dart';
-import '../services/economia_repo.dart';
-import '../services/recibo_pdf_service.dart';
-import '../services/sesion_service.dart';
-import '../widgets/avatar_conductor.dart';
+import '../../core/permisos.dart';
+import '../../services/economia_repo.dart';
+import '../../services/recibo_pdf_service.dart';
+import '../../services/sesion_service.dart';
+import '../../widgets/avatar_conductor.dart';
 import 'cobrar_screen.dart';
 
 /// Vista E4: Estado de Cuenta del Conductor

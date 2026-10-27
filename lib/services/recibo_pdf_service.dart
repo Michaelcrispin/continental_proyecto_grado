@@ -747,10 +747,35 @@ class ReciboPdfService {
                         ),
                         if (motivoCuota != null && motivoCuota.trim().isNotEmpty) ...[
                           pw.SizedBox(height: 3),
-                          pw.Text(
-                            'Motivo: ${motivoCuota.trim()}',
-                            style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800),
-                          ),
+                          if (motivoCuota.contains('|')) ...[
+                            ...motivoCuota.split('|').map((part) {
+                              final p = part.trim();
+                              final esModalidad = p.contains('Modalidad:');
+                              final esBeneficiario = p.contains('Beneficiario:');
+                              return pw.Padding(
+                                padding: const pw.EdgeInsets.only(top: 1.5),
+                                child: pw.Text(
+                                  p,
+                                  style: pw.TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: (esModalidad || esBeneficiario)
+                                        ? pw.FontWeight.bold
+                                        : pw.FontWeight.normal,
+                                    color: p.contains('Obligatoria')
+                                        ? PdfColors.blue800
+                                        : (p.contains('Voluntaria')
+                                            ? PdfColors.green800
+                                            : PdfColors.grey800),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ] else ...[
+                            pw.Text(
+                              'Motivo: ${motivoCuota.trim()}',
+                              style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800),
+                            ),
+                          ],
                         ],
                       ],
                     ),

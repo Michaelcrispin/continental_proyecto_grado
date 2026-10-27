@@ -4,7 +4,7 @@ import '../services/database_helper.dart';
 import '../services/economia_repo.dart';
 import '../services/sesion_service.dart';
 import '../widgets/avatar_conductor.dart';
-import 'cobrar_screen.dart';
+import 'cuotas/cobrar_screen.dart';
 
 /// Vista E11: Pasanaco (Gestión de fondos rotativos, sorteo de turnos, rondas y entregas)
 class PasanacoScreen extends StatefulWidget {

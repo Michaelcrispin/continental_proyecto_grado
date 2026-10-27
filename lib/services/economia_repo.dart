@@ -30,11 +30,76 @@ class EconomiaRepo {
     return db.query('tipo_cuota', where: 'activo = 1', orderBy: 'nombre ASC');
   }
 
+  /// Obtiene los tipos de cuota con resumen calculado para las tarjetas UI:
+  /// total recaudado, total pendiente, conductores que pagaron y estado ('en_cobro', 'pendiente', 'completada').
+  Future<List<Map<String, dynamic>>> listarCuotasConResumen() async {
+    final db = await _dh.database;
+    final sql = '''
+      SELECT 
+        t.id_tipo_cuota,
+        t.nombre,
+        t.descripcion,
+        COALESCE(t.categoria, 'ayuda') AS categoria,
+        t.monto_sugerido,
+        t.activo,
+        t.es_fijo,
+        t.created_at,
+        COUNT(DISTINCT q.id_conductor) AS total_conductores,
+        COUNT(q.id_cuota) AS total_asignados,
+        COALESCE(SUM(q.monto), 0.0) AS total_monto,
+        COALESCE(SUM(q.monto_pagado), 0.0) AS total_pagado,
+        COALESCE(SUM(q.monto - q.monto_pagado), 0.0) AS total_falta,
+        (
+          SELECT COUNT(DISTINCT q2.id_conductor)
+          FROM cuota q2
+          WHERE q2.id_tipo_cuota = t.id_tipo_cuota
+            AND q2.id_conductor NOT IN (
+              SELECT q3.id_conductor
+              FROM cuota q3
+              WHERE q3.id_tipo_cuota = t.id_tipo_cuota
+                AND (q3.monto - q3.monto_pagado) > 0.001
+            )
+        ) AS cant_pagados,
+        (
+          SELECT COUNT(DISTINCT q4.id_conductor)
+          FROM cuota q4
+          WHERE q4.id_tipo_cuota = t.id_tipo_cuota
+            AND (q4.monto - q4.monto_pagado) > 0.001
+        ) AS cant_deben
+      FROM tipo_cuota t
+      LEFT JOIN cuota q ON q.id_tipo_cuota = t.id_tipo_cuota
+      WHERE t.activo = 1
+      GROUP BY t.id_tipo_cuota
+      ORDER BY t.created_at DESC, t.nombre ASC
+    ''';
+    final rows = await db.rawQuery(sql);
+    return rows.map((r) {
+      final totalAsignados = (r['total_asignados'] as num?)?.toInt() ?? 0;
+      final totalPagado = (r['total_pagado'] as num?)?.toDouble() ?? 0.0;
+      final cantDeben = (r['cant_deben'] as num?)?.toInt() ?? 0;
+      final cantPagados = (r['cant_pagados'] as num?)?.toInt() ?? 0;
+
+      String estado;
+      if (totalAsignados == 0 || totalPagado <= 0.001) {
+        estado = 'pendiente';
+      } else if (cantDeben == 0 && cantPagados > 0) {
+        estado = 'completada';
+      } else {
+        estado = 'en_cobro';
+      }
+
+      final map = Map<String, dynamic>.from(r);
+      map['estado_calculado'] = estado;
+      return map;
+    }).toList();
+  }
+
   /// Crea un nuevo tipo de cuota (ej: "Apoyo económico", motivo: "Gastos médicos", monto: 200) y
   /// genera automáticamente la deuda para todos los conductores activos.
   Future<String> crearNuevoConceptoCuota({
     required String nombre,
     String? descripcion,
+    String categoria = 'ayuda',
     required double monto,
     required String idUsuario,
   }) async {
@@ -49,6 +114,7 @@ class EconomiaRepo {
         'id_tipo_cuota': idTipo,
         'nombre': nombre.trim(),
         'descripcion': (descTrim != null && descTrim.isNotEmpty) ? descTrim : null,
+        'categoria': categoria,
         'monto_sugerido': monto,
         'activo': 1,
         'es_fijo': 0,
@@ -84,11 +150,231 @@ class EconomiaRepo {
     });
   }
 
-  /// Actualiza el título, motivo descriptivo y monto de una cuota existente.
+  /// Retorna la lista de todos los conductores con estado activo, con id, nombre, ci y foto.
+  Future<List<Map<String, dynamic>>> listarConductoresActivos() async {
+    final db = await _dh.database;
+    return db.rawQuery('''
+      SELECT id_conductor, nombre, ci, foto, telefono
+      FROM conductor
+      WHERE LOWER(estado) = 'activo'
+      ORDER BY nombre ASC
+    ''');
+  }
+
+  /// Crea la cuota de Canastón y genera el lote de cobros periódicos en base
+  /// al cronograma de fechas para cada conductor seleccionado.
+  Future<Map<String, dynamic>> crearCanastonConCronograma({
+    required String nombre,
+    String? descripcion,
+    required double importeCuota,
+    required String frecuencia,
+    required String reglaDia,
+    required List<DateTime> fechasCronograma,
+    required List<String> idsConductores,
+    required String idUsuario,
+  }) async {
+    final nombreLimpio = nombre.trim();
+    if (nombreLimpio.isEmpty) {
+      throw Exception('El nombre del canastón no puede estar vacío.');
+    }
+    if (importeCuota <= 0) {
+      throw Exception('El importe por conductor debe ser mayor a 0 Bs.');
+    }
+    if (fechasCronograma.isEmpty) {
+      throw Exception('El cronograma no contiene fechas de cobro válidas.');
+    }
+    if (idsConductores.isEmpty) {
+      throw Exception('Debe seleccionar al menos un conductor.');
+    }
+
+    final db = await _dh.database;
+    final idTipo = _uuid.v4();
+    final idLote = _uuid.v4();
+    final now = _nowIso();
+    final fechaHoy = now.substring(0, 10);
+
+    return await db.transaction<Map<String, dynamic>>((txn) async {
+      // 1. Validar que no exista otra cuota con el mismo nombre
+      final existente = await txn.query(
+        'tipo_cuota',
+        where: 'LOWER(nombre) = ? AND activo = 1',
+        whereArgs: [nombreLimpio.toLowerCase()],
+      );
+      if (existente.isNotEmpty) {
+        throw Exception('Ya existe una cuota activa con el nombre "$nombreLimpio".');
+      }
+
+      // 2. Construir detalle informativo descriptivo
+      final descFinal = (descripcion != null && descripcion.trim().isNotEmpty)
+          ? descripcion.trim()
+          : 'Canastón Navideño · Frecuencia: $frecuencia ($reglaDia) · ${fechasCronograma.length} cuotas fijas de Bs. ${importeCuota.toStringAsFixed(2)}';
+
+      // 3. Insertar tipo_cuota
+      await txn.insert('tipo_cuota', {
+        'id_tipo_cuota': idTipo,
+        'nombre': nombreLimpio,
+        'descripcion': descFinal,
+        'categoria': 'canaston',
+        'monto_sugerido': importeCuota,
+        'activo': 1,
+        'es_fijo': 0,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      // 4. Insertar las cuotas calendarizadas por lote para cada chofer
+      final batch = txn.batch();
+      final totalFechas = fechasCronograma.length;
+
+      for (final idConductor in idsConductores) {
+        for (int i = 0; i < totalFechas; i++) {
+          final f = fechasCronograma[i];
+          final fVencStr = '${f.year.toString().padLeft(4, '0')}-${f.month.toString().padLeft(2, '0')}-${f.day.toString().padLeft(2, '0')}';
+          final nroCuota = i + 1;
+
+          batch.insert('cuota', {
+            'id_cuota': _uuid.v4(),
+            'id_conductor': idConductor,
+            'id_tipo_cuota': idTipo,
+            'monto': importeCuota,
+            'monto_pagado': 0.0,
+            'fecha': fechaHoy,
+            'fecha_vencimiento': fVencStr,
+            'concepto': '$nombreLimpio · Cuota $nroCuota de $totalFechas',
+            'id_lote': idLote,
+            'registrado_por': idUsuario,
+            'estado': 'pendiente',
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+        }
+      }
+
+      await batch.commit(noResult: true);
+
+      return {
+        'id_tipo_cuota': idTipo,
+        'id_lote': idLote,
+        'total_cuotas_generadas': idsConductores.length * totalFechas,
+        'total_fechas': totalFechas,
+        'total_conductores': idsConductores.length,
+        'monto_total_por_conductor': importeCuota * totalFechas,
+      };
+    });
+  }
+
+  /// Crea una cuota de Apoyo Económico (Solidaria) para un conductor beneficiario.
+  /// Genera una cuota por cada conductor aportante (excluyendo automáticamente al beneficiario).
+  Future<Map<String, dynamic>> crearApoyoEconomico({
+    required String nombre,
+    required String motivo,
+    required String modalidad, // 'obligatoria' | 'voluntaria'
+    required String idConductorBeneficiario,
+    required String nombreBeneficiario,
+    required double importePorChofer,
+    DateTime? fechaLimite,
+    required List<String> idsAportantes,
+    required String idUsuario,
+  }) async {
+    final nombreLimpio = nombre.trim();
+    if (nombreLimpio.isEmpty) {
+      throw Exception('El título del apoyo económico no puede estar vacío.');
+    }
+    if (idConductorBeneficiario.trim().isEmpty) {
+      throw Exception('Debe seleccionar al conductor beneficiario.');
+    }
+    if (importePorChofer <= 0) {
+      throw Exception('El importe por conductor debe ser mayor a 0 Bs.');
+    }
+
+    // Filtrar al beneficiario para que no aporte a su propia ayuda
+    final aportantesFiltrados = idsAportantes
+        .where((id) => id != idConductorBeneficiario)
+        .toList();
+
+    if (aportantesFiltrados.isEmpty) {
+      throw Exception('Debe haber al menos un conductor aportante.');
+    }
+
+    final db = await _dh.database;
+    final idTipo = _uuid.v4();
+    final idLote = _uuid.v4();
+    final now = _nowIso();
+    final fechaHoy = now.substring(0, 10);
+    final fVencStr = fechaLimite != null
+        ? '${fechaLimite.year.toString().padLeft(4, '0')}-${fechaLimite.month.toString().padLeft(2, '0')}-${fechaLimite.day.toString().padLeft(2, '0')}'
+        : null;
+
+    final modLabel = modalidad == 'obligatoria' ? 'Obligatoria' : 'Voluntaria';
+    final motivoLimpio = motivo.trim().isNotEmpty ? motivo.trim() : 'Apoyo económico solidario';
+    final descFinal = 'Beneficiario: $nombreBeneficiario | Modalidad: $modLabel | Motivo: $motivoLimpio';
+
+    return await db.transaction<Map<String, dynamic>>((txn) async {
+      // 1. Validar que no exista otra cuota activa con el mismo nombre
+      final existente = await txn.query(
+        'tipo_cuota',
+        where: 'LOWER(nombre) = ? AND activo = 1',
+        whereArgs: [nombreLimpio.toLowerCase()],
+      );
+      if (existente.isNotEmpty) {
+        throw Exception('Ya existe una cuota activa con el nombre "$nombreLimpio".');
+      }
+
+      // 2. Insertar en tipo_cuota
+      await txn.insert('tipo_cuota', {
+        'id_tipo_cuota': idTipo,
+        'nombre': nombreLimpio,
+        'descripcion': descFinal,
+        'categoria': 'ayuda',
+        'monto_sugerido': importePorChofer,
+        'activo': 1,
+        'es_fijo': modalidad == 'obligatoria' ? 1 : 0,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      // 3. Insertar cuota para cada chofer aportante
+      final batch = txn.batch();
+      for (final idConductor in aportantesFiltrados) {
+        batch.insert('cuota', {
+          'id_cuota': _uuid.v4(),
+          'id_conductor': idConductor,
+          'id_tipo_cuota': idTipo,
+          'monto': importePorChofer,
+          'monto_pagado': 0.0,
+          'fecha': fechaHoy,
+          'fecha_vencimiento': fVencStr,
+          'concepto': '$nombreLimpio · Solidaridad con $nombreBeneficiario',
+          'id_lote': idLote,
+          'registrado_por': idUsuario,
+          'estado': 'pendiente',
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+      }
+
+      await batch.commit(noResult: true);
+
+      return {
+        'id_tipo_cuota': idTipo,
+        'id_lote': idLote,
+        'total_cuotas_generadas': aportantesFiltrados.length,
+        'total_aportantes': aportantesFiltrados.length,
+        'monto_total_esperado': importePorChofer * aportantesFiltrados.length,
+      };
+    });
+  }
+
+  /// Actualiza el título, motivo descriptivo, categoría y monto de una cuota existente.
   Future<void> actualizarTipoCuota({
     required String idTipoCuota,
     required String nombre,
     String? descripcion,
+    String? categoria,
     required double monto,
   }) async {
     final db = await _dh.database;
@@ -96,14 +382,19 @@ class EconomiaRepo {
     final descTrim = descripcion?.trim();
 
     await db.transaction((txn) async {
+      final updateData = <String, dynamic>{
+        'nombre': nombre.trim(),
+        'descripcion': (descTrim != null && descTrim.isNotEmpty) ? descTrim : null,
+        'monto_sugerido': monto,
+        'updated_at': now,
+      };
+      if (categoria != null) {
+        updateData['categoria'] = categoria;
+      }
+
       await txn.update(
         'tipo_cuota',
-        {
-          'nombre': nombre.trim(),
-          'descripcion': (descTrim != null && descTrim.isNotEmpty) ? descTrim : null,
-          'monto_sugerido': monto,
-          'updated_at': now,
-        },
+        updateData,
         where: 'id_tipo_cuota = ?',
         whereArgs: [idTipoCuota],
       );
@@ -141,128 +432,293 @@ class EconomiaRepo {
 
   /// Retorna la lista de TODOS los conductores activos con su estado financiero para una cuota dada.
   /// Muestra: conductor_nombre, ci, foto, monto_total, monto_pagado (verde) y monto_falta (rojo).
+  /// Retorna la lista de conductores asociados a una cuota sin duplicados (1 fila por chofer).
+  /// Calcula el total acumulado de cuotas, lo pagado, lo pendiente, el conteo de cuotas
+  /// pagadas vs pendientes y la próxima fecha de vencimiento a pagar.
   Future<List<Map<String, dynamic>>> estadoConductoresPorCuota(String idTipoCuota) async {
     final db = await _dh.database;
-    return db.rawQuery('''
-      SELECT 
-        c.id_conductor,
-        c.nombre AS conductor_nombre,
-        c.ci AS conductor_ci,
-        c.foto AS conductor_foto,
-        t.nombre AS tipo_nombre,
-        COALESCE(q.id_cuota, '') AS id_cuota,
-        COALESCE(q.monto, t.monto_sugerido) AS monto_total,
-        COALESCE(q.monto_pagado, 0.0) AS monto_pagado,
-        (COALESCE(q.monto, t.monto_sugerido) - COALESCE(q.monto_pagado, 0.0)) AS monto_falta,
-        COALESCE(q.estado, 'pendiente') AS estado
-      FROM conductor c
-      CROSS JOIN tipo_cuota t ON t.id_tipo_cuota = ?
-      LEFT JOIN cuota q ON q.id_conductor = c.id_conductor AND q.id_tipo_cuota = t.id_tipo_cuota
-      WHERE LOWER(c.estado) = 'activo'
-      ORDER BY c.nombre ASC
-    ''', [idTipoCuota]);
+
+    final countRes = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM cuota WHERE id_tipo_cuota = ?', [idTipoCuota]),
+    ) ?? 0;
+
+    if (countRes > 0) {
+      return await db.rawQuery('''
+        SELECT 
+          c.id_conductor,
+          c.nombre AS conductor_nombre,
+          c.ci AS conductor_ci,
+          c.foto AS conductor_foto,
+          c.telefono AS conductor_telefono,
+          t.nombre AS tipo_nombre,
+          t.id_tipo_cuota,
+          COALESCE(t.categoria, 'ayuda') AS categoria,
+          t.monto_sugerido,
+          COALESCE(SUM(q.monto), t.monto_sugerido) AS monto_total,
+          COALESCE(SUM(q.monto_pagado), 0.0) AS monto_pagado,
+          COALESCE(SUM(q.monto - q.monto_pagado), 0.0) AS monto_falta,
+          COUNT(q.id_cuota) AS total_cuotas,
+          SUM(CASE WHEN q.monto_pagado >= (q.monto - 0.001) AND q.monto > 0 THEN 1 ELSE 0 END) AS cuotas_pagadas,
+          SUM(CASE WHEN (q.monto - q.monto_pagado) > 0.001 THEN 1 ELSE 0 END) AS cuotas_pendientes,
+          MIN(CASE WHEN (q.monto - q.monto_pagado) > 0.001 THEN q.fecha_vencimiento ELSE NULL END) AS proxima_fecha_pago,
+          MIN(CASE WHEN (q.monto - q.monto_pagado) > 0.001 THEN (q.monto - q.monto_pagado) ELSE NULL END) AS proximo_monto_pago,
+          (
+            SELECT q2.id_cuota 
+            FROM cuota q2 
+            WHERE q2.id_conductor = c.id_conductor 
+              AND q2.id_tipo_cuota = t.id_tipo_cuota 
+              AND (q2.monto - q2.monto_pagado) > 0.001
+            ORDER BY COALESCE(q2.fecha_vencimiento, q2.fecha) ASC, q2.created_at ASC
+            LIMIT 1
+          ) AS proxima_id_cuota
+        FROM conductor c
+        JOIN cuota q ON q.id_conductor = c.id_conductor AND q.id_tipo_cuota = ?
+        JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
+        WHERE LOWER(c.estado) = 'activo'
+        GROUP BY c.id_conductor
+        ORDER BY c.nombre ASC
+      ''', [idTipoCuota]);
+    } else {
+      return await db.rawQuery('''
+        SELECT 
+          c.id_conductor,
+          c.nombre AS conductor_nombre,
+          c.ci AS conductor_ci,
+          c.foto AS conductor_foto,
+          c.telefono AS conductor_telefono,
+          t.nombre AS tipo_nombre,
+          t.id_tipo_cuota,
+          COALESCE(t.categoria, 'ayuda') AS categoria,
+          t.monto_sugerido,
+          COALESCE(t.monto_sugerido, 0.0) AS monto_total,
+          0.0 AS monto_pagado,
+          COALESCE(t.monto_sugerido, 0.0) AS monto_falta,
+          0 AS total_cuotas,
+          0 AS cuotas_pagadas,
+          1 AS cuotas_pendientes,
+          NULL AS proxima_fecha_pago,
+          t.monto_sugerido AS proximo_monto_pago,
+          NULL AS proxima_id_cuota
+        FROM conductor c
+        CROSS JOIN tipo_cuota t ON t.id_tipo_cuota = ?
+        WHERE LOWER(c.estado) = 'activo'
+        ORDER BY c.nombre ASC
+      ''', [idTipoCuota]);
+    }
   }
 
-  /// Registra el cobro a un conductor para una cuota específica de manera instantánea.
+  /// Retorna la lista detallada de cuotas/fechas programadas de un conductor
+  /// para un tipo de cuota específico, ordenadas cronológicamente con datos de recibo si fue pagada.
+  Future<List<Map<String, dynamic>>> obtenerCronogramaConductor({
+    required String idTipoCuota,
+    required String idConductor,
+  }) async {
+    final db = await _dh.database;
+    final sql = '''
+      SELECT 
+        q.id_cuota,
+        q.id_conductor,
+        q.id_tipo_cuota,
+        q.monto,
+        COALESCE(q.monto_pagado, 0.0) AS monto_pagado,
+        (q.monto - COALESCE(q.monto_pagado, 0.0)) AS monto_falta,
+        q.fecha,
+        q.fecha_vencimiento,
+        q.concepto,
+        q.estado,
+        (SELECT p.id_pago FROM pago p WHERE p.id_cuota = q.id_cuota ORDER BY p.fecha DESC, p.created_at DESC LIMIT 1) AS id_pago,
+        (SELECT p.nro_recibo FROM pago p WHERE p.id_cuota = q.id_cuota ORDER BY p.fecha DESC, p.created_at DESC LIMIT 1) AS nro_recibo,
+        (SELECT p.fecha FROM pago p WHERE p.id_cuota = q.id_cuota ORDER BY p.fecha DESC, p.created_at DESC LIMIT 1) AS fecha_pago,
+        (SELECT p.metodo FROM pago p WHERE p.id_cuota = q.id_cuota ORDER BY p.fecha DESC, p.created_at DESC LIMIT 1) AS metodo_pago,
+        (SELECT p.observacion FROM pago p WHERE p.id_cuota = q.id_cuota ORDER BY p.fecha DESC, p.created_at DESC LIMIT 1) AS pago_observacion
+      FROM cuota q
+      WHERE q.id_tipo_cuota = ? AND q.id_conductor = ?
+      ORDER BY COALESCE(q.fecha_vencimiento, q.fecha) ASC, q.created_at ASC
+    ''';
+    return await db.rawQuery(sql, [idTipoCuota, idConductor]);
+  }
+
+  /// Obtiene la información completa de un pago/recibo para previsualización e impresión en PDF.
+  Future<Map<String, dynamic>?> obtenerDatosReciboPorPago({String? idPago, String? idCuota}) async {
+    final db = await _dh.database;
+    final whereClause = idPago != null ? 'p.id_pago = ?' : 'p.id_cuota = ?';
+    final arg = idPago ?? idCuota;
+    if (arg == null) return null;
+
+    final rows = await db.rawQuery('''
+      SELECT 
+        p.id_pago,
+        p.nro_recibo,
+        p.fecha,
+        p.created_at,
+        p.monto AS monto_pagado,
+        p.metodo,
+        p.observacion,
+        q.id_cuota,
+        t.nombre AS tipo_nombre,
+        COALESCE(q.concepto, t.nombre) AS concepto,
+        c.nombre AS conductor_nombre,
+        c.ci AS conductor_ci,
+        q.monto AS total_cuota,
+        (q.monto - q.monto_pagado) AS saldo_restante
+      FROM pago p
+      JOIN cuota q ON q.id_cuota = p.id_cuota
+      JOIN conductor c ON c.id_conductor = q.id_conductor
+      JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
+      WHERE $whereClause
+      ORDER BY p.fecha DESC, p.created_at DESC
+      LIMIT 1
+    ''', [arg]);
+
+    if (rows.isEmpty) return null;
+    return Map<String, dynamic>.from(rows.first);
+  }
+
+  /// Registra el cobro a un conductor distribuyendo el monto en orden cronológico (FIFO)
+  /// a las cuotas periódicas pendientes, o a una cuota específica si se proporciona su id.
   Future<Map<String, dynamic>> cobrarAConductor({
     required String idConductor,
     required String idTipoCuota,
     required double montoACobrar,
     String metodo = 'efectivo',
     required String idUsuario,
+    String? idCuotaEspecifica,
   }) async {
     final db = await _dh.database;
     final now = _nowIso();
     final fechaHoy = now.substring(0, 10);
 
     return await db.transaction<Map<String, dynamic>>((txn) async {
-      final cuotas = await txn.rawQuery(
-        'SELECT * FROM cuota WHERE id_conductor = ? AND id_tipo_cuota = ? LIMIT 1',
-        [idConductor, idTipoCuota],
-      );
+      List<Map<String, dynamic>> cuotasPendientes;
+      if (idCuotaEspecifica != null) {
+        cuotasPendientes = await txn.rawQuery(
+          'SELECT * FROM cuota WHERE id_cuota = ?',
+          [idCuotaEspecifica],
+        );
+      } else {
+        cuotasPendientes = await txn.rawQuery('''
+          SELECT * FROM cuota 
+          WHERE id_conductor = ? AND id_tipo_cuota = ? AND (monto - monto_pagado) > 0.001
+          ORDER BY COALESCE(fecha_vencimiento, fecha) ASC, created_at ASC
+        ''', [idConductor, idTipoCuota]);
+      }
 
-      String idCuota;
-      double totalDeuda;
-      double pagadoAntes;
+      if (cuotasPendientes.isEmpty) {
+        final cuotasExistentes = await txn.rawQuery(
+          'SELECT * FROM cuota WHERE id_conductor = ? AND id_tipo_cuota = ? LIMIT 1',
+          [idConductor, idTipoCuota],
+        );
+        if (cuotasExistentes.isEmpty) {
+          final tipo = (await txn.query('tipo_cuota', where: 'id_tipo_cuota = ?', whereArgs: [idTipoCuota])).first;
+          final totalDeuda = (tipo['monto_sugerido'] as num).toDouble();
+          final idCuotaNueva = _uuid.v4();
+          await txn.insert('cuota', {
+            'id_cuota': idCuotaNueva,
+            'id_conductor': idConductor,
+            'id_tipo_cuota': idTipoCuota,
+            'monto': totalDeuda,
+            'monto_pagado': 0.0,
+            'fecha': fechaHoy,
+            'estado': 'pendiente',
+            'concepto': tipo['nombre'],
+            'registrado_por': idUsuario,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+          cuotasPendientes = await txn.rawQuery(
+            'SELECT * FROM cuota WHERE id_cuota = ?',
+            [idCuotaNueva],
+          );
+        } else {
+          throw Exception('El conductor ya no tiene cuotas pendientes por pagar.');
+        }
+      }
 
-      if (cuotas.isEmpty) {
-        final tipo = (await txn.query('tipo_cuota', where: 'id_tipo_cuota = ?', whereArgs: [idTipoCuota])).first;
-        totalDeuda = (tipo['monto_sugerido'] as num).toDouble();
-        pagadoAntes = 0.0;
-        idCuota = _uuid.v4();
+      double totalPendiente = 0;
+      for (final q in cuotasPendientes) {
+        final m = (q['monto'] as num).toDouble();
+        final p = (q['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+        totalPendiente += (m - p);
+      }
 
-        await txn.insert('cuota', {
+      if (montoACobrar > (totalPendiente + 0.01)) {
+        throw Exception('El monto ingresado (Bs. $montoACobrar) supera lo que falta pagar (Bs. ${totalPendiente.toStringAsFixed(2)}).');
+      }
+
+      double restante = montoACobrar;
+      String primerNroRecibo = '';
+      String primerIdPago = '';
+      String primerIdCuota = '';
+      int cuotasAfectadas = 0;
+
+      for (final q in cuotasPendientes) {
+        if (restante <= 0.001) break;
+
+        final idCuota = q['id_cuota'].toString();
+        final montoCuota = (q['monto'] as num).toDouble();
+        final pagadoAntes = (q['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+        final saldoCuota = montoCuota - pagadoAntes;
+
+        final abono = (restante >= saldoCuota) ? saldoCuota : restante;
+        final nroRecibo = await siguienteNroRecibo(txn: txn);
+        final idPago = _uuid.v4();
+
+        if (primerNroRecibo.isEmpty) {
+          primerNroRecibo = nroRecibo;
+          primerIdPago = idPago;
+          primerIdCuota = idCuota;
+        }
+
+        await txn.insert('pago', {
+          'id_pago': idPago,
           'id_cuota': idCuota,
-          'id_conductor': idConductor,
-          'id_tipo_cuota': idTipoCuota,
-          'monto': totalDeuda,
-          'monto_pagado': 0.0,
+          'monto': abono,
           'fecha': fechaHoy,
-          'estado': 'pendiente',
-          'concepto': tipo['nombre'],
-          'registrado_por': idUsuario,
+          'metodo': metodo.toLowerCase().trim(),
+          'nro_recibo': nroRecibo,
+          'id_usuario': idUsuario,
           'created_at': now,
           'updated_at': now,
           'sincronizado': 0,
         });
-      } else {
-        idCuota = cuotas.first['id_cuota'].toString();
-        totalDeuda = (cuotas.first['monto'] as num).toDouble();
-        pagadoAntes = (cuotas.first['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+
+        final nuevoPagado = pagadoAntes + abono;
+        final nuevoEstado = nuevoPagado >= (montoCuota - 0.001) ? 'pagado' : 'parcial';
+
+        await txn.update(
+          'cuota',
+          {
+            'monto_pagado': nuevoPagado,
+            'estado': nuevoEstado,
+            'updated_at': now,
+            'sincronizado': 0,
+          },
+          where: 'id_cuota = ?',
+          whereArgs: [idCuota],
+        );
+
+        cuotasAfectadas++;
+        restante -= abono;
       }
-
-      final saldoActual = totalDeuda - pagadoAntes;
-      if (montoACobrar > (saldoActual + 0.01)) {
-        throw Exception('El monto ingresado (Bs. $montoACobrar) supera lo que falta pagar (Bs. ${saldoActual.toStringAsFixed(2)}).');
-      }
-
-      final nroRecibo = await siguienteNroRecibo(txn: txn);
-      final idPago = _uuid.v4();
-
-      await txn.insert('pago', {
-        'id_pago': idPago,
-        'id_cuota': idCuota,
-        'monto': montoACobrar,
-        'fecha': fechaHoy,
-        'metodo': metodo.toLowerCase().trim(),
-        'nro_recibo': nroRecibo,
-        'id_usuario': idUsuario,
-        'created_at': now,
-        'updated_at': now,
-        'sincronizado': 0,
-      });
-
-      final nuevoPagado = pagadoAntes + montoACobrar;
-      final nuevoEstado = nuevoPagado >= (totalDeuda - 0.001) ? 'pagado' : 'parcial';
-
-      await txn.update(
-        'cuota',
-        {
-          'monto_pagado': nuevoPagado,
-          'estado': nuevoEstado,
-          'updated_at': now,
-          'sincronizado': 0,
-        },
-        where: 'id_cuota = ?',
-        whereArgs: [idCuota],
-      );
 
       final cond = (await txn.query('conductor', where: 'id_conductor = ?', whereArgs: [idConductor])).first;
       final tipo = (await txn.query('tipo_cuota', where: 'id_tipo_cuota = ?', whereArgs: [idTipoCuota])).first;
 
       return {
-        'id_pago': idPago,
-        'id_cuota': idCuota,
-        'nro_recibo': nroRecibo,
+        'id_pago': primerIdPago,
+        'id_cuota': primerIdCuota,
+        'nro_recibo': primerNroRecibo,
         'fecha': fechaHoy,
         'monto_pagado': montoACobrar,
-        'total_cuota': totalDeuda,
-        'saldo_restante': (totalDeuda - nuevoPagado).clamp(0.0, double.infinity),
+        'total_cuota': totalPendiente,
+        'saldo_restante': (totalPendiente - montoACobrar).clamp(0.0, double.infinity),
         'metodo': metodo,
         'conductor_nombre': cond['nombre'],
         'conductor_ci': cond['ci'],
         'tipo_nombre': tipo['nombre'],
         'concepto': tipo['nombre'],
+        'cuotas_afectadas': cuotasAfectadas,
       };
     });
   }
@@ -804,11 +1260,7 @@ class EconomiaRepo {
 
       final montoMulta = (reunion['monto_multa'] as num?)?.toDouble() ?? 50.0;
       final tema = reunion['tema']?.toString() ?? 'Reunión Ordinaria';
-
-      // Obtener id del tipo de cuota "Falta a reunión"
-      final tipoRes = await txn.query('tipo_cuota', where: 'nombre = ?', whereArgs: ['Falta a reunión'], limit: 1);
-      if (tipoRes.isEmpty) throw Exception('Tipo de cuota "Falta a reunión" no encontrado en el sistema.');
-      final idTipoCuota = tipoRes.first['id_tipo_cuota'] as String;
+      final fecha = reunion['fecha']?.toString() ?? fechaHoy;
 
       // Obtener asistencias marcadas como falta
       final faltas = await txn.query(
@@ -817,27 +1269,48 @@ class EconomiaRepo {
         whereArgs: [idReunion, 'falta'],
       );
 
-      final batch = txn.batch();
-      for (final f in faltas) {
-        batch.insert('cuota', {
-          'id_cuota': _uuid.v4(),
-          'id_conductor': f['id_conductor'],
+      String? idTipoCuota;
+      if (faltas.isNotEmpty) {
+        idTipoCuota = _uuid.v4();
+        final nombreTipo = 'Multa: $tema';
+        final descTipo = 'Multas por falta a la asamblea "$tema" ($fecha). Sanción individual: Bs. ${montoMulta.toStringAsFixed(2)}';
+
+        await txn.insert('tipo_cuota', {
           'id_tipo_cuota': idTipoCuota,
-          'monto': montoMulta,
-          'monto_pagado': 0.0,
-          'fecha': fechaHoy,
-          'concepto': 'Multa por falta a reunión: $tema',
-          'registrado_por': idUsuario,
-          'estado': 'pendiente',
-          'id_reunion': idReunion,
+          'nombre': nombreTipo,
+          'descripcion': descTipo,
+          'categoria': 'multa',
+          'monto_sugerido': montoMulta,
+          'activo': 1,
+          'es_fijo': 1,
           'created_at': now,
           'updated_at': now,
           'sincronizado': 0,
         });
+
+        final batch = txn.batch();
+        for (final f in faltas) {
+          batch.insert('cuota', {
+            'id_cuota': _uuid.v4(),
+            'id_conductor': f['id_conductor'],
+            'id_tipo_cuota': idTipoCuota,
+            'monto': montoMulta,
+            'monto_pagado': 0.0,
+            'fecha': fecha,
+            'concepto': 'Multa por falta a reunión: $tema',
+            'registrado_por': idUsuario,
+            'estado': 'pendiente',
+            'id_reunion': idReunion,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+        }
+        await batch.commit(noResult: true);
       }
 
       // Marcar reunión como cerrada
-      batch.update(
+      await txn.update(
         'reunion',
         {
           'estado': 'cerrada',
@@ -849,10 +1322,9 @@ class EconomiaRepo {
         whereArgs: [idReunion],
       );
 
-      await batch.commit(noResult: true);
-
       return {
         'id_reunion': idReunion,
+        'id_tipo_cuota': idTipoCuota,
         'multas_generadas': faltas.length,
         'monto_multa': montoMulta,
         'total_multas_bs': montoMulta * faltas.length,
@@ -860,7 +1332,7 @@ class EconomiaRepo {
     });
   }
 
-  /// Lista todas las reuniones con el conteo de asistentes y faltas.
+  /// Lista todas las reuniones con el conteo de asistentes, faltas y el id_tipo_cuota generado si fue cerrada.
   Future<List<Map<String, dynamic>>> listarReuniones() async {
     final db = await _dh.database;
     return db.rawQuery('''
@@ -869,7 +1341,8 @@ class EconomiaRepo {
         COUNT(ar.id_asistencia_reunion) AS total_asistentes,
         SUM(CASE WHEN LOWER(ar.estado) = 'presente' THEN 1 ELSE 0 END) AS presentes,
         SUM(CASE WHEN LOWER(ar.estado) = 'falta' THEN 1 ELSE 0 END) AS faltas,
-        SUM(CASE WHEN LOWER(ar.estado) = 'licencia' THEN 1 ELSE 0 END) AS licencias
+        SUM(CASE WHEN LOWER(ar.estado) = 'licencia' THEN 1 ELSE 0 END) AS licencias,
+        (SELECT q.id_tipo_cuota FROM cuota q WHERE q.id_reunion = r.id_reunion LIMIT 1) AS id_tipo_cuota
       FROM reunion r
       LEFT JOIN asistencia_reunion ar ON ar.id_reunion = r.id_reunion
       GROUP BY r.id_reunion
@@ -882,6 +1355,7 @@ class EconomiaRepo {
     required String tema,
     required String fecha,
     double montoMulta = 50.0,
+    String estadoInicial = 'presente',
   }) async {
     final db = await _dh.database;
     final idReunion = _uuid.v4();
@@ -903,6 +1377,7 @@ class EconomiaRepo {
         SELECT id_conductor 
         FROM conductor 
         WHERE LOWER(estado) = 'activo'
+        ORDER BY nombre ASC
       ''');
 
       final batch = txn.batch();
@@ -911,7 +1386,7 @@ class EconomiaRepo {
           'id_asistencia_reunion': _uuid.v4(),
           'id_reunion': idReunion,
           'id_conductor': c['id_conductor'],
-          'estado': 'falta', // Por defecto falta hasta que se pase lista
+          'estado': estadoInicial.toLowerCase(),
           'created_at': now,
           'updated_at': now,
           'sincronizado': 0,
@@ -931,7 +1406,8 @@ class EconomiaRepo {
         ar.*,
         c.nombre AS conductor_nombre,
         c.ci AS conductor_ci,
-        c.foto AS conductor_foto
+        c.foto AS conductor_foto,
+        c.telefono AS conductor_telefono
       FROM asistencia_reunion ar
       JOIN conductor c ON c.id_conductor = ar.id_conductor
       WHERE ar.id_reunion = ?
@@ -953,6 +1429,45 @@ class EconomiaRepo {
       where: 'id_asistencia_reunion = ?',
       whereArgs: [idAsistenciaReunion],
     );
+  }
+
+  /// Marca masivamente a todos los conductores de una reunión con el mismo estado ('presente', 'falta' o 'licencia').
+  Future<void> marcarTodosAsistenciaReunion(String idReunion, String nuevoEstado) async {
+    final db = await _dh.database;
+    final now = _nowIso();
+    await db.update(
+      'asistencia_reunion',
+      {
+        'estado': nuevoEstado.toLowerCase(),
+        'updated_at': now,
+        'sincronizado': 0,
+      },
+      where: 'id_reunion = ?',
+      whereArgs: [idReunion],
+    );
+  }
+
+  /// Elimina una reunión y sus registros de asistencia. Si generó cuotas asociadas, las elimina limpiamente.
+  Future<void> eliminarReunion(String idReunion) async {
+    final db = await _dh.database;
+    await db.transaction((txn) async {
+      final cuotas = await txn.query(
+        'cuota',
+        columns: ['id_tipo_cuota'],
+        where: 'id_reunion = ?',
+        whereArgs: [idReunion],
+        limit: 1,
+      );
+      if (cuotas.isNotEmpty) {
+        final idTipoCuota = cuotas.first['id_tipo_cuota'] as String?;
+        if (idTipoCuota != null) {
+          await txn.delete('cuota', where: 'id_tipo_cuota = ?', whereArgs: [idTipoCuota]);
+          await txn.delete('tipo_cuota', where: 'id_tipo_cuota = ?', whereArgs: [idTipoCuota]);
+        }
+      }
+      await txn.delete('asistencia_reunion', where: 'id_reunion = ?', whereArgs: [idReunion]);
+      await txn.delete('reunion', where: 'id_reunion = ?', whereArgs: [idReunion]);
+    });
   }
 
   // ---------------------------------------------------------------------------

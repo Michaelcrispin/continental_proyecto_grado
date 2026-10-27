@@ -18,7 +18,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
   static const _dbName = 'continental.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
   static const _uuid = Uuid();
 
   Database? _db;
@@ -263,6 +263,13 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE tipo_cuota ADD COLUMN descripcion TEXT');
       } catch (_) {}
     }
+
+    if (oldVersion < 8) {
+      try {
+        await db.execute("ALTER TABLE tipo_cuota ADD COLUMN categoria TEXT NOT NULL DEFAULT 'ayuda'");
+      } catch (_) {}
+    }
+
   }
 
   // ---------------------------------------------------------------------------
@@ -399,6 +406,7 @@ class DatabaseHelper {
         id_tipo_cuota  TEXT PRIMARY KEY,
         nombre         TEXT NOT NULL UNIQUE,
         descripcion    TEXT,
+        categoria      TEXT NOT NULL DEFAULT 'ayuda',
         monto_sugerido REAL DEFAULT 0,
         activo         INTEGER NOT NULL DEFAULT 1,
         es_fijo        INTEGER NOT NULL DEFAULT 0,

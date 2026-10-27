@@ -10,13 +10,14 @@ import '../widgets/glass_card.dart';
 import 'asistencia_screen.dart';
 import 'vueltas_screen.dart';
 import 'sanciones_screen.dart';
-import 'control_economico_screen.dart';
+import 'cuotas/cuotas_screen.dart';
 import 'conductores_screen.dart';
 import 'informes_screen.dart';
 import 'gps_screen.dart';
 import 'perfil_screen.dart';
 import 'panel_tecnico_screen.dart';
 import 'usuarios_screen.dart';
+import 'reuniones_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -410,7 +411,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ControlEconomicoScreen(),
+                              builder: (context) => const CuotasScreen(),
                             ),
                           ).then((_) => _cargarDatos());
                         },
@@ -464,7 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
             } else if (index == 3) {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const ControlEconomicoScreen()),
+                MaterialPageRoute(builder: (_) => const CuotasScreen()),
               ).then((_) => _cargarDatos());
             }
           },
@@ -567,7 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
       items.add(_buildQuickAccess(
         Icons.account_balance_wallet,
         esConductor ? 'Mis Cuotas' : 'Económico',
-        const ControlEconomicoScreen(),
+        const CuotasScreen(),
       ));
     }
 
@@ -891,11 +892,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildDrawerItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Cuotas y Finanzas',
-                  onTap: () => _navegarDesdeDrawer(context, const ControlEconomicoScreen()),
+                  onTap: () => _navegarDesdeDrawer(context, const CuotasScreen()),
                 ),
 
                 const Divider(height: 20, indent: 16, endIndent: 16),
                 _buildDrawerSectionHeader('OPERACIONES'),
+                _buildDrawerItem(
+                  icon: Icons.gavel_rounded,
+                  title: 'Reuniones y Asambleas',
+                  colorIcono: const Color(0xFFDC2626),
+                  onTap: () => _navegarDesdeDrawer(context, const ReunionesScreen()),
+                ),
                 _buildDrawerItem(
                   icon: Icons.warning_amber_rounded,
                   title: 'Sanciones',

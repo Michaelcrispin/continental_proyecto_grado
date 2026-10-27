@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../services/economia_repo.dart';
-import '../services/recibo_pdf_service.dart';
-import '../widgets/avatar_conductor.dart';
+import '../../services/economia_repo.dart';
+import '../../services/recibo_pdf_service.dart';
+import '../../widgets/avatar_conductor.dart';
 
 /// Vista E9: Caja del Día / Historial de Cobros
 ///
