@@ -191,9 +191,12 @@ class _SelectorBeneficiarioSheetState extends State<SelectorBeneficiarioSheet> {
                             ),
                           ],
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                          onTap: () => Navigator.pop(context, c),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            onTap: () => Navigator.pop(context, c),
                           leading: AvatarConductor(
                             foto: foto,
                             nombre: nombre,
@@ -222,7 +225,8 @@ class _SelectorBeneficiarioSheetState extends State<SelectorBeneficiarioSheet> {
                                 )
                               : const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
                         ),
-                      );
+                      ),
+                    );
                     },
                   ),
           ),

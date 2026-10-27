@@ -1043,34 +1043,38 @@ class _HomeScreenState extends State<HomeScreen> {
         color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: ListTile(
-        dense: true,
-        visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-        leading: Icon(
-          isSelected && activeIcon != null ? activeIcon : icon,
-          color: c,
-          size: 22,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? AppColors.primaryBlue : const Color(0xFF1E293B),
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            fontSize: 13.5,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          dense: true,
+          visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          leading: Icon(
+            isSelected && activeIcon != null ? activeIcon : icon,
+            color: c,
+            size: 22,
           ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: isSelected ? AppColors.primaryBlue : const Color(0xFF1E293B),
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              fontSize: 13.5,
+            ),
+          ),
+          trailing: isSelected
+              ? Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryBlue,
+                    shape: BoxShape.circle,
+                  ),
+                )
+              : null,
+          onTap: onTap,
         ),
-        trailing: isSelected
-            ? Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppColors.primaryBlue,
-                  shape: BoxShape.circle,
-                ),
-              )
-            : null,
-        onTap: onTap,
       ),
     );
   }
