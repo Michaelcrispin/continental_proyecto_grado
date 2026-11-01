@@ -9,7 +9,6 @@ import 'widgets/tab_asistencias.dart';
 import 'widgets/tab_documentos.dart';
 import 'widgets/tab_info_general.dart';
 import 'widgets/tab_observaciones.dart';
-import 'widgets/tab_trufi.dart';
 
 /// Pantalla completa de detalle/ficha técnica sindical del conductor.
 class ConductorDetalleScreen extends StatefulWidget {
@@ -235,7 +234,6 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
     final pestanas = [
       {'icon': Icons.person, 'label': 'Información general'},
       {'icon': Icons.description_outlined, 'label': 'Documentos'},
-      {'icon': Icons.local_taxi_outlined, 'label': 'Trufi asignada'},
       {'icon': Icons.calendar_today_outlined, 'label': 'Asistencias'},
       {'icon': Icons.edit_note_outlined, 'label': 'Observaciones'},
     ];
@@ -304,13 +302,11 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
       case 1:
         return TabDocumentos(conductor: _c, ci: ci);
       case 2:
-        return TabTrufi(conductor: _c);
-      case 3:
         return TabAsistencias(
           isLoading: _isLoadingDetalles,
           asistencias: _asistencias,
         );
-      case 4:
+      case 3:
         return TabObservaciones(
           isLoading: _isLoadingDetalles,
           sanciones: _sanciones,

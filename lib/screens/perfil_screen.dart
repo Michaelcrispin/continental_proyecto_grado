@@ -100,7 +100,7 @@ class PerfilScreen extends StatelessWidget {
                       ),
                     ],
                     if (trufi != null && trufi.isNotEmpty) ...[
-                      InfoRow(icon: Icons.directions_bus_outlined, label: 'Trufi / Unidad', value: trufi),
+                      InfoRow(icon: Icons.local_taxi_rounded, label: 'Placa del Vehículo', value: trufi),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12.0),
                         child: Divider(height: 1, color: AppColors.dividerColor),

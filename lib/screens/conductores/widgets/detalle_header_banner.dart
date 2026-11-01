@@ -47,30 +47,10 @@ class DetalleHeaderBanner extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Marca de agua sutil de trufi al fondo
-          Positioned(
-            right: -10,
-            bottom: -15,
-            child: Opacity(
-              opacity: 0.08,
-              child: Image.asset(
-                'assets/images/trufi_minibus.jpg',
-                width: 170,
-                errorBuilder: (ctx, err, stack) => const Icon(
-                  Icons.local_taxi_rounded,
-                  size: 120,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Barra superior: Volver atrás y botón Editar
+          // Barra superior: Volver atrás y botón Editar
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -241,8 +221,6 @@ class DetalleHeaderBanner extends StatelessWidget {
               ),
             ],
           ),
-        ],
-      ),
-    );
+        );
   }
 }

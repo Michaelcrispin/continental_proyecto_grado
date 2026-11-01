@@ -60,8 +60,8 @@ class TabInfoGeneral extends StatelessWidget {
 
         // Fila 3: Actividad Reciente
         CardActividadReciente(
-          onIrAsistencias: () => onIrATab(3),
-          onIrObservaciones: () => onIrATab(4),
+          onIrAsistencias: () => onIrATab(2),
+          onIrObservaciones: () => onIrATab(3),
         ),
         const SizedBox(height: 20),
 

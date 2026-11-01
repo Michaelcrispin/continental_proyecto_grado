@@ -94,7 +94,7 @@ class SeccionLicencia extends StatelessWidget {
   }
 }
 
-/// Sección 5: Vehículo Asignado (Trufi)
+/// Sección 5: Vehículo Propio del Conductor
 class SeccionVehiculo extends StatelessWidget {
   final TextEditingController placaCtrl;
   final TextEditingController ruatCtrl;
@@ -123,8 +123,8 @@ class SeccionVehiculo extends StatelessWidget {
       icono: Icons.local_taxi_outlined,
       colorIcono: const Color(0xFF10B981),
       bgIcono: const Color(0xFFECFDF5),
-      titulo: 'Unidad de Transporte (Trufi)',
-      subtitulo: 'Datos del vehículo asignado, SOAT y RUAT',
+      titulo: 'Datos del Vehículo',
+      subtitulo: 'Placa, RUAT, características y SOAT',
       contenido: [
         Row(
           children: [

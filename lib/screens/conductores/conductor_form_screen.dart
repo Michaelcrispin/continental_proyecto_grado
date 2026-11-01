@@ -49,7 +49,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
   late final TextEditingController _licenciaEmisionCtrl;
   late final TextEditingController _licenciaVenceCtrl;
 
-  // Controladores - Vehículo (Trufi)
+  // Controladores - Vehículo del conductor
   late final TextEditingController _placaCtrl;
   late final TextEditingController _marcaCtrl;
   late final TextEditingController _modeloCtrl;
@@ -418,7 +418,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // SECCIÓN 5: VEHÍCULO ASIGNADO (TRUFI)
+                      // SECCIÓN 5: VEHÍCULO DEL CONDUCTOR
                       SeccionVehiculo(
                         placaCtrl: _placaCtrl,
                         ruatCtrl: _ruatCtrl,
