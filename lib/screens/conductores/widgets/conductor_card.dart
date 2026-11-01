@@ -27,7 +27,6 @@ class ConductorCard extends StatelessWidget {
     final placa = conductor['placa']?.toString();
     final estado = conductor['estado']?.toString() ?? 'activo';
     final esActivo = estado.toLowerCase() == 'activo';
-    final grupo = (conductor['grupo'] ?? '101').toString();
     final numInterno = conductor['numero_interno']?.toString();
     final estadoLic = DocumentosAlerta.estado(
       conductor['licencia_vencimiento']?.toString(),
@@ -84,57 +83,29 @@ class ConductorCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2.5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: grupo == '101'
-                                ? const Color(0xFF1E3A8A)
-                                : const Color(0xFF0D9488),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'G-$grupo',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 8.5,
-                              letterSpacing: 0.2,
-                            ),
+                    if (numInterno != null && numInterno.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFCBD5E1),
+                            width: 1.0,
                           ),
                         ),
-                        if (numInterno != null && numInterno.isNotEmpty) ...[
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: const Color(0xFFCBD5E1),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Text(
-                              '#$numInterno',
-                              style: const TextStyle(
-                                color: Color(0xFF334155),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 8.5,
-                              ),
-                            ),
+                        child: Text(
+                          '#$numInterno',
+                          style: const TextStyle(
+                            color: Color(0xFF0F2B5B),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                      ),
                     if (tieneAlerta) ...[
                       const SizedBox(height: 3),
                       Container(
