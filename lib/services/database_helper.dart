@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+import '../core/normalizadores.dart';
 import 'seed_data.dart';
 
 /// Base de datos local (SQLite) del sistema Continental Trufi.
@@ -18,7 +19,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
 
   static const _dbName = 'continental.db';
-  static const _dbVersion = 8;
+  static const _dbVersion = 10;
   static const _uuid = Uuid();
 
   Database? _db;
@@ -41,6 +42,9 @@ class DatabaseHelper {
     'participante_pasanaco': 'id_participante',
     'ronda_pasanaco': 'id_ronda',
     'sancion': 'id_sancion',
+    'horario': 'id_horario',
+    'bitacora': 'id_bitacora',
+    'configuracion': 'clave',
   };
 
   Future<Database> get database async {
@@ -270,6 +274,254 @@ class DatabaseHelper {
       } catch (_) {}
     }
 
+    if (oldVersion < 9) {
+      // 1. Columnas en conductor para CI normalizado, extensión, grupo (101/127), número interno y baja lógica
+      try {
+        await db.execute('ALTER TABLE conductor ADD COLUMN ci_normalizado TEXT');
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE conductor ADD COLUMN extension_ci TEXT NOT NULL DEFAULT 'LP'");
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE conductor ADD COLUMN grupo TEXT NOT NULL DEFAULT '101'");
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE conductor ADD COLUMN numero_interno INTEGER');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE conductor ADD COLUMN fecha_baja TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE conductor ADD COLUMN motivo_baja TEXT');
+      } catch (_) {}
+
+      // 2. Columna en automovil para placa normalizada
+      try {
+        await db.execute('ALTER TABLE automovil ADD COLUMN placa_normalizada TEXT');
+      } catch (_) {}
+
+      // 3. Poblar datos normalizados para registros existentes
+      try {
+        final conductores = await db.query('conductor', columns: ['id_conductor', 'ci', 'nombre']);
+        for (int i = 0; i < conductores.length; i++) {
+          final c = conductores[i];
+          final idCond = c['id_conductor'] as String;
+          final ciOrig = c['ci']?.toString() ?? '';
+          final ciNorm = Normalizadores.normalizarCi(ciOrig);
+          final ext = Normalizadores.extraerExtensionCi(ciOrig);
+          final grupo = (i % 2 == 0) ? '101' : '127';
+          final numInterno = (i ~/ 2) + 1;
+
+          await db.update(
+            'conductor',
+            {
+              'ci_normalizado': ciNorm,
+              'extension_ci': ext,
+              'grupo': grupo,
+              'numero_interno': numInterno,
+            },
+            where: 'id_conductor = ?',
+            whereArgs: [idCond],
+          );
+        }
+      } catch (_) {}
+
+      try {
+        final autos = await db.query('automovil', columns: ['id_auto', 'placa']);
+        for (final a in autos) {
+          final idAuto = a['id_auto'] as String;
+          final placaOrig = a['placa']?.toString() ?? '';
+          final placaNorm = Normalizadores.normalizarPlaca(placaOrig);
+          await db.update(
+            'automovil',
+            {'placa_normalizada': placaNorm},
+            where: 'id_auto = ?',
+            whereArgs: [idAuto],
+          );
+        }
+      } catch (_) {}
+
+      // 4. Índices únicos sobre campos normalizados
+      try {
+        await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_conductor_ci_norm ON conductor (ci_normalizado)');
+      } catch (_) {}
+      try {
+        await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_auto_placa_norm ON automovil (placa_normalizada)');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 10) {
+      // 1. Ampliar punto_de_control para geocercas
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN latitud REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN longitud REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN radio_m INTEGER DEFAULT 100'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN orden INTEGER'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN activo INTEGER DEFAULT 1'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN es_punto_asistencia INTEGER DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE punto_de_control ADD COLUMN coord_verificada INTEGER DEFAULT 0'); } catch (_) {}
+
+      // 2. Renombrar y georreferenciar puntos existentes respetando llaves foráneas
+      final puntosExistentes = await db.query('punto_de_control', orderBy: 'rowid ASC');
+      if (puntosExistentes.isNotEmpty) {
+        await db.update(
+          'punto_de_control',
+          {
+            'nombre': 'Cruce Villadela',
+            'latitud': -16.53453,
+            'longitud': -68.19071,
+            'radio_m': 100,
+            'orden': 1,
+            'activo': 1,
+            'es_punto_asistencia': 1,
+            'coord_verificada': 1,
+          },
+          where: 'id_punto = ?',
+          whereArgs: [puntosExistentes[0]['id_punto']],
+        );
+        if (puntosExistentes.length > 1) {
+          await db.update(
+            'punto_de_control',
+            {
+              'nombre': 'Teleférico Amarillo - Mirador',
+              'latitud': -16.5050,
+              'longitud': -68.1635,
+              'radio_m': 100,
+              'orden': 2,
+              'activo': 1,
+              'es_punto_asistencia': 0,
+              'coord_verificada': 1,
+            },
+            where: 'id_punto = ?',
+            whereArgs: [puntosExistentes[1]['id_punto']],
+          );
+        }
+      } else {
+        final now = _now();
+        await db.insert('punto_de_control', {
+          'id_punto': _uuid.v4(),
+          'nombre': 'Cruce Villadela',
+          'latitud': -16.53453,
+          'longitud': -68.19071,
+          'radio_m': 100,
+          'orden': 1,
+          'activo': 1,
+          'es_punto_asistencia': 1,
+          'coord_verificada': 1,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+        await db.insert('punto_de_control', {
+          'id_punto': _uuid.v4(),
+          'nombre': 'Teleférico Amarillo - Mirador',
+          'latitud': -16.5050,
+          'longitud': -68.1635,
+          'radio_m': 100,
+          'orden': 2,
+          'activo': 1,
+          'es_punto_asistencia': 0,
+          'coord_verificada': 1,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+      }
+
+      // 3. Crear tabla horario
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS horario (
+          id_horario          TEXT PRIMARY KEY,
+          nombre              TEXT NOT NULL,
+          hora_entrada        TEXT NOT NULL,
+          tolerancia_min      INTEGER NOT NULL DEFAULT 60,
+          hora_inicio_castigo TEXT NOT NULL DEFAULT '21:00',
+          escucha_desde       TEXT NOT NULL DEFAULT '06:00',
+          escucha_hasta       TEXT NOT NULL DEFAULT '12:00',
+          activo              INTEGER NOT NULL DEFAULT 1,
+          created_at          TEXT NOT NULL,
+          updated_at          TEXT NOT NULL,
+          sincronizado        INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      final nowH = _now();
+      await db.insert('horario', {
+        'id_horario': 'horario_manana',
+        'nombre': 'Turno Mañana (07:00 - 08:00)',
+        'hora_entrada': '07:00',
+        'tolerancia_min': 60,
+        'hora_inicio_castigo': '21:00',
+        'escucha_desde': '06:00',
+        'escucha_hasta': '12:00',
+        'activo': 1,
+        'created_at': nowH,
+        'updated_at': nowH,
+        'sincronizado': 0,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      // 4. Ampliar tabla asistencia
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN id_horario TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN latitud REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN longitud REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN precision_m REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN distancia_m REAL'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN minutos_retraso INTEGER DEFAULT 0'); } catch (_) {}
+      try { await db.execute("ALTER TABLE asistencia ADD COLUMN metodo TEXT DEFAULT 'gps'"); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN registrado_por TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN justificacion TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE asistencia ADD COLUMN es_simulada INTEGER DEFAULT 0'); } catch (_) {}
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_asistencia_dia_horario ON asistencia (id_conductor, fecha, id_horario)');
+      } catch (_) {}
+
+      // 5. Ampliar tabla sancion
+      try { await db.execute("ALTER TABLE sancion ADD COLUMN origen TEXT DEFAULT 'manual'"); } catch (_) {}
+      try { await db.execute("ALTER TABLE sancion ADD COLUMN tipo TEXT DEFAULT 'tardanza'"); } catch (_) {}
+      try { await db.execute('ALTER TABLE sancion ADD COLUMN es_simulada INTEGER DEFAULT 0'); } catch (_) {}
+
+      // 6. Crear bitacora y configuracion
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bitacora (
+          id_bitacora  TEXT PRIMARY KEY,
+          accion       TEXT NOT NULL,
+          tabla        TEXT NOT NULL,
+          id_registro  TEXT NOT NULL,
+          id_usuario   TEXT,
+          detalles     TEXT,
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL,
+          sincronizado INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS configuracion (
+          clave        TEXT PRIMARY KEY,
+          valor        TEXT NOT NULL,
+          descripcion  TEXT,
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL,
+          sincronizado INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      final configs = [
+        {'clave': 'vueltas_por_tardanza', 'valor': '2', 'descripcion': 'Vueltas de sanción asignadas automáticamente por tardanza'},
+        {'clave': 'hora_inicio_castigo', 'valor': '21:00', 'descripcion': 'Hora desde la cual cuentan las vueltas de castigo'},
+        {'clave': 'radio_defecto_m', 'valor': '100', 'descripcion': 'Radio de geocerca por defecto en metros'},
+        {'clave': 'precision_max_m', 'valor': '50', 'descripcion': 'Precisión GPS máxima aceptada en metros para validar llegada'},
+      ];
+      for (final c in configs) {
+        await db.insert('configuracion', {
+          ...c,
+          'created_at': nowH,
+          'updated_at': nowH,
+          'sincronizado': 0,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+
+    // Asegurar que los 20 conductores semilla estén sembrados tras crear todas las columnas
+    await _seedConductores(db, _now());
   }
 
   // ---------------------------------------------------------------------------
@@ -303,6 +555,12 @@ class DatabaseHelper {
         id_usuario           TEXT NOT NULL UNIQUE,
         nombre               TEXT NOT NULL,
         ci                   TEXT NOT NULL UNIQUE,
+        ci_normalizado       TEXT,
+        extension_ci         TEXT NOT NULL DEFAULT 'LP',
+        grupo                TEXT NOT NULL DEFAULT '101',
+        numero_interno       INTEGER,
+        fecha_baja           TEXT,
+        motivo_baja          TEXT,
         licencia             TEXT,
         fecha_incorporacion  TEXT,
         estado               TEXT NOT NULL DEFAULT 'activo',
@@ -326,6 +584,7 @@ class DatabaseHelper {
       CREATE TABLE automovil (
         id_auto                TEXT PRIMARY KEY,
         placa                  TEXT NOT NULL UNIQUE,
+        placa_normalizada      TEXT,
         ruat                   TEXT,
         soat                   TEXT,
         fecha_vencimiento_soat TEXT,
@@ -357,25 +616,42 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE punto_de_control (
-        id_punto     TEXT PRIMARY KEY,
-        nombre       TEXT NOT NULL,
-        created_at   TEXT NOT NULL,
-        updated_at   TEXT NOT NULL,
-        sincronizado INTEGER NOT NULL DEFAULT 0
+        id_punto            TEXT PRIMARY KEY,
+        nombre              TEXT NOT NULL,
+        latitud             REAL,
+        longitud            REAL,
+        radio_m             INTEGER DEFAULT 100,
+        orden               INTEGER,
+        activo              INTEGER NOT NULL DEFAULT 1,
+        es_punto_asistencia INTEGER NOT NULL DEFAULT 0,
+        coord_verificada    INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL,
+        sincronizado        INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
     await db.execute('''
       CREATE TABLE asistencia (
-        id_asistencia TEXT PRIMARY KEY,
-        id_conductor  TEXT NOT NULL,
-        id_punto      TEXT NOT NULL,
-        fecha         TEXT NOT NULL,
-        hora_llegada  TEXT NOT NULL,
-        estado        TEXT NOT NULL DEFAULT 'presente',
-        created_at    TEXT NOT NULL,
-        updated_at    TEXT NOT NULL,
-        sincronizado  INTEGER NOT NULL DEFAULT 0,
+        id_asistencia   TEXT PRIMARY KEY,
+        id_conductor    TEXT NOT NULL,
+        id_punto        TEXT NOT NULL,
+        id_horario      TEXT,
+        fecha           TEXT NOT NULL,
+        hora_llegada    TEXT NOT NULL,
+        estado          TEXT NOT NULL DEFAULT 'presente',
+        latitud         REAL,
+        longitud        REAL,
+        precision_m     REAL,
+        distancia_m     REAL,
+        minutos_retraso INTEGER NOT NULL DEFAULT 0,
+        metodo          TEXT NOT NULL DEFAULT 'gps',
+        registrado_por  TEXT,
+        justificacion   TEXT,
+        es_simulada     INTEGER NOT NULL DEFAULT 0,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        sincronizado    INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (id_conductor) REFERENCES conductor (id_conductor)
           ON DELETE CASCADE,
         FOREIGN KEY (id_punto) REFERENCES punto_de_control (id_punto)
@@ -543,6 +819,9 @@ class DatabaseHelper {
         vueltas_asignadas INTEGER NOT NULL DEFAULT 0,
         vueltas_cumplidas INTEGER NOT NULL DEFAULT 0,
         estado            TEXT NOT NULL DEFAULT 'pendiente',
+        origen            TEXT NOT NULL DEFAULT 'manual',
+        tipo              TEXT NOT NULL DEFAULT 'tardanza',
+        es_simulada       INTEGER NOT NULL DEFAULT 0,
         fecha             TEXT NOT NULL,
         hora              TEXT NOT NULL,
         created_at        TEXT NOT NULL,
@@ -552,6 +831,47 @@ class DatabaseHelper {
           ON DELETE CASCADE,
         FOREIGN KEY (id_asistencia) REFERENCES asistencia (id_asistencia)
           ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE horario (
+        id_horario          TEXT PRIMARY KEY,
+        nombre              TEXT NOT NULL,
+        hora_entrada        TEXT NOT NULL,
+        tolerancia_min      INTEGER NOT NULL DEFAULT 60,
+        hora_inicio_castigo TEXT NOT NULL DEFAULT '21:00',
+        escucha_desde       TEXT NOT NULL DEFAULT '06:00',
+        escucha_hasta       TEXT NOT NULL DEFAULT '12:00',
+        activo              INTEGER NOT NULL DEFAULT 1,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL,
+        sincronizado        INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE bitacora (
+        id_bitacora  TEXT PRIMARY KEY,
+        accion       TEXT NOT NULL,
+        tabla        TEXT NOT NULL,
+        id_registro  TEXT NOT NULL,
+        id_usuario   TEXT,
+        detalles     TEXT,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL,
+        sincronizado INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE configuracion (
+        clave        TEXT PRIMARY KEY,
+        valor        TEXT NOT NULL,
+        descripcion  TEXT,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT NOT NULL,
+        sincronizado INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -574,6 +894,10 @@ class DatabaseHelper {
         'CREATE INDEX idx_reunion_fecha ON reunion (fecha)');
     await db.execute(
         'CREATE INDEX idx_pasanaco_estado ON pasanaco (estado)');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS ux_conductor_ci_norm ON conductor (ci_normalizado)');
+    await db.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS ux_auto_placa_norm ON automovil (placa_normalizada)');
 
     await _seed(db);
   }
@@ -598,95 +922,236 @@ class DatabaseHelper {
 
 
 
-    for (final nombre in ['Parada Central', 'Terminal Central']) {
-      await db.insert('punto_de_control', {
-        'id_punto': _uuid.v4(),
-        'nombre': nombre,
+    // Puntos de control georreferenciados para sindicato Continental
+    await db.insert('punto_de_control', {
+      'id_punto': _uuid.v4(),
+      'nombre': 'Cruce Villadela',
+      'latitud': -16.53453,
+      'longitud': -68.19071,
+      'radio_m': 100,
+      'orden': 1,
+      'activo': 1,
+      'es_punto_asistencia': 1,
+      'coord_verificada': 1,
+      'created_at': now,
+      'updated_at': now,
+      'sincronizado': 0,
+    });
+
+    await db.insert('punto_de_control', {
+      'id_punto': _uuid.v4(),
+      'nombre': 'Teleférico Amarillo - Mirador',
+      'latitud': -16.5050,
+      'longitud': -68.1635,
+      'radio_m': 100,
+      'orden': 2,
+      'activo': 1,
+      'es_punto_asistencia': 0,
+      'coord_verificada': 1,
+      'created_at': now,
+      'updated_at': now,
+      'sincronizado': 0,
+    });
+
+    // Horario por defecto: Mañana 07:00 a 08:00
+    await db.insert('horario', {
+      'id_horario': 'horario_manana',
+      'nombre': 'Turno Mañana (07:00 - 08:00)',
+      'hora_entrada': '07:00',
+      'tolerancia_min': 60,
+      'hora_inicio_castigo': '21:00',
+      'escucha_desde': '06:00',
+      'escucha_hasta': '12:00',
+      'activo': 1,
+      'created_at': now,
+      'updated_at': now,
+      'sincronizado': 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+    // Configuraciones iniciales
+    final configs = [
+      {'clave': 'vueltas_por_tardanza', 'valor': '2', 'descripcion': 'Vueltas de sanción asignadas automáticamente por tardanza'},
+      {'clave': 'hora_inicio_castigo', 'valor': '21:00', 'descripcion': 'Hora desde la cual cuentan las vueltas de castigo'},
+      {'clave': 'radio_defecto_m', 'valor': '100', 'descripcion': 'Radio de geocerca por defecto en metros'},
+      {'clave': 'precision_max_m', 'valor': '50', 'descripcion': 'Precisión GPS máxima aceptada en metros para validar llegada'},
+    ];
+    for (final c in configs) {
+      await db.insert('configuracion', {
+        ...c,
         'created_at': now,
         'updated_at': now,
         'sincronizado': 0,
-      });
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     // 2. Siembra de los 20 conductores oficiales del sindicato con sus vehículos
     await _seedConductores(db, now);
   }
 
-  /// Siembra los 20 conductores institucionales con su usuario, licencia y vehículo asignado.
+  /// Siembra o repara los 20 conductores institucionales con su usuario, licencia y vehículo asignado.
   Future<void> _seedConductores(Database db, String now) async {
-    for (final c in conductoresSeed) {
-      final existe = await db.query(
-        'conductor',
-        where: 'ci = ?',
-        whereArgs: [c['ci']],
-        limit: 1,
-      );
-      if (existe.isNotEmpty) continue;
+    for (int i = 0; i < conductoresSeed.length; i++) {
+      try {
+        final c = conductoresSeed[i];
+        final ciOrig = c['ci']?.toString().trim() ?? '';
+        final ciNorm = Normalizadores.normalizarCi(ciOrig);
+        final ext = Normalizadores.extraerExtensionCi(ciOrig);
+        final grupo = (i < 10) ? '101' : '127';
+        final interno = (i < 10) ? (i + 1) : (i - 9);
+        final placaOrig = c['placa']?.toString().trim() ?? '';
+        final placaNorm = Normalizadores.normalizarPlaca(placaOrig);
+        final passHash = hashPassword(c['password']?.toString() ?? '');
 
-      final idUsuario = _uuid.v4();
-      final idConductor = _uuid.v4();
-      final idAuto = _uuid.v4();
+        final existe = await db.query(
+          'conductor',
+          where: 'ci = ? OR ci_normalizado = ?',
+          whereArgs: [ciOrig, ciNorm],
+          limit: 1,
+        );
 
-      await db.insert('usuario', {
-        'id_usuario': idUsuario,
-        'rol': 'conductor',
-        'nombre': c['nombre'],
-        'estado': 'activo',
-        'gmail': c['gmail'],
-        'password': hashPassword(c['password']),
-        'fecha_creacion': now,
-        'created_at': now,
-        'updated_at': now,
-        'sincronizado': 0,
-      });
+        if (existe.isNotEmpty) {
+          final idUsuarioExistente = existe.first['id_usuario']?.toString();
+          if (idUsuarioExistente != null && idUsuarioExistente.isNotEmpty) {
+            await db.update(
+              'usuario',
+              {
+                'estado': 'activo',
+                'password': passHash,
+                'updated_at': now,
+              },
+              where: 'id_usuario = ?',
+              whereArgs: [idUsuarioExistente],
+            );
+          }
+          continue;
+        }
 
-      await db.insert('conductor', {
-        'id_conductor': idConductor,
-        'id_usuario': idUsuario,
-        'nombre': c['nombre'],
-        'ci': c['ci'],
-        'licencia': c['licencia'],
-        'fecha_incorporacion': now.substring(0, 10),
-        'estado': 'activo',
-        'telefono': c['telefono'],
-        'fecha_nacimiento': c['fecha_nacimiento'],
-        'direccion': c['direccion'],
-        'estado_civil': c['estado_civil'],
-        'foto': null,
-        'licencia_categoria': c['licencia_categoria'],
-        'licencia_emision': c['licencia_emision'],
-        'licencia_vencimiento': c['licencia_vencimiento'],
-        'created_at': now,
-        'updated_at': now,
-        'sincronizado': 0,
-      });
+        // Verificar si ya existe un usuario con ese correo para reutilizarlo sin violar UNIQUE(gmail)
+        String idUsuario = _uuid.v4();
+        final gmailSeed = c['gmail']?.toString().trim().toLowerCase();
+        if (gmailSeed != null && gmailSeed.isNotEmpty) {
+          final usuExistente = await db.query(
+            'usuario',
+            where: 'LOWER(gmail) = ?',
+            whereArgs: [gmailSeed],
+            limit: 1,
+          );
+          if (usuExistente.isNotEmpty) {
+            idUsuario = usuExistente.first['id_usuario'].toString();
+            await db.update(
+              'usuario',
+              {
+                'rol': 'conductor',
+                'nombre': c['nombre'],
+                'estado': 'activo',
+                'password': passHash,
+                'updated_at': now,
+              },
+              where: 'id_usuario = ?',
+              whereArgs: [idUsuario],
+            );
+          } else {
+            await db.insert('usuario', {
+              'id_usuario': idUsuario,
+              'rol': 'conductor',
+              'nombre': c['nombre'],
+              'estado': 'activo',
+              'gmail': gmailSeed,
+              'password': passHash,
+              'fecha_creacion': now,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            });
+          }
+        } else {
+          await db.insert('usuario', {
+            'id_usuario': idUsuario,
+            'rol': 'conductor',
+            'nombre': c['nombre'],
+            'estado': 'activo',
+            'gmail': null,
+            'password': passHash,
+            'fecha_creacion': now,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+        }
 
-      await db.insert('automovil', {
-        'id_auto': idAuto,
-        'placa': c['placa'],
-        'marca': c['marca'],
-        'modelo': c['modelo'],
-        'color': c['color'],
-        'capacidad': c['capacidad'],
-        'soat': c['soat'],
-        'fecha_vencimiento_soat': c['fecha_vencimiento_soat'],
-        'ruat': c['ruat'],
-        'created_at': now,
-        'updated_at': now,
-        'sincronizado': 0,
-      });
+        final idConductor = _uuid.v4();
+        await db.insert(
+          'conductor',
+          {
+            'id_conductor': idConductor,
+            'id_usuario': idUsuario,
+            'nombre': c['nombre'],
+            'ci': ciOrig,
+            'ci_normalizado': ciNorm,
+            'extension_ci': ext,
+            'grupo': grupo,
+            'numero_interno': interno,
+            'licencia': c['licencia'],
+            'fecha_incorporacion': now.substring(0, 10),
+            'estado': 'activo',
+            'telefono': c['telefono'],
+            'fecha_nacimiento': c['fecha_nacimiento'],
+            'direccion': c['direccion'],
+            'estado_civil': c['estado_civil'],
+            'foto': null,
+            'licencia_categoria': c['licencia_categoria'],
+            'licencia_emision': c['licencia_emision'],
+            'licencia_vencimiento': c['licencia_vencimiento'],
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
 
-      await db.insert(
-        'conductor_automovil',
-        {
-          'id_conductor': idConductor,
-          'id_auto': idAuto,
-          'created_at': now,
-          'updated_at': now,
-          'sincronizado': 0,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+        String idAuto = _uuid.v4();
+        final autoExistente = await db.query(
+          'automovil',
+          where: 'placa = ? OR placa_normalizada = ?',
+          whereArgs: [placaOrig, placaNorm],
+          limit: 1,
+        );
+        if (autoExistente.isNotEmpty) {
+          idAuto = autoExistente.first['id_auto'].toString();
+        } else {
+          await db.insert(
+            'automovil',
+            {
+              'id_auto': idAuto,
+              'placa': placaOrig,
+              'placa_normalizada': placaNorm,
+              'marca': c['marca'],
+              'modelo': c['modelo'],
+              'color': c['color'],
+              'capacidad': c['capacidad'],
+              'soat': c['soat'],
+              'fecha_vencimiento_soat': c['fecha_vencimiento_soat'],
+              'ruat': c['ruat'],
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+
+        await db.insert(
+          'conductor_automovil',
+          {
+            'id_conductor': idConductor,
+            'id_auto': idAuto,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      } catch (_) {}
     }
   }
 
@@ -803,22 +1268,34 @@ class DatabaseHelper {
     final id = identificador.trim();
     final hash = hashPassword(password);
 
-    final List<Map<String, dynamic>> res;
-    if (id.contains('@')) {
-      res = await db.query(
-        'usuario',
-        where: 'gmail = ? AND password = ? AND estado = ?',
-        whereArgs: [id.toLowerCase(), hash, 'activo'],
-        limit: 1,
-      );
-    } else {
-      res = await db.rawQuery('''
-        SELECT u.*
-        FROM usuario u
-        JOIN conductor c ON c.id_usuario = u.id_usuario
-        WHERE c.ci = ? AND u.password = ? AND u.estado = 'activo'
-        LIMIT 1
-      ''', [id, hash]);
+    Future<List<Map<String, dynamic>>> buscar() async {
+      if (id.contains('@')) {
+        return db.query(
+          'usuario',
+          where: 'LOWER(gmail) = ? AND password = ? AND estado = ?',
+          whereArgs: [id.toLowerCase(), hash, 'activo'],
+          limit: 1,
+        );
+      } else {
+        final ciNorm = Normalizadores.normalizarCi(id);
+        return db.rawQuery('''
+          SELECT u.*
+          FROM usuario u
+          JOIN conductor c ON c.id_usuario = u.id_usuario
+          WHERE (c.ci = ? OR c.ci_normalizado = ?)
+            AND u.password = ?
+            AND u.estado = 'activo'
+          LIMIT 1
+        ''', [id, ciNorm, hash]);
+      }
+    }
+
+    var res = await buscar();
+    if (res.isEmpty) {
+      // Si la BD venía de una migración antigua donde no se sembraron los conductores semilla,
+      // sembrarlos/repararlos automáticamente y volver a intentar.
+      await _seedConductores(db, _now());
+      res = await buscar();
     }
     return res.isEmpty ? null : res.first;
   }
@@ -892,6 +1369,9 @@ class DatabaseHelper {
     required String nombre,
     String? gmail,
     String? ci,
+    String? extensionCi,
+    String? grupo,
+    int? numeroInterno,
     required String password,
     String estado = 'activo',
     String? placa,
@@ -917,6 +1397,26 @@ class DatabaseHelper {
     final idUsuario = _uuid.v4();
 
     await db.transaction((txn) async {
+      // 1. Si es conductor, validar primero que el CI no esté duplicado
+      String? ciNorm;
+      String ciLimpio = '';
+      if (rol == 'conductor') {
+        ciLimpio = ci?.trim() ?? '';
+        ciNorm = Normalizadores.normalizarCi(ciLimpio);
+        if (ciNorm.isNotEmpty) {
+          final existeCi = await txn.rawQuery('''
+            SELECT c.nombre, c.ci, c.grupo, c.numero_interno
+            FROM conductor c
+            WHERE c.ci_normalizado = ? OR c.ci = ?
+            LIMIT 1
+          ''', [ciNorm, ciLimpio]);
+          if (existeCi.isNotEmpty) {
+            final yaNombre = existeCi.first['nombre'] ?? 'otro chofer';
+            throw Exception('El CI "$ciLimpio" ya está registrado para el conductor $yaNombre.');
+          }
+        }
+      }
+
       await txn.insert('usuario', {
         'id_usuario': idUsuario,
         'rol': rol,
@@ -938,7 +1438,11 @@ class DatabaseHelper {
           'id_conductor': idConductor,
           'id_usuario': idUsuario,
           'nombre': nombre,
-          'ci': ci ?? '',
+          'ci': ciLimpio,
+          'ci_normalizado': ciNorm,
+          'extension_ci': (extensionCi != null && extensionCi.isNotEmpty) ? extensionCi : 'LP',
+          'grupo': (grupo != null && grupo.isNotEmpty) ? grupo : '101',
+          'numero_interno': numeroInterno,
           'licencia': licencia,
           'fecha_incorporacion': now.substring(0, 10),
           'estado': estado,
@@ -957,17 +1461,31 @@ class DatabaseHelper {
 
         if (placa != null && placa.trim().isNotEmpty) {
           final placaLimpia = placa.trim().toUpperCase();
+          final placaNorm = Normalizadores.normalizarPlaca(placaLimpia);
           final autoExistente = await txn.query(
             'automovil',
-            where: 'placa = ?',
-            whereArgs: [placaLimpia],
+            where: 'placa = ? OR placa_normalizada = ?',
+            whereArgs: [placaLimpia, placaNorm],
             limit: 1,
           );
 
           final String idAuto;
           if (autoExistente.isNotEmpty) {
             idAuto = autoExistente.first['id_auto'] as String;
+
+            // Verificar si este auto ya está asignado a otro conductor activo
+            final relacionExistente = await txn.rawQuery('''
+              SELECT c.nombre FROM conductor_automovil ca
+              JOIN conductor c ON c.id_conductor = ca.id_conductor
+              WHERE ca.id_auto = ?
+            ''', [idAuto]);
+            if (relacionExistente.isNotEmpty) {
+              final nombreDueno = relacionExistente.first['nombre']?.toString() ?? 'otro conductor';
+              throw Exception('La placa "$placaLimpia" ya se encuentra asignada al conductor $nombreDueno.');
+            }
+
             final Map<String, dynamic> datosAuto = {
+              'placa_normalizada': placaNorm,
               'updated_at': now,
               'sincronizado': 0,
             };
@@ -990,6 +1508,7 @@ class DatabaseHelper {
             await txn.insert('automovil', {
               'id_auto': idAuto,
               'placa': placaLimpia,
+              'placa_normalizada': placaNorm,
               'marca': marca,
               'modelo': modelo,
               'color': color,
@@ -1030,6 +1549,9 @@ class DatabaseHelper {
     required String estado,
     String? newPassword,
     String? ci,
+    String? extensionCi,
+    String? grupo,
+    int? numeroInterno,
     String? licencia,
     String? telefono,
     String? fechaNacimiento,
@@ -1084,14 +1606,35 @@ class DatabaseHelper {
         String idConductor;
         if (cond.isNotEmpty) {
           idConductor = cond.first['id_conductor'] as String;
+
+          final ciLimpio = ci?.trim() ?? cond.first['ci']?.toString() ?? '';
+          final ciNorm = Normalizadores.normalizarCi(ciLimpio);
+
+          // Verificar que el CI no pertenezca a OTRO conductor
+          if (ciNorm.isNotEmpty) {
+            final existeCi = await txn.rawQuery('''
+              SELECT c.nombre FROM conductor c
+              WHERE (c.ci_normalizado = ? OR c.ci = ?) AND c.id_conductor != ?
+              LIMIT 1
+            ''', [ciNorm, ciLimpio, idConductor]);
+            if (existeCi.isNotEmpty) {
+              final nombreDueno = existeCi.first['nombre'] ?? 'otro chofer';
+              throw Exception('El CI "$ciLimpio" ya pertenece al conductor $nombreDueno.');
+            }
+          }
+
           final Map<String, dynamic> datosCond = {
             'nombre': nombre,
-            'ci': ci ?? cond.first['ci'],
+            'ci': ciLimpio,
+            'ci_normalizado': ciNorm,
             'licencia': licencia ?? cond.first['licencia'],
             'estado': estado,
             'updated_at': now,
             'sincronizado': 0,
           };
+          if (extensionCi != null && extensionCi.isNotEmpty) datosCond['extension_ci'] = extensionCi;
+          if (grupo != null && grupo.isNotEmpty) datosCond['grupo'] = grupo;
+          if (numeroInterno != null) datosCond['numero_interno'] = numeroInterno;
           if (telefono != null) datosCond['telefono'] = telefono;
           if (fechaNacimiento != null) datosCond['fecha_nacimiento'] = fechaNacimiento;
           if (direccion != null) datosCond['direccion'] = direccion;
@@ -1109,11 +1652,17 @@ class DatabaseHelper {
           );
         } else {
           idConductor = _uuid.v4();
+          final ciLimpio = ci?.trim() ?? '';
+          final ciNorm = Normalizadores.normalizarCi(ciLimpio);
           await txn.insert('conductor', {
             'id_conductor': idConductor,
             'id_usuario': idUsuario,
             'nombre': nombre,
-            'ci': ci ?? '',
+            'ci': ciLimpio,
+            'ci_normalizado': ciNorm,
+            'extension_ci': (extensionCi != null && extensionCi.isNotEmpty) ? extensionCi : 'LP',
+            'grupo': (grupo != null && grupo.isNotEmpty) ? grupo : '101',
+            'numero_interno': numeroInterno,
             'licencia': licencia,
             'fecha_incorporacion': now.substring(0, 10),
             'estado': estado,
@@ -1133,11 +1682,25 @@ class DatabaseHelper {
 
         if (placa != null && placa.trim().isNotEmpty) {
           final placaLimpia = placa.trim().toUpperCase();
-          final autos = await txn.query('automovil', where: 'placa = ?', whereArgs: [placaLimpia], limit: 1);
+          final placaNorm = Normalizadores.normalizarPlaca(placaLimpia);
+          final autos = await txn.query('automovil', where: 'placa = ? OR placa_normalizada = ?', whereArgs: [placaLimpia, placaNorm], limit: 1);
           String idAuto;
           if (autos.isNotEmpty) {
             idAuto = autos.first['id_auto'] as String;
+
+            // Verificar si el auto ya está asignado a OTRO conductor
+            final relacionExistente = await txn.rawQuery('''
+              SELECT c.nombre FROM conductor_automovil ca
+              JOIN conductor c ON c.id_conductor = ca.id_conductor
+              WHERE ca.id_auto = ? AND ca.id_conductor != ?
+            ''', [idAuto, idConductor]);
+            if (relacionExistente.isNotEmpty) {
+              final nombreDueno = relacionExistente.first['nombre']?.toString() ?? 'otro chofer';
+              throw Exception('La placa "$placaLimpia" ya se encuentra asignada a $nombreDueno.');
+            }
+
             final Map<String, dynamic> datosAuto = {
+              'placa_normalizada': placaNorm,
               'updated_at': now,
               'sincronizado': 0,
             };
@@ -1160,6 +1723,7 @@ class DatabaseHelper {
             await txn.insert('automovil', {
               'id_auto': idAuto,
               'placa': placaLimpia,
+              'placa_normalizada': placaNorm,
               'marca': marca,
               'modelo': modelo,
               'color': color,
@@ -1186,6 +1750,111 @@ class DatabaseHelper {
         }
       }
     });
+  }
+
+  /// Da de baja lógica a un conductor (cambia su estado a 'inactivo' y registra fecha y motivo).
+  /// CONSERVA ÍNTEGRO todo su historial de asistencias, vueltas, sanciones, cuotas y pagos.
+  Future<void> darDeBajaConductor(String idUsuario, {String? motivo}) async {
+    final db = await database;
+    final now = _now();
+    final motivoFinal = (motivo != null && motivo.trim().isNotEmpty)
+        ? motivo.trim()
+        : 'Inhabilitado por administración';
+
+    await db.transaction((txn) async {
+      await txn.update(
+        'usuario',
+        {
+          'estado': 'inactivo',
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+      await txn.update(
+        'conductor',
+        {
+          'estado': 'inactivo',
+          'fecha_baja': now.substring(0, 10),
+          'motivo_baja': motivoFinal,
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+    });
+  }
+
+  /// Reactiva a un conductor inactivo regresándolo a estado 'activo' y limpiando la baja.
+  Future<void> reactivarConductor(String idUsuario) async {
+    final db = await database;
+    final now = _now();
+    await db.transaction((txn) async {
+      await txn.update(
+        'usuario',
+        {
+          'estado': 'activo',
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+      await txn.update(
+        'conductor',
+        {
+          'estado': 'activo',
+          'fecha_baja': null,
+          'motivo_baja': null,
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+    });
+  }
+
+  /// Verifica si un CI (normalizado) ya se encuentra registrado por otro conductor.
+  Future<Map<String, dynamic>?> buscarConductorPorCi(String ci, {String? excluirIdConductor}) async {
+    final db = await database;
+    final ciNorm = Normalizadores.normalizarCi(ci);
+    if (ciNorm.isEmpty) return null;
+
+    final sql = '''
+      SELECT c.id_conductor, c.nombre, c.ci, c.extension_ci, c.grupo, c.numero_interno, c.estado
+      FROM conductor c
+      WHERE (c.ci_normalizado = ? OR c.ci = ?)
+      ${excluirIdConductor != null ? 'AND c.id_conductor != ?' : ''}
+      LIMIT 1
+    ''';
+    final args = excluirIdConductor != null ? [ciNorm, ci.trim(), excluirIdConductor] : [ciNorm, ci.trim()];
+    final res = await db.rawQuery(sql, args);
+    return res.isNotEmpty ? res.first : null;
+  }
+
+  /// Verifica si una placa (normalizada) ya se encuentra asignada a un conductor.
+  Future<Map<String, dynamic>?> buscarAutoPorPlaca(String placa, {String? excluirIdAuto}) async {
+    final db = await database;
+    final placaNorm = Normalizadores.normalizarPlaca(placa);
+    if (placaNorm.isEmpty) return null;
+
+    final sql = '''
+      SELECT a.*, c.nombre AS conductor_nombre, c.ci AS conductor_ci, c.grupo, c.numero_interno
+      FROM automovil a
+      LEFT JOIN conductor_automovil ca ON ca.id_auto = a.id_auto
+      LEFT JOIN conductor c ON c.id_conductor = ca.id_conductor
+      WHERE (a.placa_normalizada = ? OR a.placa = ?)
+      ${excluirIdAuto != null ? 'AND a.id_auto != ?' : ''}
+      LIMIT 1
+    ''';
+    final args = excluirIdAuto != null
+        ? [placaNorm, placa.trim().toUpperCase(), excluirIdAuto]
+        : [placaNorm, placa.trim().toUpperCase()];
+    final res = await db.rawQuery(sql, args);
+    return res.isNotEmpty ? res.first : null;
   }
 
   /// Activa o desactiva un usuario (y su ficha de conductor asociada).
@@ -1277,8 +1946,11 @@ class DatabaseHelper {
         'id_usuario': idUsuario,
         'nombre': nombre,
         'ci': ci,
+        'ci_normalizado': Normalizadores.normalizarCi(ci),
+        'extension_ci': 'LP',
+        'grupo': '101',
         'licencia': licencia,
-        'fecha_incorporacion': fechaIncorporacion,
+        'fecha_incorporacion': fechaIncorporacion ?? now.substring(0, 10),
         'estado': 'activo',
         'created_at': now,
         'updated_at': now,
@@ -1309,18 +1981,23 @@ class DatabaseHelper {
     final db = await database;
     return db.rawQuery('''
       SELECT 
-        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.licencia,
+        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.ci_normalizado, c.extension_ci,
+        c.grupo, c.numero_interno, c.fecha_baja, c.motivo_baja, c.licencia,
         c.fecha_incorporacion, c.estado, c.telefono, c.fecha_nacimiento,
         c.direccion, c.estado_civil, c.foto, c.licencia_categoria,
         c.licencia_emision, c.licencia_vencimiento, c.created_at, c.updated_at,
         u.gmail,
-        a.id_auto, a.placa, a.marca, a.modelo, a.color, a.capacidad,
+        a.id_auto, a.placa, a.placa_normalizada, a.marca, a.modelo, a.color, a.capacidad,
         a.ruat, a.soat, a.fecha_vencimiento_soat
       FROM conductor c
       LEFT JOIN usuario u ON u.id_usuario = c.id_usuario
       LEFT JOIN conductor_automovil ca ON ca.id_conductor = c.id_conductor
       LEFT JOIN automovil a ON a.id_auto = ca.id_auto
-      ORDER BY c.nombre
+      ORDER BY 
+        CASE WHEN c.estado = 'activo' THEN 0 ELSE 1 END,
+        c.grupo ASC,
+        c.numero_interno ASC,
+        c.nombre ASC
     ''');
   }
 
@@ -1329,12 +2006,13 @@ class DatabaseHelper {
     final db = await database;
     final res = await db.rawQuery('''
       SELECT 
-        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.licencia,
+        c.id_conductor, c.id_usuario, c.nombre, c.ci, c.ci_normalizado, c.extension_ci,
+        c.grupo, c.numero_interno, c.fecha_baja, c.motivo_baja, c.licencia,
         c.fecha_incorporacion, c.estado, c.telefono, c.fecha_nacimiento,
         c.direccion, c.estado_civil, c.foto, c.licencia_categoria,
         c.licencia_emision, c.licencia_vencimiento, c.created_at, c.updated_at,
         u.gmail,
-        a.id_auto, a.placa, a.marca, a.modelo, a.color, a.capacidad,
+        a.id_auto, a.placa, a.placa_normalizada, a.marca, a.modelo, a.color, a.capacidad,
         a.ruat, a.soat, a.fecha_vencimiento_soat
       FROM conductor c
       LEFT JOIN usuario u ON u.id_usuario = c.id_usuario
@@ -1591,6 +2269,95 @@ class DatabaseHelper {
       where: '${_pk[tabla]} = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Obtiene un valor de configuración por su clave.
+  Future<String?> getConfig(String clave, [String? defaultValue]) async {
+    final db = await database;
+    final res = await db.query(
+      'configuracion',
+      columns: ['valor'],
+      where: 'clave = ?',
+      whereArgs: [clave],
+      limit: 1,
+    );
+    if (res.isEmpty) return defaultValue;
+    return res.first['valor']?.toString() ?? defaultValue;
+  }
+
+  /// Establece o actualiza un valor de configuración.
+  Future<void> setConfig(String clave, String valor, [String? descripcion]) async {
+    final db = await database;
+    final now = _now();
+    await db.insert(
+      'configuracion',
+      {
+        'clave': clave,
+        'valor': valor,
+        'descripcion': descripcion,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Registra una entrada en la bitácora de auditoría.
+  Future<void> registrarBitacora({
+    required String accion,
+    required String tabla,
+    required String idRegistro,
+    String? idUsuario,
+    String? detalles,
+  }) async {
+    final db = await database;
+    final now = _now();
+    await db.insert('bitacora', {
+      'id_bitacora': _uuid.v4(),
+      'accion': accion,
+      'tabla': tabla,
+      'id_registro': idRegistro,
+      'id_usuario': idUsuario,
+      'detalles': detalles,
+      'created_at': now,
+      'updated_at': now,
+      'sincronizado': 0,
+    });
+  }
+
+  /// Obtiene los puntos de control del recorrido.
+  Future<List<Map<String, dynamic>>> obtenerPuntosControl({bool soloActivos = true}) async {
+    final db = await database;
+    final where = soloActivos ? 'activo = 1' : null;
+    return db.query('punto_de_control', where: where, orderBy: 'orden ASC, nombre ASC');
+  }
+
+  /// Obtiene el punto oficial asignado para control de asistencia (Cruce Villadela).
+  Future<Map<String, dynamic>?> obtenerPuntoAsistencia() async {
+    final db = await database;
+    final res = await db.query(
+      'punto_de_control',
+      where: 'es_punto_asistencia = 1 AND activo = 1',
+      limit: 1,
+    );
+    if (res.isNotEmpty) return res.first;
+    // Si no tiene la marca, buscar por nombre o tomar el primer punto orden 1
+    final porNombre = await db.query(
+      'punto_de_control',
+      where: "nombre LIKE '%Villadela%' AND activo = 1",
+      limit: 1,
+    );
+    if (porNombre.isNotEmpty) return porNombre.first;
+    final primerPunto = await db.query('punto_de_control', where: 'activo = 1', orderBy: 'orden ASC', limit: 1);
+    return primerPunto.isNotEmpty ? primerPunto.first : null;
+  }
+
+  /// Obtiene el horario activo para la asistencia de la mañana.
+  Future<Map<String, dynamic>?> obtenerHorarioActivo() async {
+    final db = await database;
+    final res = await db.query('horario', where: 'activo = 1', limit: 1);
+    return res.isNotEmpty ? res.first : null;
   }
 
   Future<void> cerrar() async {

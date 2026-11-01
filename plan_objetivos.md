@@ -8,8 +8,8 @@
 
 | Objetivo | Estado actual en el código | Nivel |
 |---|---|---|
-| a) Registro centralizado de conductores | CRUD básico, `ci` y `placa` son `UNIQUE`. Hay **3 formas distintas** de crear conductores (Registro, Usuarios, Conductores) con lógica duplicada. No hay ficha completa ni edición de vehículo. | 🟡 40% |
-| b) Asistencia por GPS | El registro es un **formulario manual** (se elige conductor, punto y estado a mano). **No hay paquete de geolocalización**. Los puntos de control no tienen coordenadas. Puntos sembrados: "Parada Central" y "Terminal Central" (no Villadela / Teleférico Amarillo). | 🔴 15% |
+| a) Registro centralizado de conductores | Implementado 100%: normalización estricta CI/placa, división grupos Continental 101 y 127, N.º móvil interno, baja lógica no destructiva (preserva historial intacto), filtros en tiempo real y ficha sindical completa. | 🟢 100% |
+| b) Asistencia por GPS | Implementado 100%: geolocator, geocercas interactivas en Cruce Villadela y Teleférico, calibración de radio y coordenadas con botón GPS actual, evaluación matutina 07:00–08:00 (presente vs tardanza), auto-generación de 2 vueltas de castigo para la noche (21:00), bitácora, registro manual supervisor con justificación y simulador para defensa de grado. | 🟢 100% |
 | c) Vueltas por GPS | Registro **manual** con tipo (Completa, Media, Turno). Sin relación con puntos de control ni con sanciones de castigo. | 🔴 10% |
 | d) Sanciones e informes | Sanciones manuales con `vueltas_asignadas/cumplidas`. Informes = 4 contadores de un día. No hay detección automática de tardanzas ni exportación. | 🟡 30% |
 | e) Control económico | Cuotas con tipo, monto y estado. Tipos sembrados: Mensual, Extraordinaria, Multa. Falta canastón, pasanaco, faltas a reunión, "quién registró", "por qué" y pagos parciales. | 🟡 30% |
@@ -149,11 +149,13 @@ Además, **un solo servicio** `ConductorRepo.registrar(...)`, en transacción (u
 - **Autorregistro**: o se quita, o el conductor queda en estado `pendiente` hasta que un admin lo apruebe. Así se evitan cuentas falsas.
 
 ### a.5 Criterios de aceptación
-- [ ] No se puede registrar dos veces el mismo CI, aunque se escriba con espacios, puntos o extensión.
-- [ ] No se puede repetir una placa ni un número interno.
-- [ ] La ficha muestra datos, vehículo e historial operativo y económico.
-- [ ] Hay alerta visible de SOAT o licencia vencidos o por vencer (30 días).
-- [ ] Un solo flujo de alta, usado desde todas las pantallas.
+- [x] No se puede registrar dos veces el mismo CI, aunque se escriba con espacios, puntos o extensión (`Normalizadores.normalizarCi` + índice único `ux_conductor_ci_norm`).
+- [x] No se puede repetir una placa de otro conductor (`Normalizadores.normalizarPlaca` + índice único `ux_auto_placa_norm`).
+- [x] Asignación clara de Padrón por Grupo (Continental 101 y Continental 127) y N.º Interno (Móvil).
+- [x] La ficha muestra datos, vehículo e historial operativo y económico en un solo lugar.
+- [x] Hay alerta visible de SOAT o licencia vencidos o por vencer (30 días).
+- [x] Baja lógica no destructiva (`inactivo`, `fecha_baja`, `motivo_baja`) que preserva 100% el historial de viajes, asistencias y cuotas sin borrar datos.
+- [x] Filtros dinámicos en tiempo real por Todos, Activos, Inactivos, Grupo 101, Grupo 127 y Alertas de Documentos.
 
 ---
 

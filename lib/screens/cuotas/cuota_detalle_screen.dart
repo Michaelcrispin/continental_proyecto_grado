@@ -6,6 +6,7 @@ import '../../services/sesion_service.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/avatar_conductor.dart';
 import 'widgets/detalle_conductor_cuotas_sheet.dart';
+import 'widgets/dialogo_informe_whatsapp.dart';
 import 'widgets/dialogo_nueva_cuota.dart';
 
 /// Pantalla de Detalle de una Cuota específica.
@@ -56,10 +57,121 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         orElse: () => _cuotaActual,
       );
 
+      final matriz = await EconomiaRepo.instance.obtenerMatrizCronogramaPorCuota(idTipo);
+
+      // Fechas únicas ordenadas del cronograma
+      final fechasSet = <String>{};
+      for (final r in matriz) {
+        final f = r['fecha_programada']?.toString().trim() ?? '';
+        if (f.isNotEmpty) fechasSet.add(f);
+      }
+      final fechasOrdenadas = fechasSet.toList()..sort();
+      final esPeriodica = fechasOrdenadas.length > 1;
+
+      // Detectar periodicidad: mensual vs semanal
+      final desc = (actualizada['descripcion'] ?? '').toString().toLowerCase();
+      final nombreC = (actualizada['nombre'] ?? '').toString().toLowerCase();
+      bool esMensual = desc.contains('mensual') || desc.contains('mes') || nombreC.contains('mensual');
+      if (!esMensual && fechasOrdenadas.length >= 2) {
+        try {
+          final d1 = DateTime.parse(fechasOrdenadas[0]);
+          final d2 = DateTime.parse(fechasOrdenadas[1]);
+          if (d2.difference(d1).inDays >= 20) {
+            esMensual = true;
+          }
+        } catch (_) {}
+      }
+
+      // Determinar la fecha límite del periodo actual (esta semana o este mes)
+      String fechaPeriodoActual = '';
+      if (esPeriodica) {
+        if (esMensual) {
+          final ahora = DateTime.now();
+          final limiteMes = DateTime(ahora.year, ahora.month + 1, 0)
+              .toIso8601String()
+              .substring(0, 10);
+          fechaPeriodoActual = fechasOrdenadas.first;
+          for (final f in fechasOrdenadas) {
+            if (f.compareTo(limiteMes) <= 0) {
+              fechaPeriodoActual = f;
+            } else {
+              break;
+            }
+          }
+        } else {
+          fechaPeriodoActual = DialogoInformeWhatsapp.determinarFechaSemanaActual(fechasOrdenadas);
+        }
+      }
+
+      // Agrupar filas del cronograma por conductor
+      final Map<String, List<Map<String, dynamic>>> matrizPorConductor = {};
+      for (final r in matriz) {
+        final idCond = r['id_conductor']?.toString() ?? '';
+        if (idCond.isNotEmpty) {
+          matrizPorConductor.putIfAbsent(idCond, () => []).add(r);
+        }
+      }
+
+      // Enriquecer cada conductor con su estado respecto a este periodo (sin computar fechas futuras)
+      final List<Map<String, dynamic>> listaEnriquecida = [];
+      for (final c in lista) {
+        final cMod = Map<String, dynamic>.from(c);
+        final faltaTotal = (cMod['monto_falta'] as num?)?.toDouble() ?? 0.0;
+        final todoPagado = faltaTotal <= 0.001;
+
+        if (esPeriodica) {
+          final idCond = cMod['id_conductor']?.toString() ?? '';
+          final cuotasChofer = matrizPorConductor[idCond] ?? [];
+
+          double deudaPeriodo = 0.0;
+          int cuotasPendientesPeriodo = 0;
+          String? proxFechaPeriodo;
+
+          for (final q in cuotasChofer) {
+            final f = q['fecha_programada']?.toString().trim() ?? '';
+            final monto = (q['monto'] as num?)?.toDouble() ?? 0.0;
+            final pagadoQ = (q['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+            final faltaQ = monto - pagadoQ;
+
+            // Solo evaluar fechas que ya vencieron o que corresponden a este periodo
+            if (f.isNotEmpty && f.compareTo(fechaPeriodoActual) <= 0) {
+              if (faltaQ > 0.001) {
+                deudaPeriodo += faltaQ;
+                cuotasPendientesPeriodo++;
+                proxFechaPeriodo ??= f;
+              }
+            }
+          }
+
+          final alDiaPeriodo = deudaPeriodo <= 0.001;
+          cMod['es_periodica'] = true;
+          cMod['es_mensual'] = esMensual;
+          cMod['etiqueta_periodo'] = esMensual ? 'este mes' : 'esta semana';
+          cMod['al_dia_periodo'] = alDiaPeriodo;
+          cMod['todo_pagado'] = todoPagado;
+          cMod['deuda_periodo'] = deudaPeriodo;
+          cMod['cuotas_pendientes_periodo'] = cuotasPendientesPeriodo;
+          if (proxFechaPeriodo != null) {
+            cMod['proxima_fecha_pago'] = proxFechaPeriodo;
+          }
+        } else {
+          final alDia = faltaTotal <= 0.001;
+          cMod['es_periodica'] = false;
+          cMod['es_mensual'] = false;
+          cMod['etiqueta_periodo'] = 'cuota';
+          cMod['al_dia_periodo'] = alDia;
+          cMod['todo_pagado'] = alDia;
+          cMod['deuda_periodo'] = faltaTotal;
+          cMod['cuotas_pendientes_periodo'] = alDia ? 0 : 1;
+        }
+
+        listaEnriquecida.add(cMod);
+      }
+
       if (mounted) {
         setState(() {
           _cuotaActual = Map<String, dynamic>.from(actualizada);
-          _conductores = lista;
+          _conductores = listaEnriquecida;
           _filtrar(_busqueda);
           _isLoading = false;
         });
@@ -74,8 +186,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     final q = query.toLowerCase().trim();
     setState(() {
       _conductoresFiltrados = _conductores.where((c) {
-        final falta = (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
-        final alDia = falta <= 0.001;
+        final alDia = (c['al_dia_periodo'] as bool?) ?? false;
 
         if (_filtroEstado == 'pagados' && !alDia) return false;
         if (_filtroEstado == 'deben' && alDia) return false;
@@ -179,7 +290,8 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       final falta = (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
       totalRecaudado += pagado;
       totalFalta += falta;
-      if (falta <= 0.001) {
+      final alDia = (c['al_dia_periodo'] as bool?) ?? (falta <= 0.001);
+      if (alDia) {
         cantPagados++;
       } else {
         cantDeben++;
@@ -197,6 +309,33 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       totalConductores: _conductores.length,
       cantPagados: cantPagados,
       cantDeben: cantDeben,
+      idTipoCuota: _cuotaActual['id_tipo_cuota']?.toString(),
+      categoria: _cuotaActual['categoria']?.toString(),
+    );
+  }
+
+  Future<void> _generarInformeWhatsapp({bool forzarVistaPrevia = false}) async {
+    if (_conductores.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay datos suficientes para generar el informe.'),
+        ),
+      );
+      return;
+    }
+    await DialogoInformeWhatsapp.abrirInforme(
+      context,
+      cuota: _cuotaActual,
+      conductores: _conductores,
+      forzarVistaPrevia: forzarVistaPrevia,
+    );
+  }
+
+  Future<void> _configurarWhatsapp() async {
+    await DialogoInformeWhatsapp.mostrarConfiguracion(
+      context,
+      cuota: _cuotaActual,
+      conductores: _conductores,
     );
   }
 
@@ -218,6 +357,13 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     } catch (_) {
       return fecha.toString();
     }
+  }
+
+  String _fmtMonto(double v) {
+    if ((v - v.roundToDouble()).abs() < 0.005) {
+      return v.round().toString();
+    }
+    return v.toStringAsFixed(2);
   }
 
 
@@ -242,7 +388,8 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       final falta = (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
       totalRecaudado += pagado;
       totalFalta += falta;
-      if (falta <= 0.001) {
+      final alDia = (c['al_dia_periodo'] as bool?) ?? (falta <= 0.001);
+      if (alDia) {
         cantPagados++;
       } else {
         cantDeben++;
@@ -272,35 +419,56 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          if (_conductores.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3A8A),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Color(0xFF1E3A8A)),
+            onSelected: (val) {
+              if (val == 'config_whatsapp') _configurarWhatsapp();
+              if (val == 'vista_whatsapp') {
+                _generarInformeWhatsapp(forzarVistaPrevia: true);
+              }
+              if (val == 'editar') _editarCuota();
+              if (val == 'eliminar') _eliminarCuota();
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'config_whatsapp',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.tune_rounded,
+                      color: Color(0xFF16A34A),
+                      size: 20,
+                    ),
+                    SizedBox(width: 8),
+                    Text('Configurar Informe WhatsApp'),
+                  ],
                 ),
-                onPressed: _generarInformePdf,
-                icon: const Icon(Icons.picture_as_pdf, size: 14, color: Colors.white),
-                label: const Text('Informe', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
-            ),
-          if (puedeEditar)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Color(0xFF1E3A8A)),
-              onSelected: (val) {
-                if (val == 'editar') _editarCuota();
-                if (val == 'eliminar') _eliminarCuota();
-              },
-              itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'vista_whatsapp',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.chat_outlined,
+                      color: Color(0xFF15803D),
+                      size: 20,
+                    ),
+                    SizedBox(width: 8),
+                    Text('Vista Previa Mensaje WhatsApp'),
+                  ],
+                ),
+              ),
+              if (puedeEditar) ...[
+                const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'editar',
                   child: Row(
                     children: [
-                      Icon(Icons.edit_outlined, color: Color(0xFF1E3A8A), size: 20),
+                      Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF1E3A8A),
+                        size: 20,
+                      ),
                       SizedBox(width: 8),
                       Text('Editar Cuota'),
                     ],
@@ -312,12 +480,16 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                     children: [
                       Icon(Icons.delete_outline, color: Colors.red, size: 20),
                       SizedBox(width: 8),
-                      Text('Eliminar Cuota', style: TextStyle(color: Colors.red)),
+                      Text(
+                        'Eliminar Cuota',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ],
                   ),
                 ),
               ],
-            ),
+            ],
+          ),
         ],
       ),
       body: AppBackground(
@@ -349,6 +521,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
@@ -363,113 +536,225 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                     color: Color(0xFF0F2B5B),
                                   ),
                                 ),
-                                if (categoria == 'multa' || nombre.toLowerCase().contains('multa') || (descripcion ?? '').contains('Multas por falta')) ...[
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: const Color(0xFFFECACA)),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Bs. ${montoSugerido.toStringAsFixed(0)} / chofer',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                          color: Color(0xFF2563EB),
+                                        ),
+                                      ),
                                     ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.gavel_rounded, size: 12, color: Color(0xFFDC2626)),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Multa por Asamblea',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFFDC2626),
+                                    if (categoria == 'multa' ||
+                                        nombre.toLowerCase().contains('multa') ||
+                                        (descripcion ?? '')
+                                            .contains('Multas por falta'))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEF2F2),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: const Color(0xFFFECACA),
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                                if (descripcion != null && descripcion.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  if (descripcion.contains('Modalidad:')) ...[
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 4,
-                                      children: [
-                                        if (descripcion.contains('Modalidad: Obligatoria'))
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFEFF6FF),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: const Color(0xFFBFDBFE)),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.gavel_rounded,
+                                              size: 12,
+                                              color: Color(0xFFDC2626),
                                             ),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.verified_user_rounded, size: 12, color: Color(0xFF2563EB)),
-                                                SizedBox(width: 4),
-                                                Text(
-                                                  'Cuota Obligatoria',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Color(0xFF2563EB),
-                                                  ),
-                                                ),
-                                              ],
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Multa por Asamblea',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFDC2626),
+                                              ),
                                             ),
-                                          )
-                                        else if (descripcion.contains('Modalidad: Voluntaria'))
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFECFDF5),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: const Color(0xFFA7F3D0)),
-                                            ),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.volunteer_activism_rounded, size: 12, color: Color(0xFF059669)),
-                                                SizedBox(width: 4),
-                                                Text(
-                                                  'Aporte Voluntario',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Color(0xFF059669),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    if (descripcion != null &&
+                                        descripcion.contains(
+                                          'Modalidad: Obligatoria',
+                                        ))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEFF6FF),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: const Color(0xFFBFDBFE),
                                           ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.verified_user_rounded,
+                                              size: 12,
+                                              color: Color(0xFF2563EB),
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Cuota Obligatoria',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF2563EB),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else if (descripcion != null &&
+                                        descripcion.contains(
+                                          'Modalidad: Voluntaria',
+                                        ))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFECFDF5),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: const Color(0xFFA7F3D0),
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.volunteer_activism_rounded,
+                                              size: 12,
+                                              color: Color(0xFF059669),
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Aporte Voluntario',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF059669),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
+                                ),
+                                if (descripcion != null &&
+                                    descripcion.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 5),
                                   Text(
                                     descripcion.trim(),
-                                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
                                   ),
                                 ],
                               ],
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Bs. ${montoSugerido.toStringAsFixed(0)} / chofer',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12.5,
-                                color: Color(0xFF2563EB),
+                          const SizedBox(width: 10),
+                          // BOTONES DE INFORMES (PDF Y WHATSAPP) EN EL ESPACIO DERECHO
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              SizedBox(
+                                width: 124,
+                                height: 34,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF1E3A8A),
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 0,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  onPressed: _generarInformePdf,
+                                  icon: const Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    size: 15,
+                                    color: Colors.white,
+                                  ),
+                                  label: const Text(
+                                    'Informe PDF',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 7),
+                              SizedBox(
+                                width: 124,
+                                height: 34,
+                                child: ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 0,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  onPressed: () => _generarInformeWhatsapp(),
+                                  icon: const Icon(
+                                    Icons.chat_rounded,
+                                    size: 15,
+                                    color: Colors.white,
+                                  ),
+                                  label: const Text(
+                                    'WhatsApp',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -581,11 +866,14 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                               final ciChofer = c['conductor_ci']?.toString() ?? 'S/CI';
                               final foto = c['conductor_foto']?.toString();
                               final pagado = (c['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-                              final falta = (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
-                              final alDia = falta <= 0.001;
 
+                              final esPeriodica = (c['es_periodica'] as bool?) ?? false;
+                              final esMensual = (c['es_mensual'] as bool?) ?? false;
+                              final alDiaPeriodo = (c['al_dia_periodo'] as bool?) ?? false;
+                              final todoPagado = (c['todo_pagado'] as bool?) ?? false;
+                              final deudaPeriodo = (c['deuda_periodo'] as num?)?.toDouble() ?? 0.0;
+                              final cuotasPendientesPeriodo = (c['cuotas_pendientes_periodo'] as num?)?.toInt() ?? 0;
                               final proxFecha = c['proxima_fecha_pago']?.toString();
-                              final cuotasPendientes = (c['cuotas_pendientes'] as num?)?.toInt() ?? 0;
 
                               return Material(
                                 color: Colors.transparent,
@@ -599,7 +887,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: alDia ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
+                                        color: alDiaPeriodo ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
                                       ),
                                       boxShadow: const [
                                         BoxShadow(
@@ -642,17 +930,17 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                                 spacing: 4,
                                                 children: [
                                                   Text(
-                                                    'Pagó: Bs. ${pagado.toStringAsFixed(0)}',
+                                                    'Pagó: Bs. ${_fmtMonto(pagado)}',
                                                     style: const TextStyle(
                                                       fontSize: 11.5,
                                                       color: Color(0xFF059669),
                                                       fontWeight: FontWeight.w600,
                                                     ),
                                                   ),
-                                                  if (!alDia) ...[
+                                                  if (!alDiaPeriodo && deudaPeriodo > 0.001) ...[
                                                     const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
                                                     Text(
-                                                      'Falta: Bs. ${falta.toStringAsFixed(0)}',
+                                                      'Falta: Bs. ${_fmtMonto(deudaPeriodo)}',
                                                       style: const TextStyle(
                                                         fontSize: 11.5,
                                                         color: Color(0xFFDC2626),
@@ -662,7 +950,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                                   ],
                                                 ],
                                               ),
-                                              if (!alDia && proxFecha != null && proxFecha.isNotEmpty) ...[
+                                              if (proxFecha != null && proxFecha.isNotEmpty && !todoPagado) ...[
                                                 const SizedBox(height: 3),
                                                 Text(
                                                   'Próx. pago: ${_formatearFechaCorta(proxFecha)}',
@@ -678,22 +966,26 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                         ),
                                         const SizedBox(width: 8),
 
-                                        // Badge de Estado: "Al día" o "Pendiente"
-                                        if (alDia)
+                                        // Badge de Estado: "Al día" / "Pagado esta semana" / "Pagado este mes" / "Pendiente"
+                                        if (alDiaPeriodo)
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                             decoration: BoxDecoration(
                                               color: const Color(0xFFD1FAE5),
                                               borderRadius: BorderRadius.circular(12),
                                             ),
-                                            child: const Row(
+                                            child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 14),
-                                                SizedBox(width: 4),
+                                                const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 14),
+                                                const SizedBox(width: 4),
                                                 Text(
-                                                  'Al día',
-                                                  style: TextStyle(
+                                                  todoPagado
+                                                      ? 'Al día'
+                                                      : (esPeriodica
+                                                          ? (esMensual ? 'Pagado este mes' : 'Pagado esta semana')
+                                                          : 'Al día'),
+                                                  style: const TextStyle(
                                                     color: Color(0xFF065F46),
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 11,
@@ -715,7 +1007,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                                 const Icon(Icons.schedule_rounded, color: Color(0xFFD97706), size: 14),
                                                 const SizedBox(width: 4),
                                                 Text(
-                                                  cuotasPendientes > 1 ? 'Pendiente ($cuotasPendientes)' : 'Pendiente',
+                                                  cuotasPendientesPeriodo > 1
+                                                      ? 'Pendiente ($cuotasPendientesPeriodo)'
+                                                      : 'Pendiente',
                                                   style: const TextStyle(
                                                     color: Color(0xFF92400E),
                                                     fontWeight: FontWeight.bold,

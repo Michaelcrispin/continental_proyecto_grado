@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 class Permisos {
   // Constantes de identificación de módulos
   static const String moduloPanelTecnico = 'panel_tecnico';
+  static const String moduloPuntosParada = 'puntos_parada';
   static const String moduloUsuarios = 'usuarios';
   static const String moduloConductores = 'conductores';
   static const String moduloSanciones = 'sanciones';
@@ -33,6 +34,7 @@ class Permisos {
 
     switch (modulo) {
       case moduloPanelTecnico:
+      case moduloPuntosParada:
         return r == 'superadmin';
 
       case moduloUsuarios:
@@ -67,6 +69,7 @@ class Permisos {
 
     switch (modulo) {
       case moduloPanelTecnico:
+      case moduloPuntosParada:
         return r == 'superadmin';
 
       case moduloUsuarios:

@@ -1,20 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../services/economia_repo.dart';
 import '../../services/sesion_service.dart';
 import '../../widgets/app_background.dart';
+import '../../widgets/app_snackbar.dart';
 import '../../widgets/avatar_conductor.dart';
 import 'widgets/selector_beneficiario_sheet.dart';
 import 'widgets/selector_conductores_sheet.dart';
 
 /// Pantalla especializada para la creación de cuotas de "Apoyo Económico" (Solidarias).
-/// Permite:
-/// - Elegir al conductor beneficiario (quien queda excluido automáticamente del cobro).
-/// - Seleccionar la modalidad de aporte: "Obligatoria" vs "Voluntaria".
-/// - Registrar el motivo específico (accidente, salud, gastos médicos, etc.).
-/// - Fijar el importe por conductor (Bs.) y fecha límite opcional.
-/// - Elegir los conductores aportantes mediante selector interactivo.
-/// - Previsualizar el total estimado de recaudación en tiempo real.
+/// Diseño por pasos numerados y tarjeta de resumen en tiempo real.
 class CrearApoyoEconomicoScreen extends StatefulWidget {
   const CrearApoyoEconomicoScreen({super.key});
 
@@ -29,13 +23,13 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   late final TextEditingController _motivoCtrl;
   late final TextEditingController _importeCtrl;
 
-  // Modalidad: 'obligatoria' o 'voluntaria'
-  String _modalidad = 'obligatoria';
+  // Modalidad: 'voluntaria' o 'obligatoria' (por defecto 'voluntaria')
+  String _modalidad = 'voluntaria';
 
   // Conductor beneficiario seleccionado
   Map<String, dynamic>? _beneficiario;
 
-  // Fecha límite de recepción (opcional)
+  // Fecha límite de recepción
   DateTime? _fechaLimite;
 
   // Lista de todos los conductores activos y seleccionados para aportar
@@ -43,8 +37,6 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   Set<String> _idsConductoresAportantes = {};
   bool _cargandoConductores = true;
   bool _guardando = false;
-
-  final DateFormat _dateFmt = DateFormat('dd/MM/yyyy');
 
   @override
   void initState() {
@@ -111,7 +103,6 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   }
 
   Future<void> _abrirSelectorAportantes() async {
-    // Lista de posibles aportantes (excluyendo al beneficiario)
     final idBen = _beneficiario?['id_conductor']?.toString();
     final candidatos = _conductoresActivos
         .where((c) => c['id_conductor']?.toString() != idBen)
@@ -147,9 +138,17 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
         child: child ?? const SizedBox(),
       ),
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() => _fechaLimite = picked);
     }
+  }
+
+  String _formatearFecha(DateTime? fecha) {
+    if (fecha == null) return 'Sin límite';
+    final dia = fecha.day.toString().padLeft(2, '0');
+    final mes = fecha.month.toString().padLeft(2, '0');
+    final anio = fecha.year.toString();
+    return '$dia/$mes/$anio';
   }
 
   Future<void> _guardar() async {
@@ -198,13 +197,9 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '¡$nombre creado! Se registró la ayuda para $nombreBeneficiario con ${aportantesFinales.length} aportantes.',
-          ),
-          backgroundColor: const Color(0xFF10B981),
-        ),
+      AppSnackBar.exito(
+        context,
+        '¡$nombre creado! Se registró la ayuda para $nombreBeneficiario con ${aportantesFinales.length} aportantes.',
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -216,22 +211,15 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   }
 
   void _mostrarSnack(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        backgroundColor: Colors.red,
-      ),
-    );
+    AppSnackBar.error(context, mensaje);
   }
 
   @override
   Widget build(BuildContext context) {
-    final importe = double.tryParse(_importeCtrl.text.trim()) ?? 0.0;
     final idBen = _beneficiario?['id_conductor']?.toString();
     final cantAportantes = _idsConductoresAportantes
         .where((id) => id != idBen)
         .length;
-    final totalMeta = importe * cantAportantes;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -248,7 +236,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
           style: TextStyle(
             color: Color(0xFF0F2B5B),
             fontWeight: FontWeight.bold,
-            fontSize: 20,
+            fontSize: 18,
           ),
         ),
         actions: [
@@ -256,12 +244,12 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
             padding: const EdgeInsets.only(right: 16),
             child: Image.asset(
               'assets/images/logo.png',
-              height: 38,
+              height: 34,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) => const Icon(
                 Icons.directions_bus_rounded,
                 color: Color(0xFF0F2B5B),
-                size: 28,
+                size: 26,
               ),
             ),
           ),
@@ -276,50 +264,37 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
               : Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+                    padding: const EdgeInsets.fromLTRB(18, 6, 18, 24),
                     children: [
-                      // ENCABEZADO
-                      const Text(
-                        'Apoyo Económico',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F2B5B),
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Crea un fondo solidario para apoyar a un conductor del sindicato en caso de accidente o emergencia.',
-                        style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.35),
-                      ),
-                      const SizedBox(height: 18),
+                      // ENCABEZADO CON ILUSTRACIÓN DE MANO Y CORAZÓN
+                      _buildEncabezado(),
+                      const SizedBox(height: 14),
 
-                      // 1. SELECTOR DEL CONDUCTOR BENEFICIARIO
-                      _buildSeccionBeneficiario(),
-                      const SizedBox(height: 16),
+                      // PASO 1: BENEFICIARIO
+                      _buildPaso1Beneficiario(),
+                      const SizedBox(height: 12),
 
-                      // 2. SELECTOR DE MODALIDAD (OBLIGATORIA VS VOLUNTARIA)
-                      _buildSeccionModalidad(),
-                      const SizedBox(height: 16),
+                      // PASO 2: MODALIDAD
+                      _buildPaso2Modalidad(),
+                      const SizedBox(height: 12),
 
-                      // 3. TÍTULO Y MOTIVO / DETALLE
-                      _buildSeccionTituloYMotivo(),
-                      const SizedBox(height: 16),
+                      // PASO 3: TÍTULO Y MOTIVO
+                      _buildPaso3TituloYMotivo(),
+                      const SizedBox(height: 12),
 
-                      // 4. IMPORTE POR CONDUCTOR Y FECHA LÍMITE
-                      _buildSeccionImporteYFecha(),
-                      const SizedBox(height: 16),
+                      // PASO 4: IMPORTE
+                      _buildPaso4Importe(),
+                      const SizedBox(height: 12),
 
-                      // 5. CONDUCTORES APORTANTES
-                      _buildSeccionAportantes(cantAportantes),
-                      const SizedBox(height: 18),
+                      // PASO 5: FECHA LÍMITE
+                      _buildPaso5FechaLimite(),
+                      const SizedBox(height: 12),
 
-                      // 6. RESUMEN FINANCIERO EN TIEMPO REAL
-                      _buildResumenFinanciero(cantAportantes, importe, totalMeta),
-                      const SizedBox(height: 24),
+                      // PASO 6: CONDUCTORES APORTANTES
+                      _buildPaso6Aportantes(cantAportantes),
+                      const SizedBox(height: 20),
 
-                      // BOTONES: CANCELAR Y GUARDAR
+                      // BOTONES: CANCELAR Y CREAR
                       _buildBotonesAccion(),
                     ],
                   ),
@@ -330,18 +305,70 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   }
 
   // ===========================================================================
-  // 1. CONDUCTOR BENEFICIARIO
+  // ENCABEZADO PRINCIPAL
   // ===========================================================================
-  Widget _buildSeccionBeneficiario() {
+  Widget _buildEncabezado() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Apoyo Económico',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F2B5B),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Crea un fondo solidario para apoyar a un conductor del sindicato en caso de accidente o emergencia.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF64748B),
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF6FF),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFDBEAFE), width: 1.5),
+          ),
+          child: const CustomPaint(
+            painter: _HeartHandPainter(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===========================================================================
+  // CONTENEDOR BASE DE SECCIÓN
+  // ===========================================================================
+  Widget _buildCardPaso({
+    required IconData icono,
+    required String titulo,
+    required String subtitulo,
+    Widget? trailing,
+    Widget? child,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: _beneficiario != null ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
-          width: _beneficiario != null ? 1.5 : 1,
-        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x060F2B5B),
@@ -356,408 +383,304 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(7),
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.person_pin_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 20,
+                child: Icon(
+                  icono,
+                  color: const Color(0xFF2563EB),
+                  size: 16,
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '¿A quién estamos ayudando?',
-                      style: TextStyle(
-                        fontSize: 14.5,
+                      titulo,
+                      style: const TextStyle(
+                        fontSize: 13.5,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF0F2B5B),
                       ),
                     ),
                     Text(
-                      'Conductor beneficiario de este apoyo',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      subtitulo,
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              if (_beneficiario != null)
-                TextButton(
-                  onPressed: _abrirSelectorBeneficiario,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'Cambiar',
-                    style: TextStyle(
-                      color: Color(0xFF2563EB),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing,
+              ],
             ],
           ),
-          const SizedBox(height: 14),
+          if (child != null) ...[
+            const SizedBox(height: 12),
+            child,
+          ],
+        ],
+      ),
+    );
+  }
 
-          if (_beneficiario == null) ...[
-            InkWell(
+  // ===========================================================================
+  // BENEFICIARIO
+  // ===========================================================================
+  Widget _buildPaso1Beneficiario() {
+    return _buildCardPaso(
+      icono: Icons.person_rounded,
+      titulo: '¿A quién estamos ayudando?',
+      subtitulo: 'Conductor beneficiario de este apoyo',
+      child: _beneficiario == null
+          ? InkWell(
               onTap: _abrirSelectorBeneficiario,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: const Color(0xFFCBD5E1),
-                    style: BorderStyle.solid,
-                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.person_search_rounded,
-                      color: Color(0xFF2563EB),
-                      size: 22,
+                    Icon(Icons.person_rounded, color: Color(0xFF2563EB), size: 19),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Seleccionar Conductor Beneficiario',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
                     ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Seleccionar Conductor Beneficiario',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2563EB),
+                    Icon(Icons.chevron_right_rounded, color: Color(0xFF2563EB), size: 20),
+                  ],
+                ),
+              ),
+            )
+          : InkWell(
+              onTap: _abrirSelectorBeneficiario,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  children: [
+                    AvatarConductor(
+                      foto: _beneficiario!['foto']?.toString(),
+                      nombre: _beneficiario!['nombre']?.toString() ?? 'Conductor',
+                      radio: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _beneficiario!['nombre']?.toString() ?? 'Conductor',
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F2B5B),
+                            ),
+                          ),
+                          Text(
+                            'CI: ${_beneficiario!['ci'] ?? 'S/CI'}${_beneficiario!['telefono'] != null ? ' · Cel: ${_beneficiario!['telefono']}' : ''}',
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563EB),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Cambiar',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Al seleccionarlo, se excluirá automáticamente de la lista de aportantes.',
-              style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontStyle: FontStyle.italic),
-            ),
-          ] else ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
-              ),
-              child: Row(
-                children: [
-                  AvatarConductor(
-                    foto: _beneficiario!['foto']?.toString(),
-                    nombre: _beneficiario!['nombre']?.toString() ?? 'Conductor',
-                    radio: 22,
+    );
+  }
+
+  // ===========================================================================
+  // MODALIDAD DEL APORTE
+  // ===========================================================================
+  Widget _buildPaso2Modalidad() {
+    final esVoluntaria = _modalidad == 'voluntaria';
+    return _buildCardPaso(
+      icono: Icons.tune_rounded,
+      titulo: 'Modalidad del Aporte',
+      subtitulo: 'Elige cómo se exigirá y registrará en el informe',
+      child: Row(
+        children: [
+          // OPCIÓN OBLIGATORIA
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _modalidad = 'obligatoria'),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                decoration: BoxDecoration(
+                  color: !esVoluntaria ? const Color(0xFFEFF6FF) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: !esVoluntaria ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                    width: !esVoluntaria ? 1.5 : 1,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _beneficiario!['nombre']?.toString() ?? 'Conductor',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F2B5B),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: !esVoluntaria ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                          width: !esVoluntaria ? 5 : 1.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Obligatoria',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F2B5B),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'CI: ${_beneficiario!['ci'] ?? 'S/CI'}${_beneficiario!['telefono'] != null ? ' · Cel: ${_beneficiario!['telefono']}' : ''}',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2563EB),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.shield_outlined, size: 12, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text(
-                          'Beneficiario',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                          Text(
+                            'Cuota fija para todos los socios',
+                            style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
+          const SizedBox(width: 8),
+
+          // OPCIÓN VOLUNTARIA
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _modalidad = 'voluntaria'),
+              borderRadius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                decoration: BoxDecoration(
+                  color: esVoluntaria ? const Color(0xFFF0FDF4) : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: esVoluntaria ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+                    width: esVoluntaria ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      esVoluntaria ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                      size: 18,
+                      color: esVoluntaria ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voluntaria',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
+                          Text(
+                            'Aporte libre y solidario',
+                            style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (esVoluntaria)
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFD1FAE5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check, size: 12, color: Color(0xFF10B981)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   // ===========================================================================
-  // 2. MODALIDAD DEL APORTE (OBLIGATORIA VS VOLUNTARIA)
+  // TÍTULO Y MOTIVO DEL APOYO
   // ===========================================================================
-  Widget _buildSeccionModalidad() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x060F2B5B),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
+  Widget _buildPaso3TituloYMotivo() {
+    return _buildCardPaso(
+      icono: Icons.edit_note_rounded,
+      titulo: 'Título y Motivo del Apoyo',
+      subtitulo: 'Identifica la ayuda y describe la situación',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.tune_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Modalidad del Aporte',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F2B5B),
-                    ),
-                  ),
-                  Text(
-                    'Elige cómo se exigirá y registrará en el informe',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // TOGGLE VISUAL DE 2 TARJETAS
-          Row(
-            children: [
-              // OPCIÓN 1: OBLIGATORIA
-              Expanded(
-                child: _buildTarjetaOpcionModalidad(
-                  titulo: 'Obligatoria',
-                  subtitulo: 'Cuota fija para todos los socios',
-                  icono: Icons.verified_user_rounded,
-                  activoColor: const Color(0xFF2563EB),
-                  activoBgColor: const Color(0xFFEFF6FF),
-                  esSeleccionado: _modalidad == 'obligatoria',
-                  onTap: () => setState(() => _modalidad = 'obligatoria'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // OPCIÓN 2: VOLUNTARIA
-              Expanded(
-                child: _buildTarjetaOpcionModalidad(
-                  titulo: 'Voluntaria',
-                  subtitulo: 'Aporte libre y solidario',
-                  icono: Icons.volunteer_activism_rounded,
-                  activoColor: const Color(0xFF10B981),
-                  activoBgColor: const Color(0xFFECFDF5),
-                  esSeleccionado: _modalidad == 'voluntaria',
-                  onTap: () => setState(() => _modalidad = 'voluntaria'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Texto explicativo dinámico según la modalidad
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: _modalidad == 'obligatoria'
-                      ? const Color(0xFF2563EB)
-                      : const Color(0xFF10B981),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _modalidad == 'obligatoria'
-                        ? 'Modalidad Obligatoria: Se generará como deuda pendiente fija para cada conductor aportante.'
-                        : 'Modalidad Voluntaria: Los socios aportan según su voluntad o el importe sugerido, sin generar sanciones.',
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTarjetaOpcionModalidad({
-    required String titulo,
-    required String subtitulo,
-    required IconData icono,
-    required Color activoColor,
-    required Color activoBgColor,
-    required bool esSeleccionado,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: esSeleccionado ? activoBgColor : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: esSeleccionado ? activoColor : const Color(0xFFE2E8F0),
-            width: esSeleccionado ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(
-                  icono,
-                  color: esSeleccionado ? activoColor : const Color(0xFF94A3B8),
-                  size: 22,
-                ),
-                if (esSeleccionado)
-                  Icon(Icons.check_circle_rounded, color: activoColor, size: 18),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              titulo,
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.bold,
-                color: esSeleccionado ? activoColor : const Color(0xFF0F2B5B),
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitulo,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // 3. TÍTULO Y MOTIVO / DETALLE
-  // ===========================================================================
-  Widget _buildSeccionTituloYMotivo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x060F2B5B),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.edit_note_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Título y Motivo del Apoyo',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F2B5B),
-                    ),
-                  ),
-                  Text(
-                    'Identifica la ayuda y describe la situación',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // CAMPO TÍTULO
           const Text(
             'Título de la Cuota Solidaria',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: Color(0xFF0F2B5B),
             ),
@@ -765,37 +688,35 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
           const SizedBox(height: 6),
           TextFormField(
             controller: _nombreCtrl,
-            style: const TextStyle(fontSize: 14),
+            style: const TextStyle(fontSize: 13.5),
             decoration: InputDecoration(
               hintText: 'ej. Apoyo Económico: Carlos Mamani',
               hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             ),
             validator: (v) => (v == null || v.trim().isEmpty)
                 ? 'Ingresa un título para identificar la ayuda'
                 : null,
           ),
-          const SizedBox(height: 14),
-
-          // CAMPO MOTIVO / DETALLE
+          const SizedBox(height: 12),
           const Text(
             'Detalle o Causa de la Ayuda',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: Color(0xFF0F2B5B),
             ),
@@ -804,306 +725,36 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
           TextFormField(
             controller: _motivoCtrl,
             minLines: 2,
-            maxLines: 4,
-            style: const TextStyle(fontSize: 13.5),
+            maxLines: 3,
+            maxLength: 250,
+            buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+            style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               hintText: 'ej. Accidente de tránsito en carretera a Viacha, gastos médicos de hospitalización y reposo.',
-              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // CHIPS DE SUGERENCIA RÁPIDA
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _buildChipSugerencia('Accidente de tránsito'),
-              _buildChipSugerencia('Gastos médicos / Hospital'),
-              _buildChipSugerencia('Cirugía de emergencia'),
-              _buildChipSugerencia('Emergencia familiar'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChipSugerencia(String texto) {
-    return ActionChip(
-      label: Text(texto, style: const TextStyle(fontSize: 11.5, color: Color(0xFF1E3A8A))),
-      backgroundColor: const Color(0xFFEFF6FF),
-      side: const BorderSide(color: Color(0xFFBFDBFE), width: 0.8),
-      padding: EdgeInsets.zero,
-      onPressed: () {
-        if (_motivoCtrl.text.trim().isEmpty) {
-          _motivoCtrl.text = texto;
-        } else {
-          _motivoCtrl.text = '${_motivoCtrl.text.trim()}, $texto';
-        }
-      },
-    );
-  }
-
-  // ===========================================================================
-  // 4. IMPORTE POR CONDUCTOR Y FECHA LÍMITE
-  // ===========================================================================
-  Widget _buildSeccionImporteYFecha() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x060F2B5B),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.payments_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _modalidad == 'obligatoria' ? 'Importe Fijo por Chofer' : 'Importe Sugerido por Chofer',
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F2B5B),
-                    ),
-                  ),
-                  const Text(
-                    'Monto en Bolivianos (Bs.)',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // IMPORTE BS
-          TextFormField(
-            controller: _importeCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F2B5B)),
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              prefixIcon: const Padding(
-                padding: EdgeInsets.only(left: 14, right: 8),
-                child: Text(
-                  'Bs.',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2563EB),
-                  ),
-                ),
-              ),
-              prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-              hintText: 'ej. 20',
-              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontWeight: FontWeight.normal),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Ingresa el importe';
-              final val = double.tryParse(v.trim());
-              if (val == null || val <= 0) return 'Ingresa un monto válido mayor a 0';
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-
-          // FECHA LÍMITE (OPCIONAL)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Fecha Límite de Recepción',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F2B5B)),
-                  ),
-                  Text(
-                    'Plazo para recaudar la ayuda',
-                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-              InkWell(
-                onTap: _seleccionarFechaLimite,
                 borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today_rounded, size: 15, color: Color(0xFF0F2B5B)),
-                      const SizedBox(width: 8),
-                      Text(
-                        _fechaLimite != null ? _dateFmt.format(_fechaLimite!) : 'Sin límite',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F2B5B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // 5. CONDUCTORES APORTANTES
-  // ===========================================================================
-  Widget _buildSeccionAportantes(int cantAportantes) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x060F2B5B),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.people_alt_rounded,
-                      color: Color(0xFF2563EB),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Conductores Aportantes',
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F2B5B),
-                        ),
-                      ),
-                      Text(
-                        '$cantAportantes compañeros participando',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ],
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
               ),
-              OutlinedButton.icon(
-                onPressed: _abrirSelectorAportantes,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F2B5B),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                ),
-                icon: const Icon(Icons.checklist_rounded, size: 16),
-                label: const Text('Modificar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             ),
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _beneficiario != null
-                        ? 'Se han seleccionado todos los socios activos excepto a ${_beneficiario!['nombre']}.'
-                        : 'Todos los conductores activos están seleccionados para aportar.',
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 4),
+          const Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Máx. 250 caracteres',
+              style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
             ),
           ),
         ],
@@ -1112,140 +763,141 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   }
 
   // ===========================================================================
-  // 6. RESUMEN FINANCIERO EN TIEMPO REAL
+  // PASO 4: IMPORTE
   // ===========================================================================
-  Widget _buildResumenFinanciero(int cantAportantes, double importe, double totalMeta) {
-    final nombreBen = _beneficiario?['nombre']?.toString() ?? 'Sin seleccionar';
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F2B5B), Color(0xFF1E3A8A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  // IMPORTE
+  // ===========================================================================
+  Widget _buildPaso4Importe() {
+    final esVoluntaria = _modalidad == 'voluntaria';
+    return _buildCardPaso(
+      icono: Icons.payments_rounded,
+      titulo: esVoluntaria ? 'Importe Sugerido por Chofer' : 'Importe Fijo por Chofer',
+      subtitulo: 'Monto en Bolivianos (Bs.)',
+      child: TextFormField(
+        controller: _importeCtrl,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F2B5B)),
+        decoration: InputDecoration(
+          prefixIcon: const Padding(
+            padding: EdgeInsets.only(left: 14, right: 8),
+            child: Text(
+              'Bs.',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2563EB),
+              ),
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+          hintText: 'ej. 20',
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontWeight: FontWeight.normal),
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x330F2B5B),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
+        validator: (v) {
+          if (v == null || v.trim().isEmpty) return 'Ingresa el importe';
+          final val = double.tryParse(v.trim());
+          if (val == null || val <= 0) return 'Ingresa un monto válido mayor a 0';
+          return null;
+        },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.volunteer_activism_rounded, color: Color(0xFF93C5FD), size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Resumen de la Ayuda',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _modalidad == 'obligatoria'
-                      ? const Color(0xFF2563EB)
-                      : const Color(0xFF10B981),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _modalidad == 'obligatoria' ? 'OBLIGATORIA' : 'VOLUNTARIA',
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0x33FFFFFF)),
-          const SizedBox(height: 12),
+    );
+  }
 
-          // FILA BENEFICIARIO
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Beneficiario:', style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8))),
-              Flexible(
-                child: Text(
-                  nombreBen,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+  // ===========================================================================
+  // FECHA LÍMITE DE RECEPCIÓN
+  // ===========================================================================
+  Widget _buildPaso5FechaLimite() {
+    return _buildCardPaso(
+      icono: Icons.calendar_month_rounded,
+      titulo: 'Fecha Límite de Recepción',
+      subtitulo: 'Plazo para recaudar la ayuda',
+      trailing: InkWell(
+        onTap: _seleccionarFechaLimite,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
           ),
-          const SizedBox(height: 6),
-
-          // FILA APORTANTES
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Conductores aportantes:', style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8))),
+              const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF0F2B5B)),
+              const SizedBox(width: 6),
               Text(
-                '$cantAportantes choferes',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          // FILA CUOTA INDIVIDUAL
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _modalidad == 'obligatoria' ? 'Cuota por chofer:' : 'Cuota sugerida:',
-                style: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
-              ),
-              Text(
-                'Bs. ${importe.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0x33FFFFFF)),
-          const SizedBox(height: 10),
-
-          // META TOTAL ESTIMADA
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              const Text(
-                'Meta a Recaudar:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF93C5FD)),
-              ),
-              Text(
-                'Bs. ${totalMeta.toStringAsFixed(2)}',
+                _formatearFecha(_fechaLimite),
                 style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF34D399),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F2B5B),
                 ),
               ),
             ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // CONDUCTORES APORTANTES
+  // ===========================================================================
+  Widget _buildPaso6Aportantes(int cantAportantes) {
+    return _buildCardPaso(
+      icono: Icons.people_alt_rounded,
+      titulo: 'Conductores Aportantes',
+      subtitulo: '$cantAportantes compañeros participando',
+      trailing: OutlinedButton.icon(
+        onPressed: _abrirSelectorAportantes,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF0F2B5B),
+          side: const BorderSide(color: Color(0xFFCBD5E1)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: const Icon(Icons.tune_rounded, size: 14),
+        label: const Text('Modificar', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFBBF7D0)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.check_circle_outline_rounded, size: 16, color: Color(0xFF10B981)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _beneficiario != null
+                    ? 'Todos los conductores activos excepto ${_beneficiario!['nombre']} están seleccionados para aportar.'
+                    : 'Todos los conductores activos están seleccionados para aportar.',
+                style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1256,48 +908,122 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
   Widget _buildBotonesAccion() {
     return Row(
       children: [
+        // Botón Cancelar
         Expanded(
           child: SizedBox(
-            height: 50,
+            height: 48,
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF64748B),
-                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               onPressed: _guardando ? null : () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: Color(0xFF0F2B5B),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
             ),
           ),
         ),
+
         const SizedBox(width: 14),
+
+        // Botón Guardar
         Expanded(
-          flex: 2,
           child: SizedBox(
-            height: 50,
-            child: ElevatedButton.icon(
+            height: 48,
+            child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F2B5B),
+                backgroundColor: const Color(0xFF00B074), // Verde idéntico a las demás pantallas
                 foregroundColor: Colors.white,
+                elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 3,
               ),
               onPressed: _guardando ? null : _guardar,
-              icon: _guardando
+              child: _guardando
                   ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : const Icon(Icons.volunteer_activism_rounded, size: 20),
-              label: Text(
-                _guardando ? 'Creando...' : 'Crear Apoyo Económico',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-              ),
+                  : const Text(
+                      'Guardar',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
             ),
           ),
         ),
       ],
     );
   }
+}
+
+/// Dibuja la ilustración personalizada del encabezado: mano azul sosteniendo un corazón verde.
+class _HeartHandPainter extends CustomPainter {
+  const _HeartHandPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Corazón verde
+    final heartPaint = Paint()
+      ..color = const Color(0xFF10B981)
+      ..style = PaintingStyle.fill;
+
+    final heartPath = Path();
+    final hx = w * 0.50;
+    final hy = h * 0.35;
+    final hs = w * 0.28;
+    heartPath.moveTo(hx, hy + hs * 0.45);
+    heartPath.cubicTo(
+      hx - hs * 0.65, hy - hs * 0.2,
+      hx - hs * 0.65, hy - hs * 0.75,
+      hx, hy - hs * 0.35,
+    );
+    heartPath.cubicTo(
+      hx + hs * 0.65, hy - hs * 0.75,
+      hx + hs * 0.65, hy - hs * 0.2,
+      hx, hy + hs * 0.45,
+    );
+    heartPath.close();
+    canvas.drawPath(heartPath, heartPaint);
+
+    // Mano en azul marino
+    final handPaint = Paint()
+      ..color = const Color(0xFF0F2B5B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final handPath = Path();
+    // Muñeca / manga
+    handPath.moveTo(w * 0.22, h * 0.72);
+    handPath.lineTo(w * 0.36, h * 0.72);
+    // Palma que sube
+    handPath.moveTo(w * 0.30, h * 0.72);
+    handPath.cubicTo(
+      w * 0.40, h * 0.82,
+      w * 0.66, h * 0.82,
+      w * 0.78, h * 0.64,
+    );
+    handPath.lineTo(w * 0.72, h * 0.58);
+    // Dedo pulgar
+    handPath.moveTo(w * 0.40, h * 0.72);
+    handPath.quadraticBezierTo(w * 0.46, h * 0.58, w * 0.56, h * 0.62);
+
+    canvas.drawPath(handPath, handPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

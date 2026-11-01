@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/database_helper.dart';
+import '../services/sesion_service.dart';
+import 'asistencia/puntos_control_screen.dart';
 
 class GpsScreen extends StatefulWidget {
   const GpsScreen({super.key});
@@ -27,7 +29,7 @@ class _GpsScreenState extends State<GpsScreen> {
     setState(() => _isLoading = true);
     try {
       final conductores = await DatabaseHelper.instance.conductoresConAuto();
-      final puntos = await DatabaseHelper.instance.listar('punto_de_control');
+      final puntos = await DatabaseHelper.instance.obtenerPuntosControl(soloActivos: false);
 
       if (mounted) {
         setState(() {
@@ -44,6 +46,13 @@ class _GpsScreenState extends State<GpsScreen> {
     }
   }
 
+  void _centrarPunto(Map<String, dynamic> punto) {
+    final lat = (punto['latitud'] as num?)?.toDouble() ?? -16.53453;
+    final lon = (punto['longitud'] as num?)?.toDouble() ?? -68.19071;
+    final radio = (punto['radio_m'] as num?)?.toDouble() ?? 100.0;
+    _mapController.move(LatLng(lat, lon), radio <= 15 ? 18.5 : 15.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final conductorTexto = _conductorSeleccionado != null
@@ -52,6 +61,17 @@ class _GpsScreenState extends State<GpsScreen> {
     final estadoTexto = _conductorSeleccionado != null
         ? 'Estado: ${_conductorSeleccionado!['estado']?.toString().toUpperCase() ?? 'ACTIVO'}'
         : 'Base de datos sin registros';
+
+    // Puntos para polilínea de ruta oficial Continental (Cruce Villadela <-> Teleférico Mirador)
+    final LatLng coordVilladela = LatLng(
+      (_puntos.isNotEmpty ? (_puntos[0]['latitud'] as num?)?.toDouble() : null) ?? -16.53453,
+      (_puntos.isNotEmpty ? (_puntos[0]['longitud'] as num?)?.toDouble() : null) ?? -68.19071,
+    );
+
+    final LatLng coordTeleferico = LatLng(
+      (_puntos.length > 1 ? (_puntos[1]['latitud'] as num?)?.toDouble() : null) ?? -16.5050,
+      (_puntos.length > 1 ? (_puntos[1]['longitud'] as num?)?.toDouble() : null) ?? -68.1635,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F9FD),
@@ -62,25 +82,36 @@ class _GpsScreenState extends State<GpsScreen> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('GPS - Monitoreo de Rutas', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16)),
+        title: const Text(
+          'Monitoreo GPS - Ruta Continental',
+          style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         actions: [
+          if (SesionService.instance.esSuperadmin)
+            IconButton(
+              icon: const Icon(Icons.tune, color: Color(0xFF3B82F6)),
+              tooltip: 'Calibrar Puntos A y B',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PuntosControlScreen()),
+                ).then((_) => _cargarDatos());
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF1E3A8A)),
+            tooltip: 'Actualizar',
             onPressed: _cargarDatos,
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Image.asset('assets/images/logo.png', height: 24, errorBuilder: (c, e, s) => const Icon(Icons.public, color: Color(0xFF1E3A8A))),
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Stack(
         children: [
-          // Mapa
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(-16.5050, -68.1600),
+            options: MapOptions(
+              initialCenter: coordVilladela,
               initialZoom: 14.0,
             ),
             children: [
@@ -88,97 +119,126 @@ class _GpsScreenState extends State<GpsScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.continental',
               ),
+
+              // Geocercas circulares de los puntos de control en SQLite
+              CircleLayer(
+                circles: _puntos.map((p) {
+                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.53453;
+                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.19071;
+                  final radio = ((p['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 500.0);
+                  final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
+
+                  return CircleMarker(
+                    point: LatLng(lat, lon),
+                    radius: radio,
+                    useRadiusInMeter: true,
+                    color: (esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6)).withOpacity(0.18),
+                    borderColor: esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6),
+                    borderStrokeWidth: 2,
+                  );
+                }).toList(),
+              ),
+
+              // Ruta tentativa entre Cruce Villadela y Teleférico
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: const [
-                      LatLng(-16.5100, -68.1550),
-                      LatLng(-16.5050, -68.1600),
-                      LatLng(-16.4950, -68.1400),
-                    ],
-                    color: const Color(0xFF3B82F6),
+                    points: [coordVilladela, coordTeleferico],
+                    color: const Color(0xFF3B82F6).withOpacity(0.8),
                     strokeWidth: 4.0,
                   ),
                 ],
               ),
+
+              // Marcadores de puntos de control
               MarkerLayer(
-                markers: [
-                  Marker(
-                    point: const LatLng(-16.5050, -68.1600),
-                    width: 40,
-                    height: 40,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF3B82F6), width: 2),
+                markers: _puntos.map((p) {
+                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.53453;
+                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.19071;
+                  final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
+                  final color = esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
+
+                  return Marker(
+                    point: LatLng(lat, lon),
+                    width: 44,
+                    height: 44,
+                    child: GestureDetector(
+                      onTap: () => _centrarPunto(p),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: color, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        ),
+                        child: Icon(
+                          esAsistencia ? Icons.how_to_reg : Icons.directions_bus,
+                          color: color,
+                          size: 22,
+                        ),
                       ),
-                      child: const Icon(Icons.directions_bus, color: Color(0xFF3B82F6), size: 20),
                     ),
-                  ),
-                ],
+                  );
+                }).toList(),
               ),
             ],
           ),
-          
-          // Header Overlay
+
+          // Header Overlay con Conductor Seleccionado
           Positioned(
             top: 10,
-            left: 20,
-            right: 20,
-            child: Column(
-              children: [
-                // Info Pill con datos reales de la BD
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Color(0xFFEFF6FF),
+                    child: Icon(Icons.person, color: Color(0xFF3B82F6), size: 16),
                   ),
-                  child: Row(
-                    children: [
-                      const CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Color(0xFFEFF6FF),
-                        child: Icon(Icons.person, color: Color(0xFF3B82F6), size: 16),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(conductorTexto, style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis),
-                            Text(estadoTexto, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-                            if (_isLoading)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 4.0),
-                                child: LinearProgressIndicator(minHeight: 2),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (_conductores.length > 1)
-                        PopupMenuButton<Map<String, dynamic>>(
-                          icon: const Icon(Icons.swap_horiz, color: Color(0xFF3B82F6)),
-                          tooltip: 'Cambiar conductor',
-                          onSelected: (c) => setState(() => _conductorSeleccionado = c),
-                          itemBuilder: (ctx) => _conductores.map((c) => PopupMenuItem(
-                            value: c,
-                            child: Text('${c['nombre']} (${c['placa'] ?? 'S/Placa'})'),
-                          )).toList(),
-                        ),
-                    ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(conductorTexto, style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis),
+                        Text(estadoTexto, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                        if (_isLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4.0),
+                            child: LinearProgressIndicator(minHeight: 2),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (_conductores.length > 1)
+                    PopupMenuButton<Map<String, dynamic>>(
+                      icon: const Icon(Icons.swap_horiz, color: Color(0xFF3B82F6)),
+                      tooltip: 'Cambiar conductor',
+                      onSelected: (c) => setState(() => _conductorSeleccionado = c),
+                      itemBuilder: (ctx) => _conductores.map((c) => PopupMenuItem(
+                        value: c,
+                        child: Text('${c['nombre']} (${c['placa'] ?? 'S/Placa'})'),
+                      )).toList(),
+                    ),
+                ],
+              ),
             ),
           ),
-          
-          // Map controls
+
+          // Controles de zoom
           Positioned(
-            right: 20,
-            bottom: 180,
+            right: 16,
+            bottom: 170,
             child: Column(
               children: [
                 Container(
@@ -207,54 +267,91 @@ class _GpsScreenState extends State<GpsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 FloatingActionButton.small(
-                  onPressed: () {
-                    _mapController.move(const LatLng(-16.5050, -68.1600), 14.0);
-                  },
+                  onPressed: () => _mapController.move(coordVilladela, 15.0),
                   backgroundColor: Colors.white,
                   child: const Icon(Icons.my_location, color: Color(0xFF3B82F6)),
                 ),
               ],
             ),
           ),
-          
-          // Bottom Sheet: Puntos de control registrados en SQLite
+
+          // Tarjeta inferior con Puntos de control y geocercas
           Positioned(
-            bottom: 20,
-            left: 20,
-            right: 20,
+            bottom: 16,
+            left: 16,
+            right: 16,
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 4)),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Puntos de control', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Puntos de Parada (A y B)',
+                        style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      if (SesionService.instance.esSuperadmin)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const PuntosControlScreen()),
+                            ).then((_) => _cargarDatos());
+                          },
+                          child: const Text('Configurar A y B', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   if (_puntos.isEmpty)
-                    const Text('No hay puntos de control en la base de datos.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12))
+                    const Text('No hay puntos en la base de datos.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12))
                   else
                     Column(
-                      children: _puntos.take(3).map((p) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.location_on, color: Color(0xFF10B981), size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  p['nombre']?.toString() ?? '',
-                                  style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.w600, fontSize: 13),
+                      children: _puntos.map((p) {
+                        final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
+                        final color = esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
+                        final radio = p['radio_m'] ?? 100;
+
+                        return InkWell(
+                          onTap: () => _centrarPunto(p),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: Row(
+                              children: [
+                                Icon(Icons.location_on, color: color, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${p['nombre']} (Radio $radio m)',
+                                    style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.w600, fontSize: 12),
+                                  ),
                                 ),
-                              ),
-                            ],
+                                if (esAsistencia)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFECFDF5),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'ASISTENCIA',
+                                      style: TextStyle(color: Color(0xFF10B981), fontSize: 9, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         );
                       }).toList(),

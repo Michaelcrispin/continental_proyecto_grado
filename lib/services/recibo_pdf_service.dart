@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'economia_repo.dart';
 
 /// Servicio para la generación, previsualización, impresión y exportación en PDF
 /// de los Recibos Oficiales de Cobranza (Vista E3 del Plan de Control Económico).
@@ -642,13 +643,26 @@ class ReciboPdfService {
     required int totalConductores,
     required int cantPagados,
     required int cantDeben,
+    String? categoria,
+    List<Map<String, dynamic>>? cuotasCronograma,
     String emitidoPor = 'Secretaría de Hacienda',
   }) async {
     final pdf = pw.Document();
     final fechaHoy = DateTime.now();
     final fechaStr = '${fechaHoy.day.toString().padLeft(2, '0')}/${fechaHoy.month.toString().padLeft(2, '0')}/${fechaHoy.year} ${fechaHoy.hour.toString().padLeft(2, '0')}:${fechaHoy.minute.toString().padLeft(2, '0')}';
     final totalMeta = totalRecaudado + totalFalta;
-    final porcentajeRecaudado = totalMeta > 0 ? (totalRecaudado / totalMeta * 100) : 0.0;
+
+    // Determinar si es Canastón / Cuota con múltiples fechas programadas
+    final listaCronograma = cuotasCronograma ?? const [];
+    final fechasUnicasSet = <String>{};
+    for (final row in listaCronograma) {
+      final f = row['fecha_programada']?.toString().trim() ?? '';
+      if (f.isNotEmpty) fechasUnicasSet.add(f);
+    }
+    final fechasUnicas = fechasUnicasSet.toList()..sort();
+    final esCanaston =
+        (categoria?.toLowerCase() == 'canaston' || fechasUnicas.length > 1) &&
+            fechasUnicas.isNotEmpty;
 
     pw.ThemeData tema;
     try {
@@ -721,244 +735,521 @@ class ReciboPdfService {
           );
         },
         build: (pw.Context context) {
+          // Extraer Beneficiario y Modalidad si existen
+          String? beneficiario;
+          String? modalidad;
+          String? motivoTexto;
+
+          if (motivoCuota != null && motivoCuota.trim().isNotEmpty) {
+            if (motivoCuota.contains('|')) {
+              for (final part in motivoCuota.split('|')) {
+                final p = part.trim();
+                if (p.startsWith('Beneficiario:')) {
+                  beneficiario = p.replaceFirst('Beneficiario:', '').trim();
+                } else if (p.startsWith('Modalidad:')) {
+                  modalidad = p.replaceFirst('Modalidad:', '').trim();
+                } else if (p.startsWith('Motivo:')) {
+                  motivoTexto = p.replaceFirst('Motivo:', '').trim();
+                }
+              }
+            } else {
+              motivoTexto = motivoCuota.trim();
+            }
+          }
+
           return [
-            // 1. TÍTULO Y DETALLE DE LA CUOTA
+            // 1. BANNER / TÍTULO CENTRADO
+            pw.Center(
+              child: pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 5.5,
+                ),
+                decoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFF0F3A78),
+                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+                ),
+                child: pw.Text(
+                  'INFORME DE PAGOS',
+                  style: pw.TextStyle(
+                    fontSize: 13,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 9),
+
+            // 2. DASHBOARD RESUMEN DE COBROS (UN CUADRADO CON LOS 3 TOTALES)
             pw.Container(
-              padding: const pw.EdgeInsets.all(10),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 9,
+              ),
               decoration: pw.BoxDecoration(
-                color: PdfColors.blue50,
-                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                border: pw.Border.all(color: PdfColors.blue300, width: 0.8),
+                color: const PdfColor.fromInt(0xFFF8FAFD),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(9)),
+                border: pw.Border.all(
+                  color: const PdfColor.fromInt(0xFFCBD5E1),
+                  width: 0.85,
+                ),
               ),
               child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  // TOTAL PAGADO
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text(
+                          'TOTAL PAGADO',
+                          style: pw.TextStyle(
+                            fontSize: 8,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF15803D),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        pw.SizedBox(height: 2.5),
+                        pw.Text(
+                          'Bs. ${totalRecaudado.toStringAsFixed(2)}',
+                          style: pw.TextStyle(
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF16A34A),
+                          ),
+                        ),
+                        pw.SizedBox(height: 1),
+                        pw.Text(
+                          '$cantPagados conductores',
+                          style: const pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColor.fromInt(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.Container(
+                    width: 1,
+                    height: 32,
+                    color: const PdfColor.fromInt(0xFFCBD5E1),
+                  ),
+                  // TOTAL QUE FALTA
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text(
+                          'TOTAL QUE FALTA',
+                          style: pw.TextStyle(
+                            fontSize: 8,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFFDC2626),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        pw.SizedBox(height: 2.5),
+                        pw.Text(
+                          'Bs. ${totalFalta.toStringAsFixed(2)}',
+                          style: pw.TextStyle(
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFFDC2626),
+                          ),
+                        ),
+                        pw.SizedBox(height: 1),
+                        pw.Text(
+                          '$cantDeben pendientes',
+                          style: const pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColor.fromInt(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.Container(
+                    width: 1,
+                    height: 32,
+                    color: const PdfColor.fromInt(0xFFCBD5E1),
+                  ),
+                  // TOTAL GENERAL
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text(
+                          'TOTAL GENERAL',
+                          style: pw.TextStyle(
+                            fontSize: 8,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF0F3A78),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        pw.SizedBox(height: 2.5),
+                        pw.Text(
+                          'Bs. ${totalMeta.toStringAsFixed(2)}',
+                          style: pw.TextStyle(
+                            fontSize: 13,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF0F3A78),
+                          ),
+                        ),
+                        pw.SizedBox(height: 1),
+                        pw.Text(
+                          '$totalConductores conductores',
+                          style: const pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColor.fromInt(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 9),
+
+            // 3. CUOTA A EVALUAR Y MONTO FIJADO
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: pw.BoxDecoration(
+                color: const PdfColor.fromInt(0xFFF9FBFE),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
+                border: pw.Border.all(
+                  color: const PdfColor.fromInt(0xFF93C5FD),
+                  width: 0.9,
+                ),
+              ),
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text(
-                          'CUOTA EVALUADA:',
-                          style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                          'Cuota a Evaluar:',
+                          style: pw.TextStyle(
+                            fontSize: 9,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF0F2B5B),
+                          ),
                         ),
+                        pw.SizedBox(height: 1),
                         pw.Text(
                           tituloCuota,
-                          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                            color: const PdfColor.fromInt(0xFF0F2B5B),
+                          ),
                         ),
-                        if (motivoCuota != null && motivoCuota.trim().isNotEmpty) ...[
+                        if (beneficiario != null &&
+                            beneficiario.isNotEmpty) ...[
                           pw.SizedBox(height: 3),
-                          if (motivoCuota.contains('|')) ...[
-                            ...motivoCuota.split('|').map((part) {
-                              final p = part.trim();
-                              final esModalidad = p.contains('Modalidad:');
-                              final esBeneficiario = p.contains('Beneficiario:');
-                              return pw.Padding(
-                                padding: const pw.EdgeInsets.only(top: 1.5),
+                          pw.Row(
+                            children: [
+                              pw.SizedBox(
+                                width: 68,
                                 child: pw.Text(
-                                  p,
-                                  style: pw.TextStyle(
-                                    fontSize: 8.5,
-                                    fontWeight: (esModalidad || esBeneficiario)
-                                        ? pw.FontWeight.bold
-                                        : pw.FontWeight.normal,
-                                    color: p.contains('Obligatoria')
-                                        ? PdfColors.blue800
-                                        : (p.contains('Voluntaria')
-                                            ? PdfColors.green800
-                                            : PdfColors.grey800),
+                                  'Beneficiario:',
+                                  style: const pw.TextStyle(
+                                    fontSize: 8,
+                                    color: PdfColor.fromInt(0xFF475569),
                                   ),
                                 ),
-                              );
-                            }),
-                          ] else ...[
-                            pw.Text(
-                              'Motivo: ${motivoCuota.trim()}',
-                              style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey800),
-                            ),
-                          ],
+                              ),
+                              pw.Text(
+                                beneficiario,
+                                style: pw.TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: const PdfColor.fromInt(0xFF0F2B5B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (modalidad != null && modalidad.isNotEmpty) ...[
+                          pw.SizedBox(height: 2),
+                          pw.Row(
+                            children: [
+                              pw.SizedBox(
+                                width: 68,
+                                child: pw.Text(
+                                  'Modalidad:',
+                                  style: const pw.TextStyle(
+                                    fontSize: 8,
+                                    color: PdfColor.fromInt(0xFF475569),
+                                  ),
+                                ),
+                              ),
+                              pw.Text(
+                                modalidad,
+                                style: pw.TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: modalidad.toLowerCase() == 'voluntaria'
+                                      ? const PdfColor.fromInt(0xFF15803D)
+                                      : const PdfColor.fromInt(0xFF1D4ED8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (motivoTexto != null &&
+                            motivoTexto.isNotEmpty &&
+                            motivoTexto != 'Apoyo económico solidario') ...[
+                          pw.SizedBox(height: 2),
+                          pw.Row(
+                            children: [
+                              pw.SizedBox(
+                                width: 68,
+                                child: pw.Text(
+                                  'Motivo:',
+                                  style: const pw.TextStyle(
+                                    fontSize: 8,
+                                    color: PdfColor.fromInt(0xFF475569),
+                                  ),
+                                ),
+                              ),
+                              pw.Expanded(
+                                child: pw.Text(
+                                  motivoTexto,
+                                  style: const pw.TextStyle(
+                                    fontSize: 8,
+                                    color: PdfColor.fromInt(0xFF1E293B),
+                                  ),
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ],
                     ),
                   ),
+                  pw.Container(
+                    width: 1,
+                    height: 44,
+                    color: const PdfColor.fromInt(0xFF93C5FD),
+                    margin: const pw.EdgeInsets.symmetric(horizontal: 14),
+                  ),
                   pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
                       pw.Text(
-                        'MONTO FIJADO:',
-                        style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                        'Monto Fijado:',
+                        style: pw.TextStyle(
+                          fontSize: 8.5,
+                          fontWeight: pw.FontWeight.bold,
+                          color: const PdfColor.fromInt(0xFF0F2B5B),
+                        ),
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        'Bs. ${montoSugerido.toStringAsFixed(2)}',
+                        style: pw.TextStyle(
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          color: const PdfColor.fromInt(0xFF0B3C73),
+                        ),
                       ),
                       pw.Text(
-                        'Bs. ${montoSugerido.toStringAsFixed(2)} c/u',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
+                        'c/u',
+                        style: const pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColor.fromInt(0xFF64748B),
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: 12),
 
-            // 2. TRES TARJETAS DE RESUMEN EJECUTIVO
-            pw.Row(
-              children: [
-                // Pagaron
-                pw.Expanded(
-                  child: pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.green50,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                      border: pw.Border.all(color: PdfColors.green600, width: 0.8),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('TOTAL RECAUDADO', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
-                        pw.SizedBox(height: 2),
-                        pw.Text('Bs. ${totalRecaudado.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
-                        pw.Text('$cantPagados de $totalConductores pagaron (${porcentajeRecaudado.toStringAsFixed(1)}%)', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.green900)),
-                      ],
-                    ),
-                  ),
+            // 3. TABLA DE CONDUCTORES (POR MESES SI ES CANASTÓN, O TABLA ÚNICA SI ES APOYO ECONÓMICO)
+            if (esCanaston)
+              ..._buildTablasCanastonPorMes(
+                conductores: conductores,
+                fechasUnicas: fechasUnicas,
+                listaCronograma: listaCronograma,
+              )
+            else
+              pw.Table(
+                border: pw.TableBorder.all(
+                  color: const PdfColor.fromInt(0xFFCBD5E1),
+                  width: 0.6,
                 ),
-                pw.SizedBox(width: 8),
-                // Falta cobrar
-                pw.Expanded(
-                  child: pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.red50,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                      border: pw.Border.all(color: PdfColors.red600, width: 0.8),
+                columnWidths: {
+                  0: const pw.FixedColumnWidth(24),
+                  1: const pw.FlexColumnWidth(3.4),
+                  2: const pw.FlexColumnWidth(1.4),
+                  3: const pw.FlexColumnWidth(1.4),
+                  4: const pw.FlexColumnWidth(1.6),
+                  5: const pw.FlexColumnWidth(1.6),
+                  6: const pw.FlexColumnWidth(1.3),
+                },
+                children: [
+                  // Encabezados (se repiten en cada hoja automáticamente)
+                  pw.TableRow(
+                    repeat: true,
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColor.fromInt(0xFF0F3A78),
                     ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('TOTAL PENDIENTE', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
-                        pw.SizedBox(height: 2),
-                        pw.Text('Bs. ${totalFalta.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
-                        pw.Text('$cantDeben conductores con deuda', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.red900)),
-                      ],
-                    ),
-                  ),
-                ),
-                pw.SizedBox(width: 8),
-                // Total meta
-                pw.Expanded(
-                  child: pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.blue50,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                      border: pw.Border.all(color: PdfColors.blue800, width: 0.8),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('TOTAL DE TODO', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                        pw.SizedBox(height: 2),
-                        pw.Text('Bs. ${totalMeta.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                        pw.Text('$totalConductores conductores activos', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.blue900)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 14),
-
-            // 3. TABLA DE TODOS LOS CONDUCTORES
-            pw.Text(
-              'DETALLE INDIVIDUAL DE CONDUCTORES',
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
-            ),
-            pw.SizedBox(height: 6),
-
-            pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-              columnWidths: {
-                0: const pw.FixedColumnWidth(24),
-                1: const pw.FlexColumnWidth(3.5),
-                2: const pw.FlexColumnWidth(1.6),
-                3: const pw.FlexColumnWidth(1.8),
-                4: const pw.FlexColumnWidth(1.8),
-                5: const pw.FlexColumnWidth(1.8),
-                6: const pw.FlexColumnWidth(1.5),
-              },
-              children: [
-                // Encabezados
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.blue900),
-                  children: [
-                    _buildCell('#', isHeader: true, align: pw.TextAlign.center),
-                    _buildCell('Conductor', isHeader: true),
-                    _buildCell('C.I.', isHeader: true),
-                    _buildCell('Total (Bs.)', isHeader: true, align: pw.TextAlign.right),
-                    _buildCell('Pagó (Bs.)', isHeader: true, align: pw.TextAlign.right),
-                    _buildCell('Falta (Bs.)', isHeader: true, align: pw.TextAlign.right),
-                    _buildCell('Estado', isHeader: true, align: pw.TextAlign.center),
-                  ],
-                ),
-                // Filas de cada conductor
-                ...conductores.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final c = entry.value;
-                  final nombre = c['conductor_nombre']?.toString() ?? 'Conductor';
-                  final ci = c['conductor_ci']?.toString() ?? '';
-                  final pagado = (c['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-                  final falta = (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
-                  final total = (c['monto_total'] as num?)?.toDouble() ?? 0.0;
-                  final alDia = falta <= 0.001;
-                  final bgFila = i % 2 == 1 ? PdfColors.grey100 : PdfColors.white;
-
-                  return pw.TableRow(
-                    decoration: pw.BoxDecoration(color: bgFila),
                     children: [
-                      _buildCell('${i + 1}', align: pw.TextAlign.center),
-                      _buildCell(nombre, esBold: true),
-                      _buildCell(ci),
-                      _buildCell(total.toStringAsFixed(2), align: pw.TextAlign.right),
-                      _buildCell(pagado.toStringAsFixed(2), align: pw.TextAlign.right, color: PdfColors.green800, esBold: pagado > 0),
-                      _buildCell(falta.toStringAsFixed(2), align: pw.TextAlign.right, color: falta > 0 ? PdfColors.red800 : PdfColors.grey600),
-                      _buildCell(alDia ? 'AL DÍA' : 'DEBE', align: pw.TextAlign.center, color: alDia ? PdfColors.green800 : PdfColors.red800, esBold: true),
+                      _buildCell('#', isHeader: true, align: pw.TextAlign.center),
+                      _buildCell('Conductor', isHeader: true, align: pw.TextAlign.left),
+                      _buildCell('C.I.', isHeader: true, align: pw.TextAlign.center),
+                      _buildCell('Monto (Bs.)', isHeader: true, align: pw.TextAlign.center),
+                      _buildCell('Estado', isHeader: true, align: pw.TextAlign.center),
+                      _buildCell('Fecha de Pago', isHeader: true, align: pw.TextAlign.center),
+                      _buildCell('Método', isHeader: true, align: pw.TextAlign.center),
                     ],
-                  );
-                }),
-                // Fila de Totales
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.blue100),
-                  children: [
-                    _buildCell('', isHeader: true),
-                    _buildCell('TOTALES', isHeader: true, esBold: true),
-                    _buildCell('$totalConductores cond.', isHeader: true),
-                    _buildCell(totalMeta.toStringAsFixed(2), isHeader: true, align: pw.TextAlign.right, esBold: true),
-                    _buildCell(totalRecaudado.toStringAsFixed(2), isHeader: true, align: pw.TextAlign.right, color: PdfColors.green900, esBold: true),
-                    _buildCell(totalFalta.toStringAsFixed(2), isHeader: true, align: pw.TextAlign.right, color: PdfColors.red900, esBold: true),
-                    _buildCell('$cantPagados/$totalConductores', isHeader: true, align: pw.TextAlign.center, esBold: true),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 24),
+                  ),
+                  // Filas de cada conductor
+                  ...conductores.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final c = entry.value;
+                    final nombre =
+                        c['conductor_nombre']?.toString() ?? 'Conductor';
+                    final ci = c['conductor_ci']?.toString() ?? '';
+                    final falta =
+                        (c['monto_falta'] as num?)?.toDouble() ?? 0.0;
+                    final total =
+                        (c['monto_total'] as num?)?.toDouble() ?? montoSugerido;
+                    final alDia = falta <= 0.001;
+                    final fechaPago = c['fecha_pago']?.toString();
+                    final metodoPago = c['metodo_pago']?.toString();
+                    final bgFila = i % 2 == 1
+                        ? const PdfColor.fromInt(0xFFF8FAFC)
+                        : PdfColors.white;
 
-            // 4. FIRMAS
+                    return pw.TableRow(
+                      decoration: pw.BoxDecoration(color: bgFila),
+                      children: [
+                        _buildCell('${i + 1}', align: pw.TextAlign.center, esBold: true),
+                        _buildCell(nombre, esBold: false, align: pw.TextAlign.left),
+                        _buildCell(ci.isNotEmpty ? ci : '--', align: pw.TextAlign.center),
+                        _buildCell(total.toStringAsFixed(2), align: pw.TextAlign.center),
+                        // Badge Estado
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                          child: pw.Center(
+                            child: pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                              decoration: pw.BoxDecoration(
+                                color: alDia
+                                    ? const PdfColor.fromInt(0xFFDCFCE7)
+                                    : const PdfColor.fromInt(0xFFFEE2E2),
+                                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                              ),
+                              child: pw.Text(
+                                alDia ? 'PAGADO' : 'NO PAGADO',
+                                style: pw.TextStyle(
+                                  fontSize: 6.8,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: alDia
+                                      ? const PdfColor.fromInt(0xFF15803D)
+                                      : const PdfColor.fromInt(0xFFDC2626),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _buildCell(
+                          alDia ? _formatearFechaDdMmYyyy(fechaPago) : '--',
+                          align: pw.TextAlign.center,
+                          color: alDia ? null : const PdfColor.fromInt(0xFF94A3B8),
+                        ),
+                        _buildCell(
+                          alDia ? _formatearMetodo(metodoPago) : '--',
+                          align: pw.TextAlign.center,
+                          color: alDia ? null : const PdfColor.fromInt(0xFF94A3B8),
+                        ),
+                      ],
+                    );
+                  }),
+                  // Fila de Totales
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColor.fromInt(0xFFDCEAFB),
+                    ),
+                    children: [
+                      _buildCell('TOTALES:', esBold: true, align: pw.TextAlign.left, color: const PdfColor.fromInt(0xFF0F2B5B)),
+                      _buildCell('$totalConductores CONDUCTORES', esBold: true, align: pw.TextAlign.left, color: const PdfColor.fromInt(0xFF0F2B5B)),
+                      _buildCell('', align: pw.TextAlign.center),
+                      _buildCell('Bs. ${totalMeta.toStringAsFixed(2)}', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFF0F2B5B)),
+                      _buildCell('', align: pw.TextAlign.center),
+                      _buildCell('$cantPagados PAGOS', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFF1D4ED8)),
+                      _buildCell('$cantDeben NO PAGOS', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFFDC2626)),
+                    ],
+                  ),
+                ],
+              ),
+            // 4. FIRMAS (BLOQUE INDIVISIBLE QUE SE ADAPTA A LA HOJA CORRESPONDIENTE)
+            pw.SizedBox(height: 24),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
               children: [
                 pw.Column(
                   children: [
-                    pw.Container(width: 150, height: 1, color: PdfColors.grey600),
+                    pw.Container(
+                      width: 150,
+                      height: 1,
+                      color: const PdfColor.fromInt(0xFF0F3A78),
+                    ),
                     pw.SizedBox(height: 4),
-                    pw.Text('Secretario de Hacienda', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('Control Económico', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600)),
+                    pw.Text(
+                      'Secretaría de Hacienda',
+                      style: pw.TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFF0F2B5B),
+                      ),
+                    ),
+                    pw.Text(
+                      'Control Económico',
+                      style: const pw.TextStyle(
+                        fontSize: 7.5,
+                        color: PdfColor.fromInt(0xFF475569),
+                      ),
+                    ),
                   ],
                 ),
                 pw.Column(
                   children: [
-                    pw.Container(width: 150, height: 1, color: PdfColors.grey600),
+                    pw.Container(
+                      width: 150,
+                      height: 1,
+                      color: const PdfColor.fromInt(0xFF0F3A78),
+                    ),
                     pw.SizedBox(height: 4),
-                    pw.Text('Secretario General', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('Sindicato Continental Trufi', style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey600)),
+                    pw.Text(
+                      'Secretaría General',
+                      style: pw.TextStyle(
+                        fontSize: 8.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFF0F2B5B),
+                      ),
+                    ),
+                    pw.Text(
+                      'Sindicato Continental Trufi',
+                      style: const pw.TextStyle(
+                        fontSize: 7.5,
+                        color: PdfColor.fromInt(0xFF475569),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -969,6 +1260,348 @@ class ReciboPdfService {
     );
 
     return pdf.save();
+  }
+
+  /// Construye una tabla separada por cada MES para cuotas periódicas (Canastón),
+  /// sin columna C.I., con columnas de fechas de ese mes y estilo de planilla Excel.
+  static List<pw.Widget> _buildTablasCanastonPorMes({
+    required List<Map<String, dynamic>> conductores,
+    required List<String> fechasUnicas,
+    required List<Map<String, dynamic>> listaCronograma,
+  }) {
+    // Mapa rápido: idConductor -> (fecha -> montoPagado)
+    final Map<String, Map<String, double>> pagosMatriz = {};
+    for (final row in listaCronograma) {
+      final idCond = row['id_conductor']?.toString() ?? '';
+      final fecha = row['fecha_programada']?.toString().trim() ?? '';
+      final pagado = (row['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+      if (idCond.isEmpty || fecha.isEmpty) continue;
+      pagosMatriz.putIfAbsent(idCond, () => {});
+      pagosMatriz[idCond]![fecha] = (pagosMatriz[idCond]![fecha] ?? 0.0) + pagado;
+    }
+
+    // Agrupar fechas por mes (YYYY-MM) manteniendo orden cronológico
+    final Map<String, List<String>> fechasPorMes = {};
+    for (final f in fechasUnicas) {
+      final claveMes = f.length >= 7 ? f.substring(0, 7) : 'GENERAL';
+      fechasPorMes.putIfAbsent(claveMes, () => []).add(f);
+    }
+
+    // Paletas de colores mensuales inspiradas en su planilla Excel
+    const paletasMes = <Map<String, int>>[
+      {
+        'banner': 0xFF1E3A8A,
+        'headerFecha': 0xFFB8CCE4,
+        'celdaPagada': 0xFFDCE6F1,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF9A3412,
+        'headerFecha': 0xFFFABF8F,
+        'celdaPagada': 0xFFFDE9D9,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF3F6212,
+        'headerFecha': 0xFFC4D79B,
+        'celdaPagada': 0xFFEBF1DE,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF881337,
+        'headerFecha': 0xFFE6B8B7,
+        'celdaPagada': 0xFFF2DCDB,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF155E75,
+        'headerFecha': 0xFF92CDDC,
+        'celdaPagada': 0xFFDAEEF3,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF581C87,
+        'headerFecha': 0xFFCCC0DA,
+        'celdaPagada': 0xFFE4DFEC,
+        'textoHeader': 0xFF0F172A,
+      },
+      {
+        'banner': 0xFF854D0E,
+        'headerFecha': 0xFFFFF2CC,
+        'celdaPagada': 0xFFFEF9E7,
+        'textoHeader': 0xFF0F172A,
+      },
+    ];
+
+    final widgets = <pw.Widget>[];
+    int mesIdx = 0;
+
+    for (final entryMes in fechasPorMes.entries) {
+      final claveMes = entryMes.key;
+      final todasFechasMes = entryMes.value;
+      final paleta = paletasMes[mesIdx % paletasMes.length];
+      final colorBanner = PdfColor.fromInt(paleta['banner']!);
+      final colorHeaderFecha = PdfColor.fromInt(paleta['headerFecha']!);
+      final colorCeldaPagada = PdfColor.fromInt(paleta['celdaPagada']!);
+      final colorTextoHeader = PdfColor.fromInt(paleta['textoHeader']!);
+      mesIdx++;
+
+      // Si un mismo mes tuviera más de 7 fechas, lo dividimos en bloques de máximo 7 columnas
+      const maxColsPorTabla = 7;
+      for (int offset = 0; offset < todasFechasMes.length; offset += maxColsPorTabla) {
+        final fin = (offset + maxColsPorTabla < todasFechasMes.length)
+            ? offset + maxColsPorTabla
+            : todasFechasMes.length;
+        final fechasBloque = todasFechasMes.sublist(offset, fin);
+        final sufijoBloque = todasFechasMes.length > maxColsPorTabla
+            ? ' (Parte ${(offset ~/ maxColsPorTabla) + 1})'
+            : '';
+
+        if (widgets.isNotEmpty) {
+          widgets.add(pw.SizedBox(height: 14));
+        }
+
+        // Encabezado del Mes
+        widgets.add(
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: pw.BoxDecoration(
+              color: colorBanner,
+              borderRadius: const pw.BorderRadius.vertical(
+                top: pw.Radius.circular(6),
+              ),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'MES: ${_nombreMesAnio(claveMes)}$sufijoBloque',
+                  style: pw.TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                pw.Text(
+                  '${fechasBloque.length} ${fechasBloque.length == 1 ? 'fecha programada' : 'fechas programadas'}',
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        // Configurar anchos de columnas: NRO | NOMBRES Y APELLIDOS | Fechas... | TOTAL MES
+        final colWidths = <int, pw.TableColumnWidth>{
+          0: const pw.FixedColumnWidth(24),
+          1: const pw.FlexColumnWidth(3.1),
+        };
+        for (int fIdx = 0; fIdx < fechasBloque.length; fIdx++) {
+          colWidths[2 + fIdx] = const pw.FlexColumnWidth(1.1);
+        }
+        colWidths[2 + fechasBloque.length] = const pw.FlexColumnWidth(1.25);
+
+        // Sumatorias por columna de fecha para la fila inferior
+        final totalesPorFecha = List<double>.filled(fechasBloque.length, 0.0);
+        double totalGeneralMes = 0.0;
+
+        final filasConductores = conductores.asMap().entries.map((entryCond) {
+          final idx = entryCond.key;
+          final c = entryCond.value;
+          final idCond = c['id_conductor']?.toString() ?? '';
+          final nombre = (c['conductor_nombre']?.toString() ?? 'Conductor').toUpperCase();
+          final bgBase = idx % 2 == 1
+              ? const PdfColor.fromInt(0xFFF8FAFC)
+              : PdfColors.white;
+
+          double totalConductorMes = 0.0;
+          final celdasFechas = <pw.Widget>[];
+
+          for (int fIdx = 0; fIdx < fechasBloque.length; fIdx++) {
+            final fStr = fechasBloque[fIdx];
+            final pagado = pagosMatriz[idCond]?[fStr] ?? 0.0;
+            if (pagado > 0.001) {
+              totalesPorFecha[fIdx] += pagado;
+              totalConductorMes += pagado;
+              totalGeneralMes += pagado;
+              celdasFechas.add(
+                pw.Container(
+                  color: colorCeldaPagada,
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    _formatearMontoCorto(pagado),
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      fontSize: 7.8,
+                      fontWeight: pw.FontWeight.bold,
+                      color: const PdfColor.fromInt(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              );
+            } else {
+              // Celda en blanco si no pagó (igual que en su Excel)
+              celdasFechas.add(
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                  child: pw.Text(''),
+                ),
+              );
+            }
+          }
+
+          return pw.TableRow(
+            decoration: pw.BoxDecoration(color: bgBase),
+            children: [
+              _buildCell('${idx + 1}', align: pw.TextAlign.center, esBold: true),
+              _buildCell(nombre, align: pw.TextAlign.left, esBold: false),
+              ...celdasFechas,
+              _buildCell(
+                totalConductorMes > 0.001
+                    ? 'Bs. ${_formatearMontoCorto(totalConductorMes)}'
+                    : '',
+                align: pw.TextAlign.center,
+                esBold: true,
+                color: const PdfColor.fromInt(0xFF0F2B5B),
+              ),
+            ],
+          );
+        }).toList();
+
+        widgets.add(
+          pw.Table(
+            border: pw.TableBorder.all(
+              color: const PdfColor.fromInt(0xFF64748B),
+              width: 0.6,
+            ),
+            columnWidths: colWidths,
+            children: [
+              // Fila de encabezados (se repite automáticamente si pasa a otra hoja)
+              pw.TableRow(
+                repeat: true,
+                decoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFF0F3A78),
+                ),
+                children: [
+                  _buildCell('NRO', isHeader: true, align: pw.TextAlign.center),
+                  _buildCell('NOMBRES Y APELLIDOS', isHeader: true, align: pw.TextAlign.left),
+                  ...fechasBloque.map(
+                    (fStr) => pw.Container(
+                      color: colorHeaderFecha,
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                      alignment: pw.Alignment.center,
+                      child: pw.Text(
+                        _etiquetaDiaDeMes(fStr),
+                        textAlign: pw.TextAlign.center,
+                        style: pw.TextStyle(
+                          fontSize: 7.2,
+                          fontWeight: pw.FontWeight.bold,
+                          color: colorTextoHeader,
+                        ),
+                      ),
+                    ),
+                  ),
+                  _buildCell('TOTAL MES', isHeader: true, align: pw.TextAlign.center),
+                ],
+              ),
+              ...filasConductores,
+              // Fila de Totales del Mes
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(
+                  color: PdfColor.fromInt(0xFFDCEAFB),
+                ),
+                children: [
+                  _buildCell('', align: pw.TextAlign.center),
+                  _buildCell(
+                    'TOTALES DEL MES:',
+                    esBold: true,
+                    align: pw.TextAlign.right,
+                    color: const PdfColor.fromInt(0xFF0F2B5B),
+                  ),
+                  ...totalesPorFecha.map(
+                    (sumaFecha) => _buildCell(
+                      sumaFecha > 0.001 ? _formatearMontoCorto(sumaFecha) : '0',
+                      esBold: true,
+                      align: pw.TextAlign.center,
+                      color: const PdfColor.fromInt(0xFF0F2B5B),
+                    ),
+                  ),
+                  _buildCell(
+                    'Bs. ${_formatearMontoCorto(totalGeneralMes)}',
+                    esBold: true,
+                    align: pw.TextAlign.center,
+                    color: const PdfColor.fromInt(0xFF15803D),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  static String _nombreMesAnio(String claveYm) {
+    const mesesCompletos = [
+      'ENERO',
+      'FEBRERO',
+      'MARZO',
+      'ABRIL',
+      'MAYO',
+      'JUNIO',
+      'JULIO',
+      'AGOSTO',
+      'SEPTIEMBRE',
+      'OCTUBRE',
+      'NOVIEMBRE',
+      'DICIEMBRE',
+    ];
+    final partes = claveYm.split('-');
+    if (partes.length >= 2) {
+      final anio = partes[0];
+      final mes = int.tryParse(partes[1]) ?? 1;
+      if (mes >= 1 && mes <= 12) {
+        return '${mesesCompletos[mes - 1]} $anio';
+      }
+    }
+    return claveYm.toUpperCase();
+  }
+
+  static String _etiquetaDiaDeMes(String fechaIso) {
+    const mesesCortos = [
+      'ENE',
+      'FEB',
+      'MAR',
+      'ABR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AGOS',
+      'SEPT',
+      'OCT',
+      'NOV',
+      'DIC',
+    ];
+    try {
+      final d = DateTime.parse(fechaIso.trim());
+      return '${d.day} DE ${mesesCortos[d.month - 1]}';
+    } catch (_) {
+      return fechaIso;
+    }
+  }
+
+  static String _formatearMontoCorto(double valor) {
+    if ((valor - valor.roundToDouble()).abs() < 0.005) {
+      return valor.round().toString();
+    }
+    return valor.toStringAsFixed(2);
   }
 
   static pw.Widget _buildCell(
@@ -992,6 +1625,25 @@ class ReciboPdfService {
     );
   }
 
+  static String _formatearFechaDdMmYyyy(dynamic f) {
+    if (f == null || f.toString().trim().isEmpty) return '--';
+    try {
+      final d = DateTime.parse(f.toString().trim());
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    } catch (_) {
+      return f.toString();
+    }
+  }
+
+  static String _formatearMetodo(dynamic m) {
+    if (m == null || m.toString().trim().isEmpty) return '--';
+    final str = m.toString().trim().toLowerCase();
+    if (str == 'qr') return 'QR';
+    if (str == 'efectivo') return 'Efectivo';
+    if (str == 'transferencia') return 'Transf.';
+    return m.toString();
+  }
+
   /// Abre la pantalla de visualización / impresión / compartir del informe de cuotas de conductores.
   static Future<void> mostrarVistaPreviaInformeCuotas(
     BuildContext context, {
@@ -1004,7 +1656,19 @@ class ReciboPdfService {
     required int totalConductores,
     required int cantPagados,
     required int cantDeben,
+    String? idTipoCuota,
+    String? categoria,
   }) async {
+    List<Map<String, dynamic>>? cuotasCronograma;
+    if (idTipoCuota != null && idTipoCuota.trim().isNotEmpty) {
+      try {
+        cuotasCronograma = await EconomiaRepo.instance
+            .obtenerMatrizCronogramaPorCuota(idTipoCuota);
+      } catch (_) {
+        cuotasCronograma = null;
+      }
+    }
+
     final bytes = await generarPdfInformeCuotasConductores(
       tituloCuota: tituloCuota,
       motivoCuota: motivoCuota,
@@ -1015,6 +1679,8 @@ class ReciboPdfService {
       totalConductores: totalConductores,
       cantPagados: cantPagados,
       cantDeben: cantDeben,
+      categoria: categoria,
+      cuotasCronograma: cuotasCronograma,
     );
     if (!context.mounted) return;
 

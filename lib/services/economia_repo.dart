@@ -470,7 +470,23 @@ class EconomiaRepo {
               AND (q2.monto - q2.monto_pagado) > 0.001
             ORDER BY COALESCE(q2.fecha_vencimiento, q2.fecha) ASC, q2.created_at ASC
             LIMIT 1
-          ) AS proxima_id_cuota
+          ) AS proxima_id_cuota,
+          (
+            SELECT p.fecha 
+            FROM pago p 
+            JOIN cuota q3 ON q3.id_cuota = p.id_cuota 
+            WHERE q3.id_conductor = c.id_conductor AND q3.id_tipo_cuota = t.id_tipo_cuota 
+            ORDER BY p.fecha DESC, p.created_at DESC 
+            LIMIT 1
+          ) AS fecha_pago,
+          (
+            SELECT p.metodo 
+            FROM pago p 
+            JOIN cuota q3 ON q3.id_cuota = p.id_cuota 
+            WHERE q3.id_conductor = c.id_conductor AND q3.id_tipo_cuota = t.id_tipo_cuota 
+            ORDER BY p.fecha DESC, p.created_at DESC 
+            LIMIT 1
+          ) AS metodo_pago
         FROM conductor c
         JOIN cuota q ON q.id_conductor = c.id_conductor AND q.id_tipo_cuota = ?
         JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
@@ -498,7 +514,9 @@ class EconomiaRepo {
           1 AS cuotas_pendientes,
           NULL AS proxima_fecha_pago,
           t.monto_sugerido AS proximo_monto_pago,
-          NULL AS proxima_id_cuota
+          NULL AS proxima_id_cuota,
+          NULL AS fecha_pago,
+          NULL AS metodo_pago
         FROM conductor c
         CROSS JOIN tipo_cuota t ON t.id_tipo_cuota = ?
         WHERE LOWER(c.estado) = 'activo'
@@ -536,6 +554,27 @@ class EconomiaRepo {
       ORDER BY COALESCE(q.fecha_vencimiento, q.fecha) ASC, q.created_at ASC
     ''';
     return await db.rawQuery(sql, [idTipoCuota, idConductor]);
+  }
+
+  /// Obtiene todas las cuotas programadas por fecha y conductor para un tipo de cuota
+  /// (usado para construir la matriz mensual por fechas del informe PDF de Canastón).
+  Future<List<Map<String, dynamic>>> obtenerMatrizCronogramaPorCuota(
+    String idTipoCuota,
+  ) async {
+    final db = await _dh.database;
+    return await db.rawQuery('''
+      SELECT 
+        q.id_cuota,
+        q.id_conductor,
+        c.nombre AS conductor_nombre,
+        COALESCE(q.fecha_vencimiento, q.fecha) AS fecha_programada,
+        q.monto,
+        COALESCE(q.monto_pagado, 0.0) AS monto_pagado
+      FROM cuota q
+      JOIN conductor c ON c.id_conductor = q.id_conductor
+      WHERE q.id_tipo_cuota = ? AND LOWER(c.estado) = 'activo'
+      ORDER BY COALESCE(q.fecha_vencimiento, q.fecha) ASC, c.nombre ASC
+    ''', [idTipoCuota]);
   }
 
   /// Obtiene la información completa de un pago/recibo para previsualización e impresión en PDF.

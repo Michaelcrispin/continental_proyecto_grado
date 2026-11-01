@@ -7,9 +7,9 @@ import '../reuniones_screen.dart';
 /// Pantalla Completa para Seleccionar la Categoría de Cuota a Crear.
 /// Reemplaza el modal flotante genérico y ofrece una interfaz visual de tarjetas:
 /// - 🎁 Ahorro Navideño (Canastón) [DISPONIBLE]: abre el formulario especializado de Canastón.
-/// - 🤝 Apoyo Económico [PRÓXIMAMENTE]
-/// - ⚽ Deportes y Eventos [PRÓXIMAMENTE]
-/// - 🛠️ Infraestructura / Pro-Fondos [PRÓXIMAMENTE]
+/// - 🤝 Apoyo Económico [DISPONIBLE]: abre el formulario de auxilio y apoyo solidario.
+/// - ⚖️ Multas por Falta a Reunión [DISPONIBLE]: gestión de asistencia y multas.
+/// - 🔄 Pasanaku [NO DISPONIBLE]
 class SeleccionarCategoriaScreen extends StatelessWidget {
   const SeleccionarCategoriaScreen({super.key});
 
@@ -163,48 +163,37 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              // 4. TARJETA DEPORTES Y EVENTOS (PRÓXIMAMENTE)
+              // 4. TARJETA PASANAKU (NO DISPONIBLE)
               _buildCategoryCard(
                 context,
-                title: 'Deportes y Campeonatos',
+                title: 'Pasanaku',
                 description:
-                    'Fondos para campeonatos internos o interinstitucionales, uniformes y actividades recreativas.',
-                icon: Icons.sports_soccer_rounded,
-                iconColor: const Color(0xFF0D9488),
-                iconBgColor: const Color(0xFFF0FDFA),
+                    'Sistema de ahorro rotativo y crédito mutuo por turnos o sorteo entre los afiliados.',
+                icon: Icons.currency_exchange_rounded,
+                iconColor: const Color(0xFF0284C7),
+                iconBgColor: const Color(0xFFF0F9FF),
                 borderColor: const Color(0xFFE2E8F0),
-                badgeText: 'Próximamente',
+                badgeText: 'No disponible',
                 badgeBgColor: const Color(0xFFF1F5F9),
                 badgeTextColor: const Color(0xFF64748B),
                 isAvailable: false,
                 onTap: () {
-                  _mostrarAvisoProximamente(
-                    context,
-                    'La categoría "Deportes y Campeonatos" estará disponible próximamente.',
-                  );
-                },
-              ),
-
-              const SizedBox(height: 14),
-
-              // 4. TARJETA INFRAESTRUCTURA / PRO-FONDOS (PRÓXIMAMENTE)
-              _buildCategoryCard(
-                context,
-                title: 'Infraestructura / Pro-Fondos',
-                description:
-                    'Aportes extraordinarios para mantenimiento de sedes, paradas o equipamiento sindical.',
-                icon: Icons.construction_rounded,
-                iconColor: const Color(0xFF7C3AED),
-                iconBgColor: const Color(0xFFF5F3FF),
-                borderColor: const Color(0xFFE2E8F0),
-                badgeText: 'Próximamente',
-                badgeBgColor: const Color(0xFFF1F5F9),
-                badgeTextColor: const Color(0xFF64748B),
-                isAvailable: false,
-                onTap: () {
-                  _mostrarAvisoProximamente(
-                    context,
-                    'La categoría "Infraestructura" estará disponible próximamente.',
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.white, size: 20),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'La categoría "Pasanaku" no se encuentra disponible actualmente.',
+                            ),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Color(0xFF0F2B5B),
+                      duration: Duration(seconds: 2),
+                    ),
                   );
                 },
               ),
@@ -328,22 +317,6 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  void _mostrarAvisoProximamente(BuildContext context, String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.white, size: 20),
-            const SizedBox(width: 10),
-            Expanded(child: Text(mensaje)),
-          ],
-        ),
-        backgroundColor: const Color(0xFF0F2B5B),
-        duration: const Duration(seconds: 2),
       ),
     );
   }

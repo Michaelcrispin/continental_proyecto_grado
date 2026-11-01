@@ -4,6 +4,7 @@ import '../services/economia_repo.dart';
 import '../services/sesion_service.dart';
 import '../widgets/app_background.dart';
 import '../widgets/avatar_conductor.dart';
+import 'crear_reunion_screen.dart';
 import 'cuotas/cuota_detalle_screen.dart';
 
 /// Vista E10: Reuniones (Asambleas, Control de Asistencia y Cierre con Multas Automáticas)
@@ -45,224 +46,23 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
     }
   }
 
-  Future<void> _dialogoCrearReunion() async {
-    final temaCtrl = TextEditingController(text: 'Asamblea General Ordinaria');
-    final multaCtrl = TextEditingController(text: '50.00');
-    DateTime fechaSeleccionada = DateTime.now();
-    bool iniciarTodosPresentes = true;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogCtx, setModalState) {
-          final fechaStr =
-              '${fechaSeleccionada.year.toString().padLeft(4, '0')}-${fechaSeleccionada.month.toString().padLeft(2, '0')}-${fechaSeleccionada.day.toString().padLeft(2, '0')}';
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
-              children: [
-                ContainerIcon(icon: Icons.groups_rounded, color: Color(0xFF1E3A8A), bg: Color(0xFFEFF6FF)),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Nueva Reunión / Asamblea',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F2B5B)),
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Sugerencias rápidas:',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _chipTema('Asamblea General', temaCtrl, setModalState),
-                      _chipTema('Asamblea Extraordinaria', temaCtrl, setModalState),
-                      _chipTema('Reunión de Rutas', temaCtrl, setModalState),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // TEMA
-                  TextField(
-                    controller: temaCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Tema de la Reunión *',
-                      hintText: 'Ej. Asamblea de Fin de Mes',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // FECHA CON SELECTOR
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: dialogCtx,
-                        initialDate: fechaSeleccionada,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                        builder: (context, child) {
-                          return Theme(
-                            data: ThemeData.light().copyWith(
-                              colorScheme: const ColorScheme.light(primary: Color(0xFF1E3A8A)),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) {
-                        setModalState(() => fechaSeleccionada = picked);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Fecha de la reunión', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                              Text(fechaStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            ],
-                          ),
-                          const Icon(Icons.calendar_today_rounded, color: Color(0xFF1E3A8A), size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // MULTA
-                  TextField(
-                    controller: multaCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Multa por Falta *',
-                      prefixText: 'Bs. ',
-                      helperText: 'Monto que se cobrará a los que no asistan',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // SWITCH INICIAR TODOS PRESENTES
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: SwitchListTile(
-                      dense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      title: const Text(
-                        'Marcar a todos como Presentes al iniciar',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: const Text(
-                        'Ahorra tiempo: solo marcarás Falta a los que no vinieron',
-                        style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
-                      ),
-                      value: iniciarTodosPresentes,
-                      activeColor: const Color(0xFF059669),
-                      onChanged: (val) {
-                        setModalState(() => iniciarTodosPresentes = val);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E3A8A),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () async {
-                  final tema = temaCtrl.text.trim();
-                  final multa = double.tryParse(multaCtrl.text.trim()) ?? 50.0;
-
-                  if (tema.isEmpty) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(content: Text('El tema de la reunión es obligatorio.')),
-                    );
-                    return;
-                  }
-
-                  Navigator.pop(ctx);
-                  try {
-                    final id = await EconomiaRepo.instance.crearReunion(
-                      tema: tema,
-                      fecha: fechaStr,
-                      montoMulta: multa,
-                      estadoInicial: iniciarTodosPresentes ? 'presente' : 'falta',
-                    );
-                    await _cargarReuniones();
-                    if (!mounted) return;
-                    final reunionCreada = _reuniones.firstWhere((r) => r['id_reunion'].toString() == id);
-                    _abrirPasarLista(reunionCreada);
-                  } catch (e) {
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error al crear reunión: $e'), backgroundColor: Colors.red),
-                    );
-                  }
-                },
-                child: const Text('Crear y Llamar Lista'),
-              ),
-            ],
-          );
-        },
-      ),
+  Future<void> _abrirCrearReunion() async {
+    final String? idCreado = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const CrearReunionScreen()),
     );
-  }
 
-  Widget _chipTema(String texto, TextEditingController ctrl, StateSetter setModalState) {
-    return InkWell(
-      onTap: () {
-        setModalState(() {
-          ctrl.text = texto;
-        });
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEFF6FF),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFBFDBFE)),
-        ),
-        child: Text(
-          texto,
-          style: const TextStyle(fontSize: 10.5, color: Color(0xFF1E40AF), fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
+    if (idCreado != null) {
+      await _cargarReuniones();
+      if (!mounted) return;
+      final reunionCreada = _reuniones.firstWhere(
+        (r) => r['id_reunion'].toString() == idCreado,
+        orElse: () => <String, dynamic>{},
+      );
+      if (reunionCreada.isNotEmpty) {
+        _abrirPasarLista(reunionCreada);
+      }
+    }
   }
 
   void _abrirPasarLista(Map<String, dynamic> reunion) {
@@ -630,15 +430,22 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(height: 3),
-                                                Row(
+                                                Wrap(
+                                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                                  spacing: 6,
+                                                  runSpacing: 2,
                                                   children: [
-                                                    const Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF64748B)),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      fecha,
-                                                      style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                                    Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF64748B)),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          fecha,
+                                                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(width: 8),
                                                     Text(
                                                       '• Multa: Bs. ${multa.toStringAsFixed(0)}',
                                                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFDC2626)),
@@ -721,8 +528,10 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                       const SizedBox(height: 14),
 
                                       // BOTONES DE ACCIÓN
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
+                                      Wrap(
+                                        alignment: WrapAlignment.end,
+                                        spacing: 8,
+                                        runSpacing: 8,
                                         children: [
                                           OutlinedButton.icon(
                                             style: OutlinedButton.styleFrom(
@@ -735,8 +544,7 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                             label: Text(esCerrada ? 'Ver Asistencia' : 'Llamar Lista'),
                                             onPressed: () => _abrirPasarLista(r),
                                           ),
-                                          if (puedeGestionar && !esCerrada) ...[
-                                            const SizedBox(width: 8),
+                                          if (puedeGestionar && !esCerrada)
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: const Color(0xFFDC2626),
@@ -749,9 +557,7 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                               label: const Text('Cerrar y Multar'),
                                               onPressed: () => _cerrarReunionConfirmar(r),
                                             ),
-                                          ],
-                                          if (esCerrada && idTipoCuota != null && faltas > 0) ...[
-                                            const SizedBox(width: 8),
+                                          if (esCerrada && idTipoCuota != null && faltas > 0)
                                             ElevatedButton.icon(
                                               style: ElevatedButton.styleFrom(
                                                 backgroundColor: const Color(0xFF0F2B5B),
@@ -770,7 +576,7 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                                       cuota: {
                                                         'id_tipo_cuota': idTipoCuota,
                                                         'nombre': 'Multa: $tema',
-                                                        'descripcion': 'Multas por falta a la asamblea "$tema" ($fecha)',
+                                                        'descripcion': 'Multas por falta a la reunión "$tema" ($fecha)',
                                                         'monto_sugerido': multa,
                                                         'categoria': 'multa',
                                                       },
@@ -779,7 +585,6 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                                                 );
                                               },
                                             ),
-                                          ],
                                         ],
                                       ),
                                     ],
@@ -799,7 +604,7 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add),
               label: const Text('Nueva Reunión', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: _dialogoCrearReunion,
+              onPressed: _abrirCrearReunion,
             )
           : null,
     );

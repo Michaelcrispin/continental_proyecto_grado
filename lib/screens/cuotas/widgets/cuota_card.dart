@@ -21,21 +21,23 @@ class CuotaCard extends StatelessWidget {
     final descripcion = cuota['descripcion']?.toString();
     final montoSugerido = (cuota['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
     final estado = cuota['estado_calculado']?.toString().toLowerCase() ?? 'pendiente';
+    final totalConductores = (cuota['total_conductores'] as num?)?.toInt() ?? 0;
+    final fechaCreacion = _formatearFechaCreacion(cuota['created_at']);
 
     final categoria = cuota['categoria']?.toString();
     final theme = _getCuotaTheme(nombre, index, categoria: categoria);
     final badge = _getBadgeInfo(estado);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x080F2B5B),
-            blurRadius: 12,
+            color: Color(0x0A0F2B5B),
+            blurRadius: 14,
             offset: Offset(0, 4),
           ),
         ],
@@ -49,7 +51,7 @@ class CuotaCard extends StatelessWidget {
           splashColor: theme.color.withOpacity(0.08),
           highlightColor: theme.color.withOpacity(0.04),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -59,8 +61,8 @@ class CuotaCard extends StatelessWidget {
                   children: [
                     // Círculo con ícono
                     Container(
-                      width: 46,
-                      height: 46,
+                      width: 50,
+                      height: 50,
                       decoration: BoxDecoration(
                         color: theme.bgColor,
                         shape: BoxShape.circle,
@@ -68,36 +70,37 @@ class CuotaCard extends StatelessWidget {
                       child: Icon(
                         theme.icon,
                         color: theme.color,
-                        size: 24,
+                        size: 26,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
 
-                    // Título y motivo
+                    // Título y motivo detallado
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 child: Text(
                                   nombre,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 15.5,
+                                    fontSize: 16,
                                     color: Color(0xFF0F2B5B),
+                                    height: 1.25,
                                   ),
-                                  maxLines: 1,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: 8),
                               // Badge de estado ('En cobro', 'Pendiente', 'Completada')
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
+                                  horizontal: 10,
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
@@ -119,7 +122,7 @@ class CuotaCard extends StatelessWidget {
                                     Text(
                                       badge.label,
                                       style: TextStyle(
-                                        fontSize: 11,
+                                        fontSize: 11.5,
                                         fontWeight: FontWeight.w600,
                                         color: badge.textColor,
                                       ),
@@ -129,57 +132,108 @@ class CuotaCard extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 5),
                           Text(
                             (descripcion != null && descripcion.trim().isNotEmpty)
                                 ? descripcion.trim()
                                 : 'Sin motivo registrado',
                             style: const TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 13,
                               color: Color(0xFF64748B),
+                              height: 1.35,
                             ),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          if (fechaCreacion.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_today_rounded,
+                                  size: 12,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Creada el $fechaCreacion',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 // Separador tenue
                 const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
-                // Fila inferior: Monto por chofer + Flecha indicadora
+                // Fila inferior: Monto por chofer + Choferes participantes + Flecha
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    RichText(
-                      text: TextSpan(
-                        text: 'Bs. ${_formatearMonto(montoSugerido)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Color(0xFF0F2B5B),
+                    Row(
+                      children: [
+                        RichText(
+                          text: TextSpan(
+                            text: 'Bs. ${_formatearMonto(montoSugerido)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15.5,
+                              color: Color(0xFF0F2B5B),
+                            ),
+                            children: const [
+                              TextSpan(
+                                text: ' por chofer',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.normal,
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        children: const [
-                          TextSpan(
-                            text: ' por chofer',
-                            style: TextStyle(
-                              fontWeight: FontWeight.normal,
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
+                        if (totalConductores > 0) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.people_alt_rounded, size: 13, color: Color(0xFF64748B)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$totalConductores choferes',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
                     const Icon(
                       Icons.chevron_right_rounded,
                       color: Color(0xFF2563EB),
-                      size: 22,
+                      size: 24,
                     ),
                   ],
                 ),
@@ -196,6 +250,27 @@ class CuotaCard extends StatelessWidget {
       return monto.toInt().toString();
     }
     return monto.toStringAsFixed(2);
+  }
+
+  static String _formatearFechaCreacion(dynamic raw) {
+    if (raw == null) return '';
+    final str = raw.toString().trim();
+    if (str.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(str);
+      final dia = dt.day.toString().padLeft(2, '0');
+      final mes = dt.month.toString().padLeft(2, '0');
+      final anio = dt.year.toString();
+      return '$dia/$mes/$anio';
+    } catch (_) {
+      if (str.length >= 10 && str.contains('-')) {
+        final partes = str.substring(0, 10).split('-');
+        if (partes.length == 3) {
+          return '${partes[2]}/${partes[1]}/${partes[0]}';
+        }
+      }
+      return str;
+    }
   }
 
   static _CuotaTheme _getCuotaTheme(String nombre, int index, {String? categoria}) {

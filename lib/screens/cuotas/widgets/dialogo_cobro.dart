@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/economia_repo.dart';
-import '../../../services/recibo_pdf_service.dart';
 import '../../../services/sesion_service.dart';
+import '../../../widgets/app_snackbar.dart';
 import '../../../widgets/avatar_conductor.dart';
 
 /// Diálogo modal desacoplado para registrar cobro (completo o abono parcial)
@@ -32,8 +32,8 @@ class DialogoCobro extends StatefulWidget {
     double? montoInicial,
     String? idCuotaEspecifica,
     String? conceptoCuota,
-  }) {
-    return showDialog<bool>(
+  }) async {
+    final resultado = await showDialog<dynamic>(
       context: context,
       barrierDismissible: false,
       builder: (_) => DialogoCobro(
@@ -43,6 +43,277 @@ class DialogoCobro extends StatefulWidget {
         montoInicial: montoInicial,
         idCuotaEspecifica: idCuotaEspecifica,
         conceptoCuota: conceptoCuota,
+      ),
+    );
+
+    if (resultado is Map && context.mounted) {
+      final mapaCobro = Map<String, dynamic>.from(resultado);
+      await mostrarExito(
+        context,
+        monto: (mapaCobro['monto'] as num).toDouble(),
+        metodo: mapaCobro['metodo']?.toString() ?? 'efectivo',
+        conductorNombre:
+            conductor['conductor_nombre']?.toString() ?? 'Conductor',
+        conductorCi: conductor['conductor_ci']?.toString() ?? '',
+        cuotaNombre: cuotaNombre,
+      );
+      return true;
+    }
+    return false;
+  }
+
+  /// Modal de confirmación de "Cobro Realizado" elegante, amplio y moderno
+  static Future<void> mostrarExito(
+    BuildContext context, {
+    required double monto,
+    required String metodo,
+    required String conductorNombre,
+    required String conductorCi,
+    required String cuotaNombre,
+  }) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icono verde grande con halo suave
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1FAE5),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.22),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF059669),
+                    size: 42,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Título Cobro Realizado
+                const Text(
+                  'Cobro Realizado',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F2B5B),
+                    letterSpacing: -0.3,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  cuotaNombre,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 18),
+
+                // Tarjeta grande y destacada del Monto
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFF86EFAC)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'MONTO COBRADO',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF15803D),
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Bs. ${monto.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F2B5B),
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Tarjeta de detalles del cobro
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.person_rounded,
+                            size: 18,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Conductor:',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const Spacer(),
+                          Flexible(
+                            child: Text(
+                              conductorNombre,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F2B5B),
+                              ),
+                              textAlign: TextAlign.end,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (conductorCi.isNotEmpty) ...[
+                        const Divider(height: 14, color: Color(0xFFEEF2F6)),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.badge_outlined,
+                              size: 18,
+                              color: Color(0xFF64748B),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'CI:',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              conductorCi,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F2B5B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const Divider(height: 14, color: Color(0xFFEEF2F6)),
+                      Row(
+                        children: [
+                          Icon(
+                            metodo == 'qr'
+                                ? Icons.qr_code_2_rounded
+                                : Icons.payments_outlined,
+                            size: 18,
+                            color: metodo == 'qr'
+                                ? const Color(0xFF2563EB)
+                                : const Color(0xFF059669),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Método:',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            metodo == 'qr' ? 'Pago con QR' : 'Efectivo',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: metodo == 'qr'
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF059669),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+
+                // Botón Aceptar a ancho completo
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00B074),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text(
+                      'Aceptar',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -57,15 +328,14 @@ class _DialogoCobroState extends State<DialogoCobro> {
   bool _procesando = false;
 
   late double _total;
-  late double _pagado;
   late double _falta;
 
   @override
   void initState() {
     super.initState();
     _total = (widget.conductor['monto_total'] as num?)?.toDouble() ?? 0.0;
-    _pagado = (widget.conductor['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-    _falta = (widget.conductor['monto_falta'] as num?)?.toDouble() ?? (_total - _pagado);
+    final pagado = (widget.conductor['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+    _falta = (widget.conductor['monto_falta'] as num?)?.toDouble() ?? (_total - pagado);
     if (_falta < 0) _falta = 0.0;
 
     double montoDefecto = _falta;
@@ -103,7 +373,7 @@ class _DialogoCobroState extends State<DialogoCobro> {
 
     try {
       final idUsuario = SesionService.instance.idUsuario ?? 'admin';
-      final resultado = await EconomiaRepo.instance.cobrarAConductor(
+      await EconomiaRepo.instance.cobrarAConductor(
         idConductor: widget.conductor['id_conductor'].toString(),
         idTipoCuota: widget.idTipoCuota,
         montoACobrar: monto,
@@ -113,10 +383,7 @@ class _DialogoCobroState extends State<DialogoCobro> {
       );
 
       if (!mounted) return;
-      Navigator.pop(context, true);
-
-      // Ofrecer visualización de recibo oficial
-      _mostrarDialogoReciboGenerado(resultado);
+      Navigator.pop(context, {'monto': monto, 'metodo': _metodo});
     } catch (e) {
       if (mounted) {
         setState(() => _procesando = false);
@@ -125,238 +392,350 @@ class _DialogoCobroState extends State<DialogoCobro> {
     }
   }
 
-  void _mostrarDialogoReciboGenerado(Map<String, dynamic> datosRecibo) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF10B981)),
-            SizedBox(width: 8),
-            Text('Cobro Exitoso', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Recibo N° ${datosRecibo['nro_recibo']}'),
-            const SizedBox(height: 6),
-            Text('Monto: Bs. ${((datosRecibo['monto_pagado'] ?? datosRecibo['monto']) as num?)?.toStringAsFixed(2) ?? '0.00'}'),
-            const SizedBox(height: 6),
-            const Text('¿Deseas ver o imprimir el recibo oficial en PDF?'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F2B5B),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              ReciboPdfService.mostrarVistaPrevia(
-                context,
-                datosRecibo,
-              );
-            },
-            icon: const Icon(Icons.picture_as_pdf, size: 18),
-            label: const Text('Ver Recibo'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _mostrarSnack(String mensaje) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje), backgroundColor: const Color(0xFFDC2626)),
-    );
+    AppSnackBar.error(context, mensaje);
   }
 
   @override
   Widget build(BuildContext context) {
-    final nombre = widget.conductor['conductor_nombre']?.toString() ?? 'Conductor';
+    final nombre =
+        widget.conductor['conductor_nombre']?.toString() ?? 'Conductor';
     final ci = widget.conductor['conductor_ci']?.toString() ?? 'S/CI';
     final foto = widget.conductor['conductor_foto']?.toString();
-    final proxMonto = (widget.conductor['proximo_monto_pago'] as num?)?.toDouble() ?? 50.0;
+    final telefono = widget.conductor['conductor_telefono']?.toString();
 
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-      titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 10),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      title: const Row(
-        children: [
-          Icon(Icons.payments_rounded, color: Color(0xFF10B981), size: 26),
-          SizedBox(width: 10),
-          Text(
-            'Registrar Cobro',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F2B5B)),
-          ),
-        ],
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Tarjeta del conductor
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: [
-                  AvatarConductor(
-                    foto: foto,
-                    nombre: nombre,
-                    radio: 20,
+    return PopScope(
+      canPop: !_procesando,
+      child: Dialog(
+        backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Cabecera elegante
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1FAE5),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.payments_rounded,
+                        color: Color(0xFF059669),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Registrar Cobro',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                              color: Color(0xFF0F2B5B),
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.cuotaNombre,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 22,
+                      ),
+                      splashRadius: 20,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Tarjeta del conductor
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          nombre,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Color(0xFF0F2B5B)),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      AvatarConductor(
+                        foto: foto,
+                        nombre: nombre,
+                        radio: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nombre,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Color(0xFF0F2B5B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'CI: $ci${telefono != null && telefono.isNotEmpty ? '  •  Cel: $telefono' : ''}',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          'CI: $ci',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // Campo de monto
+                const Text(
+                  'Monto a Cobrar (Bs.) *',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _montoCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: Color(0xFF0F2B5B),
+                  ),
+                  decoration: InputDecoration(
+                    prefixIcon: const Padding(
+                      padding: EdgeInsets.only(left: 14, right: 6),
+                      child: Text(
+                        'Bs.',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: Color(0xFF059669),
                         ),
-                      ],
+                      ),
+                    ),
+                    prefixIconConstraints:
+                        const BoxConstraints(minWidth: 0, minHeight: 0),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFCBD5E1),
+                        width: 1.2,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF00B074),
+                        width: 2,
+                      ),
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Resumen de la cuota
-            Text(
-              widget.conceptoCuota != null
-                  ? widget.conceptoCuota!
-                  : 'Cuota: ${widget.cuotaNombre} (Total: Bs. ${_total.toStringAsFixed(2)})',
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Text(
-                  'Ya pagó: Bs. ${_pagado.toStringAsFixed(2)}  •  ',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.bold),
                 ),
-                Text(
-                  'Le falta: Bs. ${_falta.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626), fontWeight: FontWeight.bold),
+                const SizedBox(height: 18),
+
+                // Selector moderno de Método de Pago
+                const Text(
+                  'Método de Pago',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildMetodoOption(
+                        id: 'efectivo',
+                        label: 'Efectivo',
+                        icono: Icons.payments_outlined,
+                        colorActivo: const Color(0xFF00B074),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _buildMetodoOption(
+                        id: 'qr',
+                        label: 'Pago con QR',
+                        icono: Icons.qr_code_2_rounded,
+                        colorActivo: const Color(0xFF2563EB),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Botones de acción alineados y modernos
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          side: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: _procesando
+                            ? null
+                            : () => Navigator.pop(context),
+                        child: const Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: Color(0xFF475569),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00B074),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: _procesando ? null : _confirmarCobro,
+                        child: _procesando
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Confirmar Cobro',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            const Divider(height: 22, color: Color(0xFFE2E8F0)),
+          ),
+        ),
+      ),
+    ));
+  }
 
-            // Campo de monto
-            TextField(
-              controller: _montoCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Monto a Cobrar (Bs.) *',
-                prefixText: 'Bs. ',
-                prefixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F2B5B)),
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                helperText: 'Acepta abono parcial o liquidación total',
-              ),
+  Widget _buildMetodoOption({
+    required String id,
+    required String label,
+    required IconData icono,
+    required Color colorActivo,
+  }) {
+    final seleccionado = _metodo == id;
+    return InkWell(
+      onTap: () => setState(() => _metodo = id),
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: seleccionado
+              ? colorActivo.withValues(alpha: 0.08)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: seleccionado ? colorActivo : const Color(0xFFE2E8F0),
+            width: seleccionado ? 1.8 : 1.2,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icono,
+              size: 20,
+              color: seleccionado ? colorActivo : const Color(0xFF64748B),
             ),
-            const SizedBox(height: 8),
-
-            // Chips rápidos de monto
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                if (proxMonto > 0 && proxMonto <= _falta)
-                  ActionChip(
-                    label: Text('1 Cuota (Bs. ${proxMonto.toStringAsFixed(0)})', style: const TextStyle(fontSize: 11)),
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    side: const BorderSide(color: Color(0xFFBFDBFE)),
-                    onPressed: () => setState(() => _montoCtrl.text = proxMonto.toStringAsFixed(2)),
-                  ),
-                if ((proxMonto * 2) <= _falta)
-                  ActionChip(
-                    label: Text('2 Cuotas (Bs. ${(proxMonto * 2).toStringAsFixed(0)})', style: const TextStyle(fontSize: 11)),
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    side: const BorderSide(color: Color(0xFFBFDBFE)),
-                    onPressed: () => setState(() => _montoCtrl.text = (proxMonto * 2).toStringAsFixed(2)),
-                  ),
-                if (_falta > 0)
-                  ActionChip(
-                    label: Text('Todo (Bs. ${_falta.toStringAsFixed(0)})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                    backgroundColor: const Color(0xFFECFDF5),
-                    side: const BorderSide(color: Color(0xFFA7F3D0)),
-                    onPressed: () => setState(() => _montoCtrl.text = _falta.toStringAsFixed(2)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const SizedBox(height: 14),
-
-            // Método de pago
-            DropdownButtonFormField<String>(
-              value: _metodo,
-              decoration: InputDecoration(
-                labelText: 'Método de Pago',
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      seleccionado ? FontWeight.bold : FontWeight.w500,
+                  color: seleccionado ? colorActivo : const Color(0xFF475569),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              items: const [
-                DropdownMenuItem(value: 'efectivo', child: Text('Efectivo')),
-                DropdownMenuItem(value: 'qr', child: Text('Pago con QR')),
-                DropdownMenuItem(value: 'transferencia', child: Text('Transferencia Bancaria')),
-              ],
-              onChanged: (val) {
-                if (val != null) setState(() => _metodo = val);
-              },
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _procesando ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF10B981),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
-          onPressed: _procesando ? null : _confirmarCobro,
-          child: _procesando
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Text('Confirmar Cobro', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-      ],
     );
   }
 }

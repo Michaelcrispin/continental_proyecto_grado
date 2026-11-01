@@ -11,7 +11,7 @@ import 'asistencia_screen.dart';
 import 'vueltas_screen.dart';
 import 'sanciones_screen.dart';
 import 'cuotas/cuotas_screen.dart';
-import 'conductores_screen.dart';
+import 'conductores/grupos_conductores_screen.dart';
 import 'informes_screen.dart';
 import 'gps_screen.dart';
 import 'perfil_screen.dart';
@@ -506,13 +506,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQuickAccessGrid(String? rol, bool esConductor) {
     final List<Widget> items = [];
 
-    // 1. Panel Técnico (exclusivo para superadmin)
+    // 1. Panel Técnico y Puntos de Parada (exclusivos para superadmin)
     if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico)) {
       items.add(_buildQuickAccess(
         Icons.admin_panel_settings,
         'Panel Técnico',
         const PanelTecnicoScreen(),
         colorIcono: const Color(0xFF8B5CF6),
+      ));
+    }
+    if (Permisos.puedeVer(rol, Permisos.moduloPuntosParada)) {
+      items.add(_buildQuickAccess(
+        Icons.edit_location_alt,
+        'Puntos A y B',
+        const PuntosControlScreen(),
+        colorIcono: const Color(0xFF0D9488),
       ));
     }
 
@@ -529,9 +537,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // 3. Conductores (superadmin y admin)
     if (Permisos.puedeVer(rol, Permisos.moduloConductores)) {
       items.add(_buildQuickAccess(
-        Icons.directions_bus,
+        Icons.local_taxi_rounded,
         'Conductores',
-        const ConductoresScreen(),
+        const GruposConductoresScreen(),
         colorIcono: const Color(0xFF10B981),
       ));
     }
@@ -932,10 +940,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloConductores))
                     _buildDrawerItem(
-                      icon: Icons.directions_bus_outlined,
+                      icon: Icons.local_taxi_outlined,
                       title: 'Conductores',
                       colorIcono: const Color(0xFF10B981),
-                      onTap: () => _navegarDesdeDrawer(context, const ConductoresScreen()),
+                      onTap: () => _navegarDesdeDrawer(context, const GruposConductoresScreen()),
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloInformes))
                     _buildDrawerItem(
@@ -943,6 +951,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: 'Informes y Estadísticas',
                       colorIcono: const Color(0xFF4F46E5),
                       onTap: () => _navegarDesdeDrawer(context, const InformesScreen()),
+                    ),
+                  if (Permisos.puedeVer(rol, Permisos.moduloPuntosParada))
+                    _buildDrawerItem(
+                      icon: Icons.edit_location_alt_outlined,
+                      title: 'Puntos de Parada (A y B)',
+                      colorIcono: const Color(0xFF0D9488),
+                      onTap: () => _navegarDesdeDrawer(context, const PuntosControlScreen()),
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico))
                     _buildDrawerItem(
