@@ -348,7 +348,7 @@ class ConductorCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
@@ -378,10 +378,10 @@ class ConductorCard extends StatelessWidget {
             AvatarConductor(
               foto: conductor['foto']?.toString(),
               nombre: nombre,
-              radio: 22,
-              fontSize: 12,
+              radio: 21,
+              fontSize: 11.5,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,18 +394,18 @@ class ConductorCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Color(0xFF0F2B5B),
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 13.5,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (numInterno != null && numInterno.isNotEmpty) ...[
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2.5,
+                            horizontal: 6,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF1F5F9),
@@ -420,7 +420,7 @@ class ConductorCard extends StatelessWidget {
                             style: const TextStyle(
                               color: Color(0xFF0F2B5B),
                               fontWeight: FontWeight.w800,
-                              fontSize: 12,
+                              fontSize: 11.5,
                             ),
                           ),
                         ),
@@ -436,27 +436,37 @@ class ConductorCard extends StatelessWidget {
                         color: Color(0xFF64748B),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'CI: $ciDisplay',
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          ciDisplay,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       const Icon(
                         Icons.directions_car_outlined,
                         size: 13,
                         color: Color(0xFF2563EB),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        (placa != null && placa.isNotEmpty) ? placa : 'Sin unidad',
-                        style: const TextStyle(
-                          color: Color(0xFF2563EB),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          (placa != null && placa.isNotEmpty)
+                              ? placa
+                              : 'Sin unidad',
+                          style: const TextStyle(
+                            color: Color(0xFF2563EB),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -474,50 +484,54 @@ class ConductorCard extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 4),
                       Text(
                         esActivo ? 'Habilitado' : 'Inactivo',
                         style: TextStyle(
                           color: esActivo
                               ? const Color(0xFF10B981)
                               : const Color(0xFFEF4444),
-                          fontSize: 11,
+                          fontSize: 10.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (tieneAlerta) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: DocumentosAlerta.colorFondo(
-                              estadoLic == 'Vencida'
-                                  ? 'Vencida'
-                                  : estadoLic == 'Por vencer'
-                                      ? 'Por vencer'
-                                      : 'Vencida',
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1.5,
                             ),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Text(
-                            estadoLic == 'Vencida'
-                                ? 'Lic. Vencida'
-                                : estadoLic == 'Por vencer'
-                                    ? 'Lic. Por vencer'
-                                    : 'SOAT Vencido',
-                            style: TextStyle(
-                              color: DocumentosAlerta.color(
+                            decoration: BoxDecoration(
+                              color: DocumentosAlerta.colorFondo(
                                 estadoLic == 'Vencida'
                                     ? 'Vencida'
                                     : estadoLic == 'Por vencer'
                                         ? 'Por vencer'
                                         : 'Vencida',
                               ),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 9.5,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              estadoLic == 'Vencida'
+                                  ? 'Lic. Vencida'
+                                  : estadoLic == 'Por vencer'
+                                      ? 'Lic. Por vencer'
+                                      : 'SOAT Vencido',
+                              style: TextStyle(
+                                color: DocumentosAlerta.color(
+                                  estadoLic == 'Vencida'
+                                      ? 'Vencida'
+                                      : estadoLic == 'Por vencer'
+                                          ? 'Por vencer'
+                                          : 'Vencida',
+                                ),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 9,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
@@ -527,56 +541,56 @@ class ConductorCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 6),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(9),
                   ),
                   child: IconButton(
                     padding: EdgeInsets.zero,
                     icon: const Icon(
                       Icons.visibility_outlined,
-                      size: 16,
+                      size: 15,
                       color: Color(0xFF475569),
                     ),
                     tooltip: 'Ver información',
                     onPressed: onTapVer,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(9),
                   ),
                   child: IconButton(
                     padding: EdgeInsets.zero,
                     icon: const Icon(
                       Icons.edit,
-                      size: 15,
+                      size: 14,
                       color: Color(0xFF3B82F6),
                     ),
                     tooltip: 'Editar',
                     onPressed: onTapEditar,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: esActivo
                         ? const Color(0xFFFEF2F2)
                         : const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(9),
                   ),
                   child: IconButton(
                     padding: EdgeInsets.zero,
@@ -584,7 +598,7 @@ class ConductorCard extends StatelessWidget {
                       esActivo
                           ? Icons.person_off_outlined
                           : Icons.check_circle_outline,
-                      size: 15,
+                      size: 14,
                       color: esActivo
                           ? const Color(0xFFEF4444)
                           : const Color(0xFF10B981),
