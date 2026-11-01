@@ -203,77 +203,54 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // SELECTOR DE MODO DE VISTA (CUADRÍCULA O LISTA)
+  // BOTÓN PARA ALTERNAR MODO DE VISTA (UN SOLO TOQUE: CUADRÍCULA <-> LISTA)
   // ---------------------------------------------------------------------------
-  Widget _buildSelectorVista(Color colorPrimario) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.all(3.5),
-      decoration: BoxDecoration(
+  Widget _buildBotonAlternarVista(Color colorPrimario) {
+    return Tooltip(
+      message: _esVistaCuadricula
+          ? 'Cambiar a vista de lista'
+          : 'Cambiar a vista de cuadrícula',
+      child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Botón Cuadrícula
-          InkWell(
-            onTap: () {
-              if (!_esVistaCuadricula) {
-                setState(() => _esVistaCuadricula = true);
-              }
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: AnimatedContainer(
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _esVistaCuadricula = !_esVistaCuadricula;
+            });
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: _esVistaCuadricula ? colorPrimario : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: child,
               ),
               child: Icon(
-                Icons.grid_view_rounded,
-                size: 20,
-                color:
-                    _esVistaCuadricula ? Colors.white : const Color(0xFF64748B),
+                _esVistaCuadricula
+                    ? Icons.view_list_rounded
+                    : Icons.grid_view_rounded,
+                key: ValueKey<bool>(_esVistaCuadricula),
+                size: 24,
+                color: colorPrimario,
               ),
             ),
           ),
-          const SizedBox(width: 3),
-          // Botón Lista
-          InkWell(
-            onTap: () {
-              if (_esVistaCuadricula) {
-                setState(() => _esVistaCuadricula = false);
-              }
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color:
-                    !_esVistaCuadricula ? colorPrimario : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.view_list_rounded,
-                size: 20,
-                color: !_esVistaCuadricula
-                    ? Colors.white
-                    : const Color(0xFF64748B),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -389,8 +366,8 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Selector de vista: Cuadrícula o Lista
-                    _buildSelectorVista(colorPrimario),
+                    // Botón para alternar entre cuadrícula y lista con un toque
+                    _buildBotonAlternarVista(colorPrimario),
                   ],
                 ),
               ),
