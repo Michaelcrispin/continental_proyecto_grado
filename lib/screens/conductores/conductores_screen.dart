@@ -203,7 +203,83 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // CONSTRUCCIÓN PRINCIPAL (GRID CON COMPONENTES MODULARES)
+  // SELECTOR DE MODO DE VISTA (CUADRÍCULA O LISTA)
+  // ---------------------------------------------------------------------------
+  Widget _buildSelectorVista(Color colorPrimario) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(3.5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Botón Cuadrícula
+          InkWell(
+            onTap: () {
+              if (!_esVistaCuadricula) {
+                setState(() => _esVistaCuadricula = true);
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _esVistaCuadricula ? colorPrimario : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.grid_view_rounded,
+                size: 20,
+                color:
+                    _esVistaCuadricula ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 3),
+          // Botón Lista
+          InkWell(
+            onTap: () {
+              if (_esVistaCuadricula) {
+                setState(() => _esVistaCuadricula = false);
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color:
+                    !_esVistaCuadricula ? colorPrimario : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.view_list_rounded,
+                size: 20,
+                color: !_esVistaCuadricula
+                    ? Colors.white
+                    : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // CONSTRUCCIÓN PRINCIPAL (GRID / LISTA CON COMPONENTES MODULARES)
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
@@ -273,38 +349,49 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // 1. Buscador superior
+              // 1. Buscador superior y Selector de vista (Cuadrícula / Lista)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por nombre, CI o placa...',
-                    prefixIcon:
-                        const Icon(Icons.search, color: Color(0xFF10B981)),
-                    suffixIcon: _busqueda.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.grey),
-                            onPressed: () {
-                              _searchController.clear();
-                              _filtrar('');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Buscar por nombre, CI o placa...',
+                          prefixIcon:
+                              const Icon(Icons.search, color: Color(0xFF10B981)),
+                          suffixIcon: _busqueda.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, color: Colors.grey),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _filtrar('');
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                        onChanged: _filtrar,
+                      ),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                  ),
-                  onChanged: _filtrar,
+                    const SizedBox(width: 8),
+                    // Selector de vista: Cuadrícula o Lista
+                    _buildSelectorVista(colorPrimario),
+                  ],
                 ),
               ),
 
@@ -321,12 +408,6 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
                 cantActivos: cantActivosGrupo,
                 cantInactivos: cantInactivosGrupo,
                 cantAlertas: cantAlertasGrupo,
-                esCuadricula: _esVistaCuadricula,
-                onModoVistaChanged: (val) {
-                  setState(() {
-                    _esVistaCuadricula = val;
-                  });
-                },
               ),
 
               const SizedBox(height: 8),
