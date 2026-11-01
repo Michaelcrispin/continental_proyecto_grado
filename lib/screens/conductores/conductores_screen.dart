@@ -26,6 +26,7 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   bool _isLoading = true;
   String _busqueda = '';
   String _filtroActivo = 'todos'; // 'todos', 'activos', 'inactivos', 'alertas'
+  bool _esVistaCuadricula = true;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -320,11 +321,17 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
                 cantActivos: cantActivosGrupo,
                 cantInactivos: cantInactivosGrupo,
                 cantAlertas: cantAlertasGrupo,
+                esCuadricula: _esVistaCuadricula,
+                onModoVistaChanged: (val) {
+                  setState(() {
+                    _esVistaCuadricula = val;
+                  });
+                },
               ),
 
               const SizedBox(height: 8),
 
-              // 3. GRIDVIEW CON TARJETAS MODULARIZADAS
+              // 3. VISTA EN CUADRÍCULA O LISTA CON TARJETAS MODULARIZADAS
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
@@ -360,38 +367,73 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
                           )
                         : RefreshIndicator(
                             onRefresh: _cargarConductores,
-                            child: GridView.builder(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                              itemCount: _conductoresFiltrados.length,
-                              physics: const BouncingScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 0.76,
-                              ),
-                              itemBuilder: (context, index) {
-                                final c = _conductoresFiltrados[index];
-                                final esActivo = (c['estado'] ?? 'activo')
-                                        .toString()
-                                        .toLowerCase() ==
-                                    'activo';
+                            child: _esVistaCuadricula
+                                ? GridView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 4, 16, 90),
+                                    itemCount: _conductoresFiltrados.length,
+                                    physics: const BouncingScrollPhysics(),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 12,
+                                      mainAxisSpacing: 12,
+                                      childAspectRatio: 0.76,
+                                    ),
+                                    itemBuilder: (context, index) {
+                                      final c = _conductoresFiltrados[index];
+                                      final esActivo = (c['estado'] ?? 'activo')
+                                              .toString()
+                                              .toLowerCase() ==
+                                          'activo';
 
-                                return ConductorCard(
-                                  conductor: c,
-                                  onTap: () => _mostrarFichaDetalleConductor(c),
-                                  onTapVer: () =>
-                                      _mostrarFichaDetalleConductor(c),
-                                  onTapEditar: () => _abrirFormularioConductor(
-                                      conductorExistente: c),
-                                  onTapCambiarEstado: () => esActivo
-                                      ? _confirmarBajaConductor(c)
-                                      : _confirmarReactivacionConductor(c),
-                                );
-                              },
-                            ),
+                                      return ConductorCard(
+                                        conductor: c,
+                                        onTap: () =>
+                                            _mostrarFichaDetalleConductor(c),
+                                        onTapVer: () =>
+                                            _mostrarFichaDetalleConductor(c),
+                                        onTapEditar: () =>
+                                            _abrirFormularioConductor(
+                                                conductorExistente: c),
+                                        onTapCambiarEstado: () => esActivo
+                                            ? _confirmarBajaConductor(c)
+                                            : _confirmarReactivacionConductor(c),
+                                      );
+                                    },
+                                  )
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 4, 16, 90),
+                                    itemCount: _conductoresFiltrados.length,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemBuilder: (context, index) {
+                                      final c = _conductoresFiltrados[index];
+                                      final esActivo = (c['estado'] ?? 'activo')
+                                              .toString()
+                                              .toLowerCase() ==
+                                          'activo';
+
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 10),
+                                        child: ConductorCard(
+                                          conductor: c,
+                                          modoLista: true,
+                                          onTap: () =>
+                                              _mostrarFichaDetalleConductor(c),
+                                          onTapVer: () =>
+                                              _mostrarFichaDetalleConductor(c),
+                                          onTapEditar: () =>
+                                              _abrirFormularioConductor(
+                                                  conductorExistente: c),
+                                          onTapCambiarEstado: () => esActivo
+                                              ? _confirmarBajaConductor(c)
+                                              : _confirmarReactivacionConductor(c),
+                                        ),
+                                      );
+                                    },
+                                  ),
                           ),
               ),
             ],

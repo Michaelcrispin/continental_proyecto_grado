@@ -7,6 +7,8 @@ class FiltroConductoresBar extends StatelessWidget {
   final int cantActivos;
   final int cantInactivos;
   final int cantAlertas;
+  final bool esCuadricula;
+  final ValueChanged<bool> onModoVistaChanged;
 
   const FiltroConductoresBar({
     super.key,
@@ -16,6 +18,8 @@ class FiltroConductoresBar extends StatelessWidget {
     required this.cantActivos,
     required this.cantInactivos,
     required this.cantAlertas,
+    this.esCuadricula = true,
+    required this.onModoVistaChanged,
   });
 
   Widget _buildChip(String key, String label, int count, {Color? color}) {
@@ -83,6 +87,64 @@ class FiltroConductoresBar extends StatelessWidget {
     );
   }
 
+  Widget _buildSelectorVista() {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFCBD5E1),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Botón Cuadrícula (cuadrados)
+          InkWell(
+            onTap: () => onModoVistaChanged(true),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color:
+                    esCuadricula ? const Color(0xFF1E3A8A) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.grid_view_rounded,
+                size: 17,
+                color: esCuadricula ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 2),
+          // Botón Lista
+          InkWell(
+            onTap: () => onModoVistaChanged(false),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: !esCuadricula
+                    ? const Color(0xFF1E3A8A)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.view_list_rounded,
+                size: 17,
+                color: !esCuadricula ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -101,6 +163,7 @@ class FiltroConductoresBar extends StatelessWidget {
           if (cantAlertas > 0)
             _buildChip('alertas', 'Alertas Docs', cantAlertas,
                 color: const Color(0xFFF59E0B)),
+          _buildSelectorVista(),
         ],
       ),
     );

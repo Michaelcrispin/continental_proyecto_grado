@@ -8,6 +8,7 @@ class ConductorCard extends StatelessWidget {
   final VoidCallback onTapVer;
   final VoidCallback onTapEditar;
   final VoidCallback onTapCambiarEstado;
+  final bool modoLista;
 
   const ConductorCard({
     super.key,
@@ -16,6 +17,7 @@ class ConductorCard extends StatelessWidget {
     required this.onTapVer,
     required this.onTapEditar,
     required this.onTapCambiarEstado,
+    this.modoLista = false,
   });
 
   @override
@@ -34,9 +36,24 @@ class ConductorCard extends StatelessWidget {
     final estadoSoat = DocumentosAlerta.estado(
       conductor['fecha_vencimiento_soat']?.toString(),
     );
-    final tieneAlerta = estadoLic == 'Vencida' ||
+    final tieneAlerta =
+        estadoLic == 'Vencida' ||
         estadoLic == 'Por vencer' ||
         estadoSoat == 'Vencida';
+
+    if (modoLista) {
+      return _buildModoLista(
+        context: context,
+        nombre: nombre,
+        ciDisplay: ciDisplay,
+        placa: placa,
+        esActivo: esActivo,
+        numInterno: numInterno,
+        tieneAlerta: tieneAlerta,
+        estadoLic: estadoLic,
+        estadoSoat: estadoSoat,
+      );
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -51,13 +68,13 @@ class ConductorCard extends StatelessWidget {
                   width: 1.3,
                 )
               : tieneAlerta
-                  ? Border.all(
-                      color: (estadoLic == 'Vencida' || estadoSoat == 'Vencida')
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.4)
-                          : const Color(0xFFF59E0B).withValues(alpha: 0.4),
-                      width: 1.2,
-                    )
-                  : null,
+              ? Border.all(
+                  color: (estadoLic == 'Vencida' || estadoSoat == 'Vencida')
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.4)
+                      : const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                  width: 1.2,
+                )
+              : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -118,8 +135,8 @@ class ConductorCard extends StatelessWidget {
                             estadoLic == 'Vencida'
                                 ? 'Vencida'
                                 : estadoLic == 'Por vencer'
-                                    ? 'Por vencer'
-                                    : 'Vencida',
+                                ? 'Por vencer'
+                                : 'Vencida',
                           ),
                           borderRadius: BorderRadius.circular(6),
                         ),
@@ -127,15 +144,15 @@ class ConductorCard extends StatelessWidget {
                           estadoLic == 'Vencida'
                               ? 'Lic. Vencida'
                               : estadoLic == 'Por vencer'
-                                  ? 'Lic. vence pronto'
-                                  : 'SOAT Vencido',
+                              ? 'Lic. vence pronto'
+                              : 'SOAT Vencido',
                           style: TextStyle(
                             color: DocumentosAlerta.color(
                               estadoLic == 'Vencida'
                                   ? 'Vencida'
                                   : estadoLic == 'Por vencer'
-                                      ? 'Por vencer'
-                                      : 'Vencida',
+                                  ? 'Por vencer'
+                                  : 'Vencida',
                             ),
                             fontWeight: FontWeight.bold,
                             fontSize: 8,
@@ -244,6 +261,275 @@ class ConductorCard extends StatelessWidget {
             // Botones de acción: Ver información, Editar y Dar de baja / Reactivar
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.visibility_outlined,
+                      size: 16,
+                      color: Color(0xFF475569),
+                    ),
+                    tooltip: 'Ver información',
+                    onPressed: onTapVer,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.edit,
+                      size: 15,
+                      color: Color(0xFF3B82F6),
+                    ),
+                    tooltip: 'Editar',
+                    onPressed: onTapEditar,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: esActivo
+                        ? const Color(0xFFFEF2F2)
+                        : const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      esActivo
+                          ? Icons.person_off_outlined
+                          : Icons.check_circle_outline,
+                      size: 15,
+                      color: esActivo
+                          ? const Color(0xFFEF4444)
+                          : const Color(0xFF10B981),
+                    ),
+                    tooltip: esActivo
+                        ? 'Dar de baja (Inactivar)'
+                        : 'Reactivar conductor',
+                    onPressed: onTapCambiarEstado,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModoLista({
+    required BuildContext context,
+    required String nombre,
+    required String ciDisplay,
+    required String? placa,
+    required bool esActivo,
+    required String? numInterno,
+    required bool tieneAlerta,
+    required String estadoLic,
+    required String estadoSoat,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: !esActivo
+              ? Border.all(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                  width: 1.3,
+                )
+              : tieneAlerta
+                  ? Border.all(
+                      color: (estadoLic == 'Vencida' || estadoSoat == 'Vencida')
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.4)
+                          : const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                      width: 1.2,
+                    )
+                  : Border.all(color: const Color(0xFFF1F5F9)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            AvatarConductor(
+              foto: conductor['foto']?.toString(),
+              nombre: nombre,
+              radio: 22,
+              fontSize: 12,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          nombre,
+                          style: const TextStyle(
+                            color: Color(0xFF0F2B5B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (numInterno != null && numInterno.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(7),
+                            border: Border.all(
+                              color: const Color(0xFFCBD5E1),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Text(
+                            '#$numInterno',
+                            style: const TextStyle(
+                              color: Color(0xFF0F2B5B),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.badge_outlined,
+                        size: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'CI: $ciDisplay',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.directions_car_outlined,
+                        size: 13,
+                        color: Color(0xFF2563EB),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        (placa != null && placa.isNotEmpty) ? placa : 'Sin unidad',
+                        style: const TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: esActivo
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        esActivo ? 'Habilitado' : 'Inactivo',
+                        style: TextStyle(
+                          color: esActivo
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (tieneAlerta) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: DocumentosAlerta.colorFondo(
+                              estadoLic == 'Vencida'
+                                  ? 'Vencida'
+                                  : estadoLic == 'Por vencer'
+                                      ? 'Por vencer'
+                                      : 'Vencida',
+                            ),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            estadoLic == 'Vencida'
+                                ? 'Lic. Vencida'
+                                : estadoLic == 'Por vencer'
+                                    ? 'Lic. Por vencer'
+                                    : 'SOAT Vencido',
+                            style: TextStyle(
+                              color: DocumentosAlerta.color(
+                                estadoLic == 'Vencida'
+                                    ? 'Vencida'
+                                    : estadoLic == 'Por vencer'
+                                        ? 'Por vencer'
+                                        : 'Vencida',
+                              ),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 9.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 32,
