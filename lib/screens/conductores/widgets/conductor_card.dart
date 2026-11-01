@@ -375,6 +375,34 @@ class ConductorCard extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Número interno tipo lista al lado del avatar
+            if (numInterno != null && numInterno.isNotEmpty) ...[
+              Container(
+                constraints: const BoxConstraints(minWidth: 28),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFFCBD5E1),
+                    width: 1.0,
+                  ),
+                ),
+                child: Text(
+                  '#$numInterno',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF0F2B5B),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             AvatarConductor(
               foto: conductor['foto']?.toString(),
               nombre: nombre,
@@ -386,46 +414,15 @@ class ConductorCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          nombre,
-                          style: const TextStyle(
-                            color: Color(0xFF0F2B5B),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13.5,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (numInterno != null && numInterno.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: const Color(0xFFCBD5E1),
-                              width: 1.0,
-                            ),
-                          ),
-                          child: Text(
-                            '#$numInterno',
-                            style: const TextStyle(
-                              color: Color(0xFF0F2B5B),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  Text(
+                    nombre,
+                    style: const TextStyle(
+                      color: Color(0xFF0F2B5B),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 3),
                   Row(
