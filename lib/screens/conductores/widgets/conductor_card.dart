@@ -4,6 +4,7 @@ import '../../../widgets/avatar_conductor.dart';
 
 class ConductorCard extends StatelessWidget {
   final Map<String, dynamic> conductor;
+  final int numeroLista;
   final VoidCallback onTap;
   final VoidCallback onTapVer;
   final VoidCallback onTapEditar;
@@ -13,6 +14,7 @@ class ConductorCard extends StatelessWidget {
   const ConductorCard({
     super.key,
     required this.conductor,
+    required this.numeroLista,
     required this.onTap,
     required this.onTapVer,
     required this.onTapEditar,
@@ -86,16 +88,37 @@ class ConductorCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Fila superior: Avatar circular + Badges de Grupo y Móvil
+            // Fila superior: Avatar del conductor restaurado + Número arribita
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Avatar del conductor restaurado
                 AvatarConductor(
                   foto: conductor['foto']?.toString(),
                   nombre: nombre,
                   radio: 21,
                   fontSize: 11,
+                ),
+                // Arribita de la columna: número de lista ("solo número")
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5EF),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF02634C).withOpacity(0.2),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Text(
+                    '$numeroLista',
+                    style: const TextStyle(
+                      color: Color(0xFF02634C),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11.5,
+                    ),
+                  ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -345,270 +368,145 @@ class ConductorCard extends StatelessWidget {
     required String estadoLic,
     required String estadoSoat,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: !esActivo
-              ? Border.all(
-                  color: const Color(0xFFEF4444).withValues(alpha: 0.5),
-                  width: 1.3,
-                )
-              : tieneAlerta
-                  ? Border.all(
-                      color: (estadoLic == 'Vencida' || estadoSoat == 'Vencida')
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.4)
-                          : const Color(0xFFF59E0B).withValues(alpha: 0.4),
-                      width: 1.2,
-                    )
-                  : Border.all(color: const Color(0xFFF1F5F9)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1.1,
         ),
-        child: Row(
-          children: [
-            // Número interno tipo lista al lado del avatar
-            if (numInterno != null && numInterno.isNotEmpty) ...[
-              Container(
-                constraints: const BoxConstraints(minWidth: 28),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 5,
-                  vertical: 3,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          splashColor: const Color(0xFF02634C).withOpacity(0.08),
+          highlightColor: const Color(0xFF02634C).withOpacity(0.04),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              children: [
+                // 1. Avatar del conductor (Restaurado)
+                AvatarConductor(
+                  foto: conductor['foto']?.toString(),
+                  nombre: nombre,
+                  radio: 22,
+                  fontSize: 12,
                 ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFFCBD5E1),
-                    width: 1.0,
-                  ),
-                ),
-                child: Text(
-                  '#$numInterno',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF0F2B5B),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            AvatarConductor(
-              foto: conductor['foto']?.toString(),
-              nombre: nombre,
-              radio: 21,
-              fontSize: 11.5,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    nombre,
-                    style: const TextStyle(
-                      color: Color(0xFF0F2B5B),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13.5,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
+                const SizedBox(width: 14),
+
+                // 2. Información del conductor (Nombre, Placa, Estado)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.badge_outlined,
-                        size: 13,
-                        color: Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          ciDisplay,
-                          style: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.directions_car_outlined,
-                        size: 13,
-                        color: Color(0xFF2563EB),
-                      ),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          (placa != null && placa.isNotEmpty)
-                              ? placa
-                              : 'Sin unidad',
-                          style: const TextStyle(
-                            color: Color(0xFF2563EB),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
+                      // Arribita de la columna: solo el número de lista
                       Container(
-                        width: 7,
-                        height: 7,
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        margin: const EdgeInsets.only(bottom: 2),
                         decoration: BoxDecoration(
-                          color: esActivo
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFFEF4444),
-                          shape: BoxShape.circle,
+                          color: const Color(0xFFE8F5EF),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: const Color(0xFF02634C).withOpacity(0.2),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '$numeroLista',
+                          style: const TextStyle(
+                            color: Color(0xFF02634C),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 4),
                       Text(
-                        esActivo ? 'Habilitado' : 'Inactivo',
-                        style: TextStyle(
-                          color: esActivo
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFFEF4444),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
+                        nombre,
+                        style: const TextStyle(
+                          color: Color(0xFF1E293B),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15.5,
+                          letterSpacing: -0.2,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (tieneAlerta) ...[
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: DocumentosAlerta.colorFondo(
-                                estadoLic == 'Vencida'
-                                    ? 'Vencida'
-                                    : estadoLic == 'Por vencer'
-                                        ? 'Por vencer'
-                                        : 'Vencida',
-                              ),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.directions_car_rounded,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
                             child: Text(
-                              estadoLic == 'Vencida'
-                                  ? 'Lic. Vencida'
-                                  : estadoLic == 'Por vencer'
-                                      ? 'Lic. Por vencer'
-                                      : 'SOAT Vencido',
-                              style: TextStyle(
-                                color: DocumentosAlerta.color(
-                                  estadoLic == 'Vencida'
-                                      ? 'Vencida'
-                                      : estadoLic == 'Por vencer'
-                                          ? 'Por vencer'
-                                          : 'Vencida',
-                                ),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 9,
+                              (placa != null && placa.isNotEmpty)
+                                  ? placa
+                                  : 'Sin unidad asignada',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: esActivo
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            esActivo ? 'Habilitado' : 'Inactivo',
+                            style: TextStyle(
+                              color: esActivo
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFEF4444),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.visibility_outlined,
-                      size: 15,
-                      color: Color(0xFF475569),
-                    ),
-                    tooltip: 'Ver información',
-                    onPressed: onTapVer,
-                  ),
                 ),
-                const SizedBox(width: 4),
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.edit,
-                      size: 14,
-                      color: Color(0xFF3B82F6),
-                    ),
-                    tooltip: 'Editar',
-                    onPressed: onTapEditar,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: esActivo
-                        ? const Color(0xFFFEF2F2)
-                        : const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: Icon(
-                      esActivo
-                          ? Icons.person_off_outlined
-                          : Icons.check_circle_outline,
-                      size: 14,
-                      color: esActivo
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF10B981),
-                    ),
-                    tooltip: esActivo
-                        ? 'Dar de baja (Inactivar)'
-                        : 'Reactivar conductor',
-                    onPressed: onTapCambiarEstado,
-                  ),
+
+                // 3. Ícono Chevron para navegar al detalle
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF02634C),
+                  size: 26,
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

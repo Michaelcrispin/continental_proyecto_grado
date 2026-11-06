@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import '../services/database_helper.dart';
-import '../services/sesion_service.dart';
-import 'asistencia/puntos_control_screen.dart';
+import '../../domain/ruta_continental.dart';
+import '../../services/database_helper.dart';
+import '../../services/sesion_service.dart';
+import '../asistencia/puntos_control_screen.dart';
 
 class GpsScreen extends StatefulWidget {
   const GpsScreen({super.key});
@@ -64,13 +65,17 @@ class _GpsScreenState extends State<GpsScreen> {
 
     // Puntos para polilínea de ruta oficial Continental (Cruce Villadela <-> Teleférico Mirador)
     final LatLng coordVilladela = LatLng(
-      (_puntos.isNotEmpty ? (_puntos[0]['latitud'] as num?)?.toDouble() : null) ?? -16.53453,
-      (_puntos.isNotEmpty ? (_puntos[0]['longitud'] as num?)?.toDouble() : null) ?? -68.19071,
+      (_puntos.isNotEmpty ? (_puntos[0]['latitud'] as num?)?.toDouble() : null) ??
+          RutaContinental.paradaAVilladela.latitude,
+      (_puntos.isNotEmpty ? (_puntos[0]['longitud'] as num?)?.toDouble() : null) ??
+          RutaContinental.paradaAVilladela.longitude,
     );
 
     final LatLng coordTeleferico = LatLng(
-      (_puntos.length > 1 ? (_puntos[1]['latitud'] as num?)?.toDouble() : null) ?? -16.5050,
-      (_puntos.length > 1 ? (_puntos[1]['longitud'] as num?)?.toDouble() : null) ?? -68.1635,
+      (_puntos.length > 1 ? (_puntos[1]['latitud'] as num?)?.toDouble() : null) ??
+          RutaContinental.paradaBTeleferico.latitude,
+      (_puntos.length > 1 ? (_puntos[1]['longitud'] as num?)?.toDouble() : null) ??
+          RutaContinental.paradaBTeleferico.longitude,
     );
 
     return Scaffold(
@@ -120,32 +125,40 @@ class _GpsScreenState extends State<GpsScreen> {
                 userAgentPackageName: 'com.example.continental',
               ),
 
-              // Geocercas circulares de los puntos de control en SQLite
-              CircleLayer(
-                circles: _puntos.map((p) {
-                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.53453;
-                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.19071;
-                  final radio = ((p['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 500.0);
-                  final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
-
-                  return CircleMarker(
-                    point: LatLng(lat, lon),
-                    radius: radio,
-                    useRadiusInMeter: true,
-                    color: (esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6)).withOpacity(0.18),
-                    borderColor: esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6),
-                    borderStrokeWidth: 2,
-                  );
-                }).toList(),
-              ),
-
-              // Ruta tentativa entre Cruce Villadela y Teleférico
+              // Trazado vial oficial entre Cruce Villadela y Teleférico
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: [coordVilladela, coordTeleferico],
-                    color: const Color(0xFF3B82F6).withOpacity(0.8),
+                    points: RutaContinental.puntosVuelta,
+                    color: const Color(0xFFD97706),
                     strokeWidth: 4.0,
+                    borderStrokeWidth: 1.5,
+                    borderColor: Colors.white,
+                  ),
+                  Polyline(
+                    points: RutaContinental.puntosIda,
+                    color: const Color(0xFF02634C),
+                    strokeWidth: 4.5,
+                    borderStrokeWidth: 1.5,
+                    borderColor: Colors.white,
+                  ),
+                ],
+              ),
+
+              // Geocercas Rectangulares Oficiales orientadas sobre la calzada (Parada A y Parada B)
+              PolygonLayer(
+                polygons: [
+                  Polygon(
+                    points: RutaContinental.obtenerRectanguloParadaA(coordVilladela),
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.28),
+                    borderColor: const Color(0xFF2563EB),
+                    borderStrokeWidth: 3.2,
+                  ),
+                  Polygon(
+                    points: RutaContinental.obtenerRectanguloParadaB(coordTeleferico),
+                    color: const Color(0xFFD97706).withValues(alpha: 0.26),
+                    borderColor: const Color(0xFFD97706),
+                    borderStrokeWidth: 3.0,
                   ),
                 ],
               ),

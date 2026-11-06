@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../core/normalizadores.dart';
 import '../../core/permisos.dart';
 import '../../services/database_helper.dart';
 import '../../services/sesion_service.dart';
-import '../../widgets/app_background.dart';
 import '../../core/documentos_alerta.dart';
 import 'conductor_detalle_screen.dart';
 import 'conductor_form_screen.dart';
@@ -11,10 +11,12 @@ import 'widgets/dialogo_baja_conductor.dart';
 import 'widgets/dialogo_reactivar_conductor.dart';
 import 'widgets/filtro_conductores_bar.dart';
 
+const _kVerdeOscuro = Color(0xFF02634C);
+
 class ConductoresScreen extends StatefulWidget {
   final String grupo;
 
-  const ConductoresScreen({super.key, this.grupo = '101'});
+  const ConductoresScreen({super.key, this.grupo = '101-127'});
 
   @override
   State<ConductoresScreen> createState() => _ConductoresScreenState();
@@ -26,7 +28,7 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   bool _isLoading = true;
   String _busqueda = '';
   String _filtroActivo = 'todos'; // 'todos', 'activos', 'inactivos', 'alertas'
-  bool _esVistaCuadricula = true;
+  bool _esVistaCuadricula = false; // Inicia en columnas (lista) al entrar
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -73,10 +75,10 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   void _aplicarFiltros() {
     final q = _busqueda.toLowerCase().trim();
     setState(() {
-      _conductoresFiltrados = _conductores.where((c) {
-        // 1. Filtrar estrictamente por el grupo de esta pantalla ('101' o '127')
-        final grupo = (c['grupo'] ?? '101').toString();
-        if (grupo != widget.grupo) return false;
+      final filtrados = _conductores.where((c) {
+        // Flota unificada: si widget.grupo es '101-127', muestra a todos los conductores
+        final grupo = (c['grupo'] ?? '101-127').toString();
+        if (widget.grupo != '101-127' && grupo != widget.grupo) return false;
 
         // 2. Filtrar por búsqueda de nombre, CI o placa
         final nombre = (c['nombre'] ?? '').toString().toLowerCase();
@@ -109,6 +111,22 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
             return true;
         }
       }).toList();
+
+      // Orden alfabético estricto según el apellido paterno
+      filtrados.sort((a, b) {
+        final estadoA = (a['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+        final estadoB = (b['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+        if (estadoA != estadoB) return estadoA.compareTo(estadoB);
+
+        final apA = Normalizadores.extraerApellidoPaterno(a['nombre']?.toString()).toLowerCase();
+        final apB = Normalizadores.extraerApellidoPaterno(b['nombre']?.toString()).toLowerCase();
+        final comp = apA.compareTo(apB);
+        if (comp != 0) return comp;
+
+        return (a['nombre'] ?? '').toString().toLowerCase().compareTo((b['nombre'] ?? '').toString().toLowerCase());
+      });
+
+      _conductoresFiltrados = filtrados;
     });
   }
 
@@ -203,13 +221,13 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // BOTÓN PARA ALTERNAR MODO DE VISTA (UN SOLO TOQUE: CUADRÍCULA <-> LISTA)
+  // BOTÓN PARA ALTERNAR MODO DE VISTA (COLUMNAS <-> CUADRADOS)
   // ---------------------------------------------------------------------------
-  Widget _buildBotonAlternarVista(Color colorPrimario) {
+  Widget _buildBotonAlternarVista() {
     return Tooltip(
       message: _esVistaCuadricula
-          ? 'Cambiar a vista de lista'
-          : 'Cambiar a vista de cuadrícula',
+          ? 'Ver en columnas (lista)'
+          : 'Ver en cuadrados (cuadrícula)',
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -225,10 +243,10 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
             height: 48,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
+                  color: Colors.black.withOpacity(0.03),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),
@@ -242,11 +260,11 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
               ),
               child: Icon(
                 _esVistaCuadricula
-                    ? Icons.view_list_rounded
-                    : Icons.grid_view_rounded,
+                    ? Icons.format_list_bulleted_rounded
+                    : Icons.tune_rounded,
                 key: ValueKey<bool>(_esVistaCuadricula),
-                size: 24,
-                color: colorPrimario,
+                size: 22,
+                color: _kVerdeOscuro,
               ),
             ),
           ),
@@ -255,17 +273,158 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
     );
   }
 
+  /// Encabezado verde curvo corporativo con título del grupo, logo,
+  /// buscador y botón de alternar vista integrados (estilo Our Services).
+  Widget _buildHeader(BuildContext context) {
+    final padding = MediaQuery.of(context).padding;
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, padding.top + 8, 16, 20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  tooltip: 'Volver',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 14),
+                // Título dinámico según el grupo que estamos (e.g. Grupo Continental 101 o 127)
+                Expanded(
+                  child: Text(
+                    'Grupo Continental ${widget.grupo}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                // Logo Continental en círculo blanco como en la imagen
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.local_taxi_rounded,
+                        color: _kVerdeOscuro,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Buscador y botón de alternar vista DENTRO del encabezado verde
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1E293B),
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nombre, CI o placa...',
+                        hintStyle: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF94A3B8),
+                          size: 20,
+                        ),
+                        suffixIcon: _busqueda.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _filtrar('');
+                                },
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: _filtrar,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _buildBotonAlternarVista(),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
-  // CONSTRUCCIÓN PRINCIPAL (GRID / LISTA CON COMPONENTES MODULARES)
+  // CONSTRUCCIÓN PRINCIPAL (COLUMNAS / CUADRADOS CON COMPONENTES MODULARES)
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final cantConductores = _conductoresFiltrados.length;
-
-    // Métricas del grupo asignado a esta pantalla (101 o 127)
-    final conductoresDelGrupo = _conductores
-        .where((c) => (c['grupo'] ?? '101').toString() == widget.grupo)
-        .toList();
+    // Métricas del grupo asignado a esta pantalla (101-127)
+    final conductoresDelGrupo = widget.grupo == '101-127'
+        ? _conductores
+        : _conductores
+            .where((c) => (c['grupo'] ?? '101-127').toString() == widget.grupo)
+            .toList();
     final cantTotalGrupo = conductoresDelGrupo.length;
     final cantActivosGrupo = conductoresDelGrupo
         .where((c) =>
@@ -285,221 +444,161 @@ class _ConductoresScreenState extends State<ConductoresScreen> {
           estadoSoat == 'Vencida';
     }).length;
 
-    final colorPrimario = widget.grupo == '127'
-        ? const Color(0xFF0D9488)
-        : const Color(0xFF1E3A8A);
-
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorPrimario),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Grupo Continental ${widget.grupo} ($cantConductores)',
-          style: TextStyle(
-            color: colorPrimario,
-            fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Column(
+        children: [
+          // 1. Encabezado verde curvo corporativo con título y buscador integrado
+          _buildHeader(context),
+
+          const SizedBox(height: 12),
+
+          // 2. Sub-filtros rápidos dentro del grupo (Todos, Activos, Alertas)
+          FiltroConductoresBar(
+            filtroActivo: _filtroActivo,
+            onFiltroChanged: (nuevoFiltro) {
+              setState(() {
+                _filtroActivo = nuevoFiltro;
+                _aplicarFiltros();
+              });
+            },
+            cantTotal: cantTotalGrupo,
+            cantActivos: cantActivosGrupo,
+            cantInactivos: cantInactivosGrupo,
+            cantAlertas: cantAlertasGrupo,
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh, color: colorPrimario),
-            tooltip: 'Recargar',
-            onPressed: _cargarConductores,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Image.asset(
-              'assets/images/logo.png',
-              height: 32,
-              errorBuilder: (c, e, s) =>
-                  Icon(Icons.local_taxi_rounded, color: colorPrimario),
-            ),
+
+          const SizedBox(height: 10),
+
+          // 4. VISTA EN COLUMNAS (LISTA) O EN CUADRADOS (GRID) CON NÚMERO DE LISTA
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
+                  )
+                : _conductoresFiltrados.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.local_taxi_outlined,
+                                size: 64,
+                                color: Colors.grey.shade300,
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No hay conductores encontrados',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Intenta con otro filtro de búsqueda o registra uno nuevo.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        color: _kVerdeOscuro,
+                        onRefresh: _cargarConductores,
+                        child: _esVistaCuadricula
+                            ? GridView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  4,
+                                  16,
+                                  90,
+                                ),
+                                itemCount: _conductoresFiltrados.length,
+                                physics: const BouncingScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.76,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final c = _conductoresFiltrados[index];
+                                  final esActivo = (c['estado'] ?? 'activo')
+                                          .toString()
+                                          .toLowerCase() ==
+                                      'activo';
+
+                                  return ConductorCard(
+                                    conductor: c,
+                                    numeroLista: index + 1,
+                                    modoLista: false,
+                                    onTap: () =>
+                                        _mostrarFichaDetalleConductor(c),
+                                    onTapVer: () =>
+                                        _mostrarFichaDetalleConductor(c),
+                                    onTapEditar: () =>
+                                        _abrirFormularioConductor(
+                                      conductorExistente: c,
+                                    ),
+                                    onTapCambiarEstado: () => esActivo
+                                        ? _confirmarBajaConductor(c)
+                                        : _confirmarReactivacionConductor(c),
+                                  );
+                                },
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  4,
+                                  16,
+                                  90,
+                                ),
+                                itemCount: _conductoresFiltrados.length,
+                                physics: const BouncingScrollPhysics(),
+                                itemBuilder: (context, index) {
+                                  final c = _conductoresFiltrados[index];
+                                  final esActivo = (c['estado'] ?? 'activo')
+                                          .toString()
+                                          .toLowerCase() ==
+                                      'activo';
+
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: ConductorCard(
+                                      conductor: c,
+                                      numeroLista: index + 1,
+                                      modoLista: true,
+                                      onTap: () =>
+                                          _mostrarFichaDetalleConductor(c),
+                                      onTapVer: () =>
+                                          _mostrarFichaDetalleConductor(c),
+                                      onTapEditar: () =>
+                                          _abrirFormularioConductor(
+                                        conductorExistente: c,
+                                      ),
+                                      onTapCambiarEstado: () => esActivo
+                                          ? _confirmarBajaConductor(c)
+                                          : _confirmarReactivacionConductor(c),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
           ),
         ],
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              // 1. Buscador superior y Selector de vista (Cuadrícula / Lista)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por nombre, CI o placa...',
-                          prefixIcon:
-                              const Icon(Icons.search, color: Color(0xFF10B981)),
-                          suffixIcon: _busqueda.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, color: Colors.grey),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    _filtrar('');
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFE2E8F0)),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFE2E8F0)),
-                          ),
-                        ),
-                        onChanged: _filtrar,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Botón para alternar entre cuadrícula y lista con un toque
-                    _buildBotonAlternarVista(colorPrimario),
-                  ],
-                ),
-              ),
-
-              // 2. Sub-filtros rápidos dentro del grupo (Todos, Activos, Inactivos, Alertas)
-              FiltroConductoresBar(
-                filtroActivo: _filtroActivo,
-                onFiltroChanged: (nuevoFiltro) {
-                  setState(() {
-                    _filtroActivo = nuevoFiltro;
-                    _aplicarFiltros();
-                  });
-                },
-                cantTotal: cantTotalGrupo,
-                cantActivos: cantActivosGrupo,
-                cantInactivos: cantInactivosGrupo,
-                cantAlertas: cantAlertasGrupo,
-              ),
-
-              const SizedBox(height: 8),
-
-              // 3. VISTA EN CUADRÍCULA O LISTA CON TARJETAS MODULARIZADAS
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _conductoresFiltrados.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.local_taxi_outlined,
-                                      size: 64, color: Colors.grey.shade300),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'No hay conductores encontrados',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    'Intenta con otro filtro de búsqueda o registra uno nuevo.',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: 13, color: Color(0xFF64748B)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _cargarConductores,
-                            child: _esVistaCuadricula
-                                ? GridView.builder(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 4, 16, 90),
-                                    itemCount: _conductoresFiltrados.length,
-                                    physics: const BouncingScrollPhysics(),
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      crossAxisSpacing: 12,
-                                      mainAxisSpacing: 12,
-                                      childAspectRatio: 0.76,
-                                    ),
-                                    itemBuilder: (context, index) {
-                                      final c = _conductoresFiltrados[index];
-                                      final esActivo = (c['estado'] ?? 'activo')
-                                              .toString()
-                                              .toLowerCase() ==
-                                          'activo';
-
-                                      return ConductorCard(
-                                        conductor: c,
-                                        onTap: () =>
-                                            _mostrarFichaDetalleConductor(c),
-                                        onTapVer: () =>
-                                            _mostrarFichaDetalleConductor(c),
-                                        onTapEditar: () =>
-                                            _abrirFormularioConductor(
-                                                conductorExistente: c),
-                                        onTapCambiarEstado: () => esActivo
-                                            ? _confirmarBajaConductor(c)
-                                            : _confirmarReactivacionConductor(c),
-                                      );
-                                    },
-                                  )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 4, 16, 90),
-                                    itemCount: _conductoresFiltrados.length,
-                                    physics: const BouncingScrollPhysics(),
-                                    itemBuilder: (context, index) {
-                                      final c = _conductoresFiltrados[index];
-                                      final esActivo = (c['estado'] ?? 'activo')
-                                              .toString()
-                                              .toLowerCase() ==
-                                          'activo';
-
-                                      return Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 10),
-                                        child: ConductorCard(
-                                          conductor: c,
-                                          modoLista: true,
-                                          onTap: () =>
-                                              _mostrarFichaDetalleConductor(c),
-                                          onTapVer: () =>
-                                              _mostrarFichaDetalleConductor(c),
-                                          onTapEditar: () =>
-                                              _abrirFormularioConductor(
-                                                  conductorExistente: c),
-                                          onTapCambiarEstado: () => esActivo
-                                              ? _confirmarBajaConductor(c)
-                                              : _confirmarReactivacionConductor(c),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-              ),
-            ],
-          ),
-        ),
-      ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF10B981),
+        backgroundColor: _kVerdeOscuro,
         foregroundColor: Colors.white,
         elevation: 4,
         icon: const Icon(Icons.person_add_alt_1),

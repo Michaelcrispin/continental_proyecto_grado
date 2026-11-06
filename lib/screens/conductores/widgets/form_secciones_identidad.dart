@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../../../core/normalizadores.dart';
 import 'form_field_widgets.dart';
 
-/// Sección 1: Padrón Sindical Continental (Grupo 101/127 y N.º Interno Móvil)
+const Color _kVerdeOscuro = Color(0xFF02634C);
+const Color _kMentaSuave = Color(0xFFE8F5EF);
+
+/// Sección 1: Padrón Sindical Continental (Grupo 101/127)
 class SeccionPadronSindical extends StatelessWidget {
   final String grupo;
   final TextEditingController numeroInternoCtrl;
@@ -18,63 +21,55 @@ class SeccionPadronSindical extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FormCardSeccion(
-      icono: Icons.groups_outlined,
-      colorIcono: const Color(0xFF1E3A8A),
-      bgIcono: const Color(0xFFEFF6FF),
+      icono: Icons.group_work_rounded,
+      colorIcono: _kVerdeOscuro,
+      bgIcono: _kMentaSuave,
       titulo: 'Padrón Sindical Continental',
-      subtitulo: 'Asignación de grupo y número de móvil interno',
+      subtitulo: 'Asignación de grupo sindical (101 o 127)',
       contenido: [
         const Text(
           'Grupo Sindical *',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 12.5,
             fontWeight: FontWeight.w600,
             color: Color(0xFF475569),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
               child: InkWell(
                 onTap: () => onGrupoChanged('101'),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 12,
+                    vertical: 13,
                     horizontal: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: grupo == '101'
-                        ? const Color(0xFF1E3A8A)
-                        : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
+                    color: grupo == '101' ? _kVerdeOscuro : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: grupo == '101'
-                          ? const Color(0xFF1E3A8A)
-                          : const Color(0xFFCBD5E1),
-                      width: 1.3,
+                      color: grupo == '101' ? _kVerdeOscuro : const Color(0xFFE2E8F0),
+                      width: 1.2,
                     ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.group_outlined,
-                        size: 18,
-                        color: grupo == '101'
-                            ? Colors.white
-                            : const Color(0xFF64748B),
+                        Icons.group_rounded,
+                        size: 20,
+                        color: grupo == '101' ? Colors.white : const Color(0xFF64748B),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Grupo 101',
                         style: TextStyle(
-                          color: grupo == '101'
-                              ? Colors.white
-                              : const Color(0xFF334155),
+                          color: grupo == '101' ? Colors.white : const Color(0xFF334155),
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 13.5,
                         ),
                       ),
                     ],
@@ -82,47 +77,39 @@ class SeccionPadronSindical extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: InkWell(
                 onTap: () => onGrupoChanged('127'),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 12,
+                    vertical: 13,
                     horizontal: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: grupo == '127'
-                        ? const Color(0xFF0D9488)
-                        : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
+                    color: grupo == '127' ? _kVerdeOscuro : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: grupo == '127'
-                          ? const Color(0xFF0D9488)
-                          : const Color(0xFFCBD5E1),
-                      width: 1.3,
+                      color: grupo == '127' ? _kVerdeOscuro : const Color(0xFFE2E8F0),
+                      width: 1.2,
                     ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.groups_outlined,
-                        size: 18,
-                        color: grupo == '127'
-                            ? Colors.white
-                            : const Color(0xFF64748B),
+                        Icons.groups_rounded,
+                        size: 20,
+                        color: grupo == '127' ? Colors.white : const Color(0xFF64748B),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Grupo 127',
                         style: TextStyle(
-                          color: grupo == '127'
-                              ? Colors.white
-                              : const Color(0xFF334155),
+                          color: grupo == '127' ? Colors.white : const Color(0xFF334155),
                           fontWeight: FontWeight.bold,
-                          fontSize: 13,
+                          fontSize: 13.5,
                         ),
                       ),
                     ],
@@ -131,14 +118,6 @@ class SeccionPadronSindical extends StatelessWidget {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-        FormTextField(
-          controller: numeroInternoCtrl,
-          label: 'N.º Interno (Móvil)',
-          hint: 'Ej. 1, 14, 25 (según orden de lista)',
-          icon: Icons.tag,
-          keyboardType: TextInputType.number,
         ),
       ],
     );
@@ -157,6 +136,11 @@ class SeccionCuentaAcceso extends StatelessWidget {
   final bool obscurePass;
   final VoidCallback onToggleObscure;
   final ValueChanged<String?> onExtensionChanged;
+  final String? Function(String?)? validadorNombre;
+  final String? Function(String?)? validadorCi;
+  final String? Function(String?)? validadorTelefono;
+  final String? Function(String?)? validadorCorreo;
+  final String? Function(String?)? validadorPass;
 
   const SeccionCuentaAcceso({
     super.key,
@@ -170,14 +154,19 @@ class SeccionCuentaAcceso extends StatelessWidget {
     required this.obscurePass,
     required this.onToggleObscure,
     required this.onExtensionChanged,
+    this.validadorNombre,
+    this.validadorCi,
+    this.validadorTelefono,
+    this.validadorCorreo,
+    this.validadorPass,
   });
 
   @override
   Widget build(BuildContext context) {
     return FormCardSeccion(
-      icono: Icons.lock_person_outlined,
-      colorIcono: const Color(0xFF2563EB),
-      bgIcono: const Color(0xFFEFF6FF),
+      icono: Icons.lock_person_rounded,
+      colorIcono: _kVerdeOscuro,
+      bgIcono: _kMentaSuave,
       titulo: 'Cuenta y Acceso al Sistema',
       subtitulo: 'Credenciales obligatorias para inicio de sesión del chofer',
       contenido: [
@@ -185,13 +174,16 @@ class SeccionCuentaAcceso extends StatelessWidget {
           controller: nombreCtrl,
           label: 'Nombre Completo *',
           hint: 'Ej. Juan Carlos Quispe Mamani',
-          icon: Icons.person_outline,
-          validator: (v) => (v == null || v.trim().isEmpty)
-              ? 'El nombre completo es obligatorio'
-              : null,
+          icon: Icons.person_outline_rounded,
+          textCapitalization: TextCapitalization.words,
+          validator: validadorNombre ??
+              (v) => (v == null || v.trim().isEmpty)
+                  ? 'El nombre completo es obligatorio'
+                  : null,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               flex: 6,
@@ -201,12 +193,13 @@ class SeccionCuentaAcceso extends StatelessWidget {
                 hint: 'Ej. 8493021',
                 icon: Icons.badge_outlined,
                 keyboardType: TextInputType.text,
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'El CI es obligatorio (Login)'
-                    : null,
+                validator: validadorCi ??
+                    (v) => (v == null || v.trim().isEmpty)
+                        ? 'El CI es obligatorio (Login)'
+                        : null,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               flex: 4,
               child: FormDropdownField<String>(
@@ -219,16 +212,18 @@ class SeccionCuentaAcceso extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: FormTextField(
                 controller: telefonoCtrl,
-                label: 'Teléfono / Celular',
+                label: 'Teléfono / Celular *',
                 hint: '76543210',
                 icon: Icons.phone_android_outlined,
                 keyboardType: TextInputType.phone,
+                validator: validadorTelefono,
               ),
             ),
             const SizedBox(width: 10),
@@ -239,19 +234,21 @@ class SeccionCuentaAcceso extends StatelessWidget {
                 hint: 'ejemplo@gmail.com',
                 icon: Icons.alternate_email_outlined,
                 keyboardType: TextInputType.emailAddress,
+                validator: validadorCorreo,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         FormTextField(
           controller: passCtrl,
           label: esEdicion
               ? 'Nueva Contraseña (dejar en blanco para no cambiar)'
               : 'Contraseña de Acceso *',
           hint: esEdicion ? 'Sin cambios' : 'Mínimo 4 caracteres',
-          icon: Icons.lock_outline,
+          icon: Icons.lock_outline_rounded,
           obscureText: obscurePass,
+          validator: validadorPass,
           suffixIcon: IconButton(
             icon: Icon(
               obscurePass
@@ -287,9 +284,9 @@ class SeccionInfoPersonal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FormCardSeccion(
-      icono: Icons.home_work_outlined,
-      colorIcono: const Color(0xFF0D9488),
-      bgIcono: const Color(0xFFCCFBF1),
+      icono: Icons.home_work_rounded,
+      colorIcono: _kVerdeOscuro,
+      bgIcono: _kMentaSuave,
       titulo: 'Información Personal',
       subtitulo: 'Datos domiciliarios y personales del conductor',
       contenido: [
@@ -317,7 +314,7 @@ class SeccionInfoPersonal extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         FormTextField(
           controller: direccionCtrl,
           label: 'Dirección de Domicilio',

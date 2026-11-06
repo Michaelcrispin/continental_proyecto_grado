@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../core/documentos_alerta.dart';
 import 'card_info_licencia.dart';
 import 'card_info_personal.dart';
-import 'card_vehiculo_actividad.dart';
 
 /// Pestaña 0: Información General del Conductor.
 class TabInfoGeneral extends StatelessWidget {
@@ -56,13 +55,6 @@ class TabInfoGeneral extends StatelessWidget {
         CardInformacionLicencia(conductor: conductor),
         const SizedBox(height: 16),
         CardDocumentosResumen(onVerDocumentos: () => onIrATab(1)),
-        const SizedBox(height: 16),
-
-        // Fila 3: Actividad Reciente
-        CardActividadReciente(
-          onIrAsistencias: () => onIrATab(2),
-          onIrObservaciones: () => onIrATab(3),
-        ),
         const SizedBox(height: 20),
 
         // Mensaje de pie sindical

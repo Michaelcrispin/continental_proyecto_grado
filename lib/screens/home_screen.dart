@@ -4,20 +4,43 @@ import '../core/permisos.dart';
 import '../models/usuario_model.dart';
 import '../services/database_helper.dart';
 import '../services/sesion_service.dart';
-import '../widgets/app_background.dart';
-import '../widgets/glass_card.dart';
+import '../widgets/app_bottom_bar.dart';
 
-import 'asistencia_screen.dart';
+import 'asistencia/asistencia_screen.dart';
+import 'asistencia/puntos_control_screen.dart';
 import 'vueltas_screen.dart';
 import 'sanciones_screen.dart';
 import 'cuotas/cuotas_screen.dart';
 import 'conductores/grupos_conductores_screen.dart';
 import 'informes_screen.dart';
-import 'gps_screen.dart';
+import 'gps/gps_en_vivo_screen.dart';
+import 'gps/ruta_oficial_screen.dart';
 import 'perfil_screen.dart';
-import 'panel_tecnico_screen.dart';
+// DESACTIVADO: Panel Técnico oculto del menú y la pantalla principal.
+// import 'panel_tecnico_screen.dart';
 import 'usuarios_screen.dart';
 import 'reuniones_screen.dart';
+
+const _kVerdeOscuro = Color(
+  0xFF02634C,
+); // Exacto al diseño de la imagen (#02634C)
+const _kVerdeSuave = Color(0xFF0D7C66);
+
+class _ModuloItem {
+  final String titulo;
+  final IconData icono;
+  final Widget destino;
+  final Color color;
+  final String? badge;
+
+  const _ModuloItem({
+    required this.titulo,
+    required this.icono,
+    required this.destino,
+    required this.color,
+    this.badge,
+  });
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,7 +50,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final int _currentIndex = 0;
+  int _selectedModuloIndex = 0;
   bool _isLoading = true;
   Map<String, num> _resumen = {
     'conductores_activos': 0,
@@ -53,7 +76,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final idConductor = SesionService.instance.idConductor;
 
       if (esConductor && idConductor != null) {
-        final resumenCond = await DatabaseHelper.instance.resumenConductor(idConductor);
+        final resumenCond = await DatabaseHelper.instance.resumenConductor(
+          idConductor,
+        );
         if (mounted) {
           setState(() {
             _resumen = resumenCond;
@@ -63,7 +88,9 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         final hoy = DateTime.now().toIso8601String().substring(0, 10);
         final resumenGlobal = await DatabaseHelper.instance.resumenHome();
-        final vueltas = await DatabaseHelper.instance.vueltasDetalle(fecha: hoy);
+        final vueltas = await DatabaseHelper.instance.vueltasDetalle(
+          fecha: hoy,
+        );
 
         if (mounted) {
           setState(() {
@@ -83,27 +110,20 @@ class _HomeScreenState extends State<HomeScreen> {
   String _formatearFecha() {
     final now = DateTime.now();
     const meses = [
-      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
     ];
     return 'Hoy, ${now.day} de ${meses[now.month - 1]} de ${now.year}';
-  }
-
-  Color _colorPorRol(String? rol) {
-    switch (rol?.toLowerCase().trim()) {
-      case 'superadmin':
-        return const Color(0xFF8B5CF6);
-      case 'admin':
-        return AppColors.primaryBlue;
-      case 'supervisor':
-        return const Color(0xFFF59E0B);
-      case 'tesorero':
-        return const Color(0xFF0D9488);
-      case 'conductor':
-        return const Color(0xFF10B981);
-      default:
-        return AppColors.textGray;
-    }
   }
 
   String _etiquetaRol(String? rol) {
@@ -125,7 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final nombreUsuario = SesionService.instance.nombre ??
+    final nombreUsuario =
+        SesionService.instance.nombre ??
         Usuario.currentUser?.nombre ??
         'Encargado';
     final rol = SesionService.instance.rol ?? Usuario.currentUser?.rol;
@@ -133,369 +154,500 @@ class _HomeScreenState extends State<HomeScreen> {
     final esSupervisor = SesionService.instance.esSupervisor;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      backgroundColor: const Color(0xFFF8FAFC),
       drawer: _buildDrawer(context, nombreUsuario, rol),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: AppColors.primaryDark),
-            tooltip: 'Menú principal',
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        title: Center(
-          child: Image.asset(
-            'assets/images/logo.png',
-            height: 40,
-            errorBuilder: (c, e, s) => const Text(
-              'Continental',
-              style: TextStyle(
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: AppColors.primaryDark),
-            tooltip: 'Actualizar datos',
-            onPressed: _cargarDatos,
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: AppColors.primaryDark),
-            onPressed: () {},
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const PerfilScreen()),
-                ).then((_) => _cargarDatos());
-              },
-              child: const CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.iconBgBlue,
-                child: Icon(Icons.person, color: AppColors.primaryBlue, size: 20),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: AppBackground(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Encabezado Verde (Diseño moderno con Fecha en lugar de Buscador)
+            _buildGreenHeader(context, nombreUsuario, rol),
+
+            const SizedBox(height: 18),
+
+            // 2. Carrusel Horizontal de Íconos (Idéntico a Imagen 1)
+            _buildCarouselModulos(context, rol, esConductor),
+
+            const SizedBox(height: 8),
+
+            // 3. Contenido Principal (Estadísticas y Resumen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hola, $nombreUsuario',
-                          style: const TextStyle(
-                            color: AppColors.primaryDark,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
+                  // Fila de título: "Resumen del día" + "Ver todo" (estilo Our Services de la referencia)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Resumen del día',
+                        style: TextStyle(
+                          color: Color(0xFF1E293B),
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const InformesScreen(),
+                            ),
+                          ).then((_) => _cargarDatos());
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Ver todo',
+                                style: TextStyle(
+                                  color: _kVerdeOscuro,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(width: 3),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                color: _kVerdeOscuro,
+                                size: 11,
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'Grupo Continental Trufi 101 - 127',
-                          style: TextStyle(color: AppColors.textGray, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Tarjetas de Estadísticas Reales según Rol
+                  if (_isLoading)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (esConductor) ...[
+                    // Par de tarjetas destacadas superiores (Asistencia y Vueltas - estilo Washer Service)
+                    _buildHeroPairCards(
+                      title1: 'Mi Asistencia',
+                      value1: _resumen['asistio_hoy'] == 1
+                          ? 'Presente'
+                          : 'Pendiente',
+                      subtitle1: 'Marcación de hoy',
+                      icon1: Icons.how_to_reg_rounded,
+                      color1: _resumen['asistio_hoy'] == 1
+                          ? AppColors.success
+                          : const Color(0xFFF59E0B),
+                      onTap1: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AsistenciaScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                      title2: 'Mis Vueltas',
+                      value2: '${_resumen['vueltas_hoy'] ?? 0}',
+                      subtitle2: 'Completadas hoy',
+                      icon2: Icons.route_rounded,
+                      color2: const Color(0xFF3B82F6),
+                      onTap2: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const VueltasScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.warning_amber_rounded,
+                      const Color(0xFFEF4444),
+                      'Mis Sanciones',
+                      '${_resumen['sanciones_pendientes'] ?? 0}',
+                      'Sanciones pendientes de descargo',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SancionesScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.account_balance_wallet_rounded,
+                      const Color(0xFF8B5CF6),
+                      'Mis Cuotas',
+                      'Bs. ${_resumen['cuotas_pendientes_monto'] ?? 0}',
+                      'Saldo pendiente de pago',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CuotasScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                  ] else if (esSupervisor) ...[
+                    // Supervisor: Par de tarjetas destacadas
+                    _buildHeroPairCards(
+                      title1: 'Asistencias',
+                      value1:
+                          '${_resumen['asistencias_hoy'] ?? 0} / ${_resumen['conductores_activos'] ?? 0}',
+                      subtitle1: 'Conductores presentes',
+                      icon1: Icons.groups_rounded,
+                      color1: AppColors.success,
+                      onTap1: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AsistenciaScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                      title2: 'Vueltas',
+                      value2: '$_vueltasHoy',
+                      subtitle2: 'Recorridos hoy',
+                      icon2: Icons.route_rounded,
+                      color2: const Color(0xFF3B82F6),
+                      onTap2: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const VueltasScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.warning_amber_rounded,
+                      const Color(0xFFEF4444),
+                      'Sanciones Pendientes',
+                      '${_resumen['sanciones_pendientes'] ?? 0}',
+                      'Sanciones registradas hoy',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SancionesScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.local_taxi_rounded,
+                      const Color(0xFF0EA5E9),
+                      'Conductores en Línea',
+                      '${_resumen['conductores_activos'] ?? 0}',
+                      'Unidades habilitadas activas',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const GruposConductoresScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                  ] else ...[
+                    // Admin / Superadmin: Par de tarjetas destacadas
+                    _buildHeroPairCards(
+                      title1: 'Asistencia',
+                      value1:
+                          '${_resumen['asistencias_hoy'] ?? 0} / ${_resumen['conductores_activos'] ?? 0}',
+                      subtitle1: 'Conductores marcados',
+                      icon1: Icons.groups_rounded,
+                      color1: AppColors.success,
+                      onTap1: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AsistenciaScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                      title2: 'Vueltas',
+                      value2: '$_vueltasHoy',
+                      subtitle2: 'Vueltas registradas',
+                      icon2: Icons.route_rounded,
+                      color2: const Color(0xFF3B82F6),
+                      onTap2: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const VueltasScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.warning_amber_rounded,
+                      const Color(0xFFEF4444),
+                      'Sanciones',
+                      '${_resumen['sanciones_pendientes'] ?? 0}',
+                      'Sanciones pendientes de cobro',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SancionesScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatCard(
+                      Icons.account_balance_wallet_rounded,
+                      const Color(0xFF8B5CF6),
+                      'Cuotas',
+                      '${_resumen['cuotas_creadas'] ?? 0}',
+                      'Cuotas institucionales creadas',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CuotasScreen(),
+                          ),
+                        ).then((_) => _cargarDatos());
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        currentTab: AppBottomTab.inicio,
+        onTabSelected: (tab) {
+          if (tab == AppBottomTab.inicio) {
+            _cargarDatos();
+          } else if (tab == AppBottomTab.asistencias) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
+            ).then((_) => _cargarDatos());
+          } else if (tab == AppBottomTab.vueltas) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VueltasScreen()),
+            ).then((_) => _cargarDatos());
+          } else if (tab == AppBottomTab.cuotas) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CuotasScreen()),
+            ).then((_) => _cargarDatos());
+          }
+        },
+      ),
+    );
+  }
+
+  /// Encabezado verde corporativo con tarjeta de avatar y widget de fecha
+  Widget _buildGreenHeader(
+    BuildContext context,
+    String nombreUsuario,
+    String? rol,
+  ) {
+    final padding = MediaQuery.of(context).padding;
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, padding.top + 8, 20, 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Barra de acciones superiores: Menú (Drawer), Refrescar y Notificaciones
+            Row(
+              children: [
+                Builder(
+                  builder: (ctx) => IconButton(
+                    icon: const Icon(
+                      Icons.menu_rounded,
+                      color: Colors.white,
+                      size: 26,
+                    ),
+                    tooltip: 'Menú principal',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  tooltip: 'Actualizar datos',
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  constraints: const BoxConstraints(),
+                  onPressed: _cargarDatos,
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(
+                    Icons.notifications_none_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {},
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Fila: "Hola, Super Administrador" + Tarjeta Blanca con Avatar
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hola, $nombreUsuario',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.3,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Grupo Continental Trufi 101 - 127',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      if (rol != null) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            _etiquetaRol(rol),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                // Tarjeta Blanca con ícono de persona verde (idéntico a la imagen de referencia)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PerfilScreen(),
+                      ),
+                    ).then((_) => _cargarDatos());
+                  },
+                  child: Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
                       ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _colorPorRol(rol).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _colorPorRol(rol).withOpacity(0.35)),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: _kVerdeOscuro,
+                      size: 30,
                     ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Barra blanca (donde estaba el buscador, ahora con la FECHA como pidió el usuario)
+            Container(
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(25),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today_rounded,
+                    color: _kVerdeSuave,
+                    size: 19,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
                     child: Text(
-                      _etiquetaRol(rol),
-                      style: TextStyle(
-                        color: _colorPorRol(rol),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                      _formatearFecha(),
+                      style: const TextStyle(
+                        color: Color(0xFF334155),
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-
-              // Widget de Fecha Dinámica
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.calendar_today, color: Colors.white, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatearFecha(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Tarjetas de Estadísticas Reales según Rol
-              if (_isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (esConductor) ...[
-                // Estadísticas personalizadas para el Conductor
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.how_to_reg,
-                        _resumen['asistio_hoy'] == 1 ? AppColors.success : const Color(0xFFF59E0B),
-                        'Mi Asistencia',
-                        _resumen['asistio_hoy'] == 1 ? 'Presente' : 'Pendiente',
-                        'estado de hoy',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.route,
-                        AppColors.primaryBlue,
-                        'Mis Vueltas',
-                        '${_resumen['vueltas_hoy'] ?? 0}',
-                        'completadas hoy',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.warning_amber_rounded,
-                        AppColors.danger,
-                        'Mis Sanciones',
-                        '${_resumen['sanciones_pendientes'] ?? 0}',
-                        'pendientes',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.account_balance_wallet,
-                        const Color(0xFF8B5CF6),
-                        'Mis Cuotas',
-                        'Bs. ${_resumen['cuotas_pendientes_monto'] ?? 0}',
-                        'saldo pendiente',
-                      ),
-                    ),
-                  ],
-                ),
-              ] else if (esSupervisor) ...[
-                // Estadísticas para Supervisor (operativo)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.person,
-                        AppColors.success,
-                        'Asistencia',
-                        '${_resumen['asistencias_hoy'] ?? 0} / ${_resumen['conductores_activos'] ?? 0}',
-                        'conductores hoy',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.route,
-                        AppColors.primaryBlue,
-                        'Vueltas',
-                        '$_vueltasHoy',
-                        'registradas hoy',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.warning_amber_rounded,
-                        AppColors.danger,
-                        'Sanciones',
-                        '${_resumen['sanciones_pendientes'] ?? 0}',
-                        'pendientes',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.groups_outlined,
-                        const Color(0xFF0EA5E9),
-                        'Conductores',
-                        '${_resumen['conductores_activos'] ?? 0}',
-                        'activos en línea',
-                      ),
-                    ),
-                  ],
-                ),
-              ] else ...[
-                // Estadísticas globales para Admin y Superadmin
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.person,
-                        AppColors.success,
-                        'Asistencia',
-                        '${_resumen['asistencias_hoy'] ?? 0} / ${_resumen['conductores_activos'] ?? 0}',
-                        'conductores',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.route,
-                        AppColors.primaryBlue,
-                        'Vueltas',
-                        '$_vueltasHoy',
-                        'registradas hoy',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.warning_amber_rounded,
-                        AppColors.danger,
-                        'Sanciones',
-                        '${_resumen['sanciones_pendientes'] ?? 0}',
-                        'pendientes',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildStatCard(
-                        Icons.account_balance_wallet,
-                        const Color(0xFF8B5CF6),
-                        'Cuotas',
-                        '${_resumen['cuotas_creadas'] ?? 0}',
-                        'creadas',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const CuotasScreen(),
-                            ),
-                          ).then((_) => _cargarDatos());
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 30),
-
-              const Text(
-                'Accesos rápidos',
-                style: TextStyle(
-                  color: AppColors.primaryDark,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Grid de Accesos Rápidos filtrado dinámicamente por Permisos RBAC
-              _buildQuickAccessGrid(rol, esConductor),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) {
-            if (index == 1) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
-              ).then((_) => _cargarDatos());
-            } else if (index == 2) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const VueltasScreen()),
-              ).then((_) => _cargarDatos());
-            } else if (index == 3) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CuotasScreen()),
-              ).then((_) => _cargarDatos());
-            }
-          },
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: AppColors.primaryBlue,
-          unselectedItemColor: const Color(0xFF94A3B8),
-          showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 11),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Inicio',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.groups_outlined),
-              activeIcon: Icon(Icons.groups),
-              label: 'Asistencias',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.route_outlined),
-              activeIcon: Icon(Icons.route),
-              label: 'Vueltas',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.account_balance_wallet_outlined),
-              activeIcon: Icon(Icons.account_balance_wallet),
-              label: 'Cuotas',
             ),
           ],
         ),
@@ -503,110 +655,270 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickAccessGrid(String? rol, bool esConductor) {
-    final List<Widget> items = [];
+  /// Carrusel horizontal estilo moderno (módulo activo resaltado, los demás en gris limpio tipo referencia)
+  Widget _buildCarouselModulos(
+    BuildContext context,
+    String? rol,
+    bool esConductor,
+  ) {
+    final modulos = _obtenerModulos(rol, esConductor);
 
-    // 1. Panel Técnico y Puntos de Parada (exclusivos para superadmin)
-    if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico)) {
-      items.add(_buildQuickAccess(
-        Icons.admin_panel_settings,
-        'Panel Técnico',
-        const PanelTecnicoScreen(),
-        colorIcono: const Color(0xFF8B5CF6),
-      ));
-    }
-    if (Permisos.puedeVer(rol, Permisos.moduloPuntosParada)) {
-      items.add(_buildQuickAccess(
-        Icons.edit_location_alt,
-        'Puntos A y B',
-        const PuntosControlScreen(),
-        colorIcono: const Color(0xFF0D9488),
-      ));
-    }
+    return SizedBox(
+      height: 106,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: modulos.length,
+        separatorBuilder: (_, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final m = modulos[index];
+          final esSeleccionado = index == _selectedModuloIndex;
 
-    // 2. Directorio (superadmin y admin)
-    if (Permisos.puedeVer(rol, Permisos.moduloUsuarios)) {
-      items.add(_buildQuickAccess(
-        Icons.admin_panel_settings,
-        'Directorio',
-        const UsuariosScreen(),
-        colorIcono: const Color(0xFF1E3A8A),
-      ));
-    }
-
-    // 3. Conductores (superadmin y admin)
-    if (Permisos.puedeVer(rol, Permisos.moduloConductores)) {
-      items.add(_buildQuickAccess(
-        Icons.local_taxi_rounded,
-        'Conductores',
-        const GruposConductoresScreen(),
-        colorIcono: const Color(0xFF10B981),
-      ));
-    }
-
-    // 3. Asistencia (todos)
-    if (Permisos.puedeVer(rol, Permisos.moduloAsistencia)) {
-      items.add(_buildQuickAccess(
-        Icons.groups,
-        esConductor ? 'Mi Asistencia' : 'Asistencia',
-        const AsistenciaScreen(),
-      ));
-    }
-
-    // 4. Vueltas (todos)
-    if (Permisos.puedeVer(rol, Permisos.moduloVueltas)) {
-      items.add(_buildQuickAccess(
-        Icons.route,
-        esConductor ? 'Mis Vueltas' : 'Vueltas',
-        const VueltasScreen(),
-      ));
-    }
-
-    // 5. Sanciones (todos)
-    if (Permisos.puedeVer(rol, Permisos.moduloSanciones)) {
-      items.add(_buildQuickAccess(
-        Icons.warning_amber_rounded,
-        esConductor ? 'Mis Sanciones' : 'Sanciones',
-        const SancionesScreen(),
-      ));
-    }
-
-    // 6. Control Económico / Cuotas (superadmin, admin y conductor)
-    if (Permisos.puedeVer(rol, Permisos.moduloControlEconomico)) {
-      items.add(_buildQuickAccess(
-        Icons.account_balance_wallet,
-        esConductor ? 'Mis Cuotas' : 'Económico',
-        const CuotasScreen(),
-      ));
-    }
-
-    // 7. Informes (superadmin y admin)
-    if (Permisos.puedeVer(rol, Permisos.moduloInformes)) {
-      items.add(_buildQuickAccess(
-        Icons.description,
-        'Informes',
-        const InformesScreen(),
-      ));
-    }
-
-    // 8. GPS / Monitoreo (todos)
-    if (Permisos.puedeVer(rol, Permisos.moduloGps)) {
-      items.add(_buildQuickAccess(
-        Icons.gps_fixed,
-        'GPS',
-        const GpsScreen(),
-      ));
-    }
-
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.05,
-      children: items,
+          return GestureDetector(
+            onTap: () {
+              setState(() => _selectedModuloIndex = index);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => m.destino),
+              ).then((_) => _cargarDatos());
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              width: 90,
+              height: 104,
+              decoration: BoxDecoration(
+                color: esSeleccionado ? _kVerdeOscuro : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: esSeleccionado
+                      ? _kVerdeOscuro
+                      : const Color(0xFFE2E8F0),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: esSeleccionado
+                        ? _kVerdeOscuro.withOpacity(0.32)
+                        : Colors.black.withOpacity(0.02),
+                    blurRadius: esSeleccionado ? 10 : 4,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 8,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            m.icono,
+                            color: esSeleccionado ? Colors.white : m.color,
+                            size: 29,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            m.titulo,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: esSeleccionado
+                                  ? Colors.white
+                                  : const Color(0xFF334155),
+                              fontSize: 11.5,
+                              fontWeight: esSeleccionado
+                                  ? FontWeight.bold
+                                  : FontWeight.w600,
+                              height: 1.15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (m.badge != null && m.badge!.isNotEmpty)
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: esSeleccionado ? Colors.white : m.color,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          m.badge!,
+                          style: TextStyle(
+                            color: esSeleccionado
+                                ? _kVerdeOscuro
+                                : Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  List<_ModuloItem> _obtenerModulos(String? rol, bool esConductor) {
+    final list = <_ModuloItem>[];
+
+    // 1. Asistencia - Coral cálido (como en la Imagen 1)
+    if (Permisos.puedeVer(rol, Permisos.moduloAsistencia)) {
+      list.add(
+        _ModuloItem(
+          titulo: esConductor ? 'Mi Asistencia' : 'Asistencia',
+          icono: Icons.how_to_reg_rounded,
+          destino: const AsistenciaScreen(),
+          color: const Color(0xFFFF7A59),
+          badge: esConductor
+              ? (_resumen['asistio_hoy'] == 1 ? 'OK' : null)
+              : '${_resumen['asistencias_hoy'] ?? 0}',
+        ),
+      );
+    }
+
+    // 2. Vueltas - Azul vibrante
+    if (Permisos.puedeVer(rol, Permisos.moduloVueltas)) {
+      list.add(
+        _ModuloItem(
+          titulo: esConductor ? 'Mis Vueltas' : 'Vueltas',
+          icono: Icons.route_rounded,
+          destino: const VueltasScreen(),
+          color: const Color(0xFF3B82F6),
+          badge: '$_vueltasHoy',
+        ),
+      );
+    }
+
+    // 3. Ruta Oficial (Fija Geo Tracker) - Verde Corporativo
+    list.add(
+      const _ModuloItem(
+        titulo: 'Ruta',
+        icono: Icons.map_rounded,
+        destino: RutaOficialScreen(),
+        color: Color(0xFF02634C),
+      ),
+    );
+
+    // 4. Sanciones - Rojo / Carmín
+    if (Permisos.puedeVer(rol, Permisos.moduloSanciones)) {
+      final sanc = _resumen['sanciones_pendientes'] ?? 0;
+      list.add(
+        _ModuloItem(
+          titulo: esConductor ? 'Mis Sanciones' : 'Sanciones',
+          icono: Icons.warning_amber_rounded,
+          destino: const SancionesScreen(),
+          color: const Color(0xFFEF4444),
+          badge: sanc > 0 ? '$sanc' : null,
+        ),
+      );
+    }
+
+    // 4. Cuotas / Económico - Púrpura / Violeta
+    if (Permisos.puedeVer(rol, Permisos.moduloControlEconomico)) {
+      list.add(
+        _ModuloItem(
+          titulo: esConductor ? 'Mis Cuotas' : 'Cuotas',
+          icono: Icons.account_balance_wallet_rounded,
+          destino: const CuotasScreen(),
+          color: const Color(0xFF8B5CF6),
+        ),
+      );
+    }
+
+    // 5. GPS en Vivo - Verde azulado / Teal
+    if (Permisos.puedeVer(rol, Permisos.moduloGps)) {
+      list.add(
+        const _ModuloItem(
+          titulo: 'GPS en Vivo',
+          icono: Icons.gps_fixed_rounded,
+          destino: GpsEnVivoScreen(),
+          color: Color(0xFF0D9488),
+        ),
+      );
+    }
+
+    // 6. Puntos A y B - Ámbar / Naranja dorado
+    if (Permisos.puedeVer(rol, Permisos.moduloPuntosParada)) {
+      list.add(
+        const _ModuloItem(
+          titulo: 'Puntos A y B',
+          icono: Icons.edit_location_alt_rounded,
+          destino: PuntosControlScreen(),
+          color: Color(0xFFF59E0B),
+        ),
+      );
+    }
+
+    // 7. Conductores - Verde Esmeralda
+    if (Permisos.puedeVer(rol, Permisos.moduloConductores)) {
+      list.add(
+        const _ModuloItem(
+          titulo: 'Conductores',
+          icono: Icons.local_taxi_rounded,
+          destino: GruposConductoresScreen(),
+          color: Color(0xFF10B981),
+        ),
+      );
+    }
+
+    // 8. Informes - Rosa Frambuesa
+    if (Permisos.puedeVer(rol, Permisos.moduloInformes)) {
+      list.add(
+        const _ModuloItem(
+          titulo: 'Informes',
+          icono: Icons.description_rounded,
+          destino: InformesScreen(),
+          color: Color(0xFFEC4899),
+        ),
+      );
+    }
+
+    // 9. Directorio - Índigo
+    if (Permisos.puedeVer(rol, Permisos.moduloUsuarios)) {
+      list.add(
+        const _ModuloItem(
+          titulo: 'Directorio',
+          icono: Icons.manage_accounts_rounded,
+          destino: UsuariosScreen(),
+          color: Color(0xFF6366F1),
+        ),
+      );
+    }
+
+    // 10. Panel Técnico - Azul Océano / Cian
+    // DESACTIVADO: se oculta del menú de módulos de la pantalla principal.
+    // if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico)) {
+    //   list.add(
+    //     const _ModuloItem(
+    //       titulo: 'Panel Técnico',
+    //       icono: Icons.admin_panel_settings_rounded,
+    //       destino: PanelTecnicoScreen(),
+    //       color: Color(0xFF0284C7),
+    //     ),
+    //   );
+    // }
+
+    return list;
   }
 
   Widget _buildStatCard(
@@ -617,46 +929,81 @@ class _HomeScreenState extends State<HomeScreen> {
     String subtitle, {
     VoidCallback? onTap,
   }) {
-    final card = GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
-              ),
-              const Spacer(),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.textGray,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          const SizedBox(height: 12),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Ícono circular destacado y más grande
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: iconColor, size: 28),
+          ),
+          const SizedBox(width: 16),
+
+          // Título y subtítulo descriptivo
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // Métrica / Valor numérico grande y destacado
           Text(
             value,
             style: TextStyle(
               color: iconColor,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: const TextStyle(color: AppColors.textLight, fontSize: 11),
-          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: Color(0xFF94A3B8),
+              size: 22,
+            ),
+          ],
         ],
       ),
     );
@@ -667,43 +1014,131 @@ class _HomeScreenState extends State<HomeScreen> {
     return card;
   }
 
-  Widget _buildQuickAccess(
-    IconData icon,
-    String label,
-    Widget targetScreen, {
-    Color? colorIcono,
+  Widget _buildHeroPairCards({
+    required String title1,
+    required String value1,
+    required String subtitle1,
+    required IconData icon1,
+    required Color color1,
+    required VoidCallback onTap1,
+    required String title2,
+    required String value2,
+    required String subtitle2,
+    required IconData icon2,
+    required Color color2,
+    required VoidCallback onTap2,
   }) {
-    final c = colorIcono ?? AppColors.primaryBlue;
+    return Row(
+      children: [
+        Expanded(
+          child: _buildHeroCard(
+            title: title1,
+            value: value1,
+            subtitle: subtitle1,
+            icon: icon1,
+            color: color1,
+            onTap: onTap1,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: _buildHeroCard(
+            title: title2,
+            value: value2,
+            subtitle: subtitle2,
+            icon: icon2,
+            color: color2,
+            onTap: onTap2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => targetScreen),
-        ).then((_) => _cargarDatos());
-      },
-      child: GlassCard(
-        padding: const EdgeInsets.all(8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: c.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: c, size: 22),
+      onTap: onTap,
+      child: Container(
+        height: 154,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.primaryDark,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Banner superior con color suave (estilo Washer Service de referencia)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(19),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: color, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1E293B),
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -715,162 +1150,142 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDrawer(BuildContext context, String nombreUsuario, String? rol) {
     final correo = SesionService.instance.gmail;
     final ci = SesionService.instance.ci;
-    final identificador = (ci != null && ci.isNotEmpty)
-        ? 'CI: $ci'
-        : (correo != null && correo.isNotEmpty ? correo : 'Línea 101 - 127');
+    final identificador = (correo != null && correo.isNotEmpty)
+        ? correo
+        : ((ci != null && ci.isNotEmpty) ? 'CI: ' : 'Línea 101 - 127');
 
-    final colorRol = _colorPorRol(rol);
-    final etiquetaRol = _etiquetaRol(rol);
+    final etiquetaRol = _etiquetaRolDrawer(rol);
 
     return Drawer(
       backgroundColor: Colors.white,
       child: Column(
         children: [
-          // Encabezado estilizado con gradiente institucional y logo en marca de agua transparente
-          ClipRRect(
-            child: Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF0F265C), Color(0xFF1E3A8A), Color(0xFF2563EB)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+          // Encabezado verde corporativo Continental con curva inferior
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(
+              18,
+              MediaQuery.of(context).padding.top + 14,
+              18,
+              22,
+            ),
+            decoration: const BoxDecoration(
+              color: Color(0xFF02634C),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
                 ),
-              ),
-              child: Stack(
-                children: [
-                  // Logo del sindicato en transparente / marca de agua estética de fondo
-                  Positioned(
-                    right: -25,
-                    bottom: -25,
-                    child: IgnorePointer(
-                      child: Opacity(
-                        opacity: 0.15,
-                        child: Transform.rotate(
-                          angle: -0.15,
-                          child: Image.asset(
-                            'assets/images/logo.png',
-                            width: 175,
-                            height: 175,
-                            fit: BoxFit.contain,
-                            errorBuilder: (c, e, s) => const Icon(
-                              Icons.public,
-                              size: 150,
-                              color: Colors.white,
-                            ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Avatar circular grande en blanco con silueta
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.person,
+                      size: 38,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+
+                // Información del usuario al lado del avatar
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Pill de rol con borde sutil translúcido
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.55),
+                            width: 1.0,
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-
-                  // Círculo difuminado para dar profundidad visual
-                  Positioned(
-                    right: 40,
-                    top: -30,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.04),
-                      ),
-                    ),
-                  ),
-
-                  // Contenido principal del encabezado
-                  Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top + 18,
-                      bottom: 22,
-                      left: 20,
-                      right: 20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(3),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.25),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const CircleAvatar(
-                                radius: 26,
-                                backgroundColor: Colors.white,
-                                child: Icon(Icons.person, size: 30, color: AppColors.primaryBlue),
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: colorRol.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
-                              ),
-                              child: Text(
-                                etiquetaRol,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          nombreUsuario,
+                        child: Text(
+                          etiquetaRol,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          identificador,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 12,
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Nombre del usuario en negrita
+                      Text(
+                        nombreUsuario,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+
+                      // Correo electrónico o identificador
+                      Text(
+                        identificador,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.88),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Grupo Continental Trufi 101 - 127
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.groups_rounded,
+                            size: 15,
+                            color: Colors.white.withOpacity(0.9),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Opacity(
-                              opacity: 0.9,
-                              child: Image.asset(
-                                'assets/images/logo.png',
-                                height: 14,
-                                errorBuilder: (c, e, s) => const SizedBox.shrink(),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Grupo Continental Trufi 101 – 127',
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Grupo Continental Trufi 101 - 127',
                               style: TextStyle(
-                                color: Color(0xFF93C5FD),
+                                color: Colors.white.withOpacity(0.92),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
@@ -881,104 +1296,140 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _buildDrawerSectionHeader('NAVEGACIÓN'),
                 _buildDrawerItem(
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home,
+                  icon: Icons.home_rounded,
                   title: 'Inicio',
                   isSelected: true,
                   onTap: () => Navigator.pop(context),
                 ),
                 _buildDrawerItem(
-                  icon: Icons.groups_outlined,
+                  icon: Icons.groups_rounded,
                   title: 'Asistencias',
-                  onTap: () => _navegarDesdeDrawer(context, const AsistenciaScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const AsistenciaScreen()),
                 ),
                 _buildDrawerItem(
-                  icon: Icons.route_outlined,
+                  icon: Icons.alt_route_rounded,
                   title: 'Vueltas y Recorridos',
-                  onTap: () => _navegarDesdeDrawer(context, const VueltasScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const VueltasScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.map_rounded,
+                  title: 'Ruta',
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const RutaOficialScreen()),
                 ),
                 _buildDrawerItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Cuotas y Finanzas',
-                  onTap: () => _navegarDesdeDrawer(context, const CuotasScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const CuotasScreen()),
                 ),
 
-                const Divider(height: 20, indent: 16, endIndent: 16),
+                const Divider(
+                  height: 20,
+                  thickness: 1,
+                  color: Color(0xFFF1F5F9),
+                  indent: 16,
+                  endIndent: 16,
+                ),
                 _buildDrawerSectionHeader('OPERACIONES'),
                 _buildDrawerItem(
-                  icon: Icons.gavel_rounded,
+                  icon: Icons.groups_rounded,
                   title: 'Reuniones y Asambleas',
-                  colorIcono: const Color(0xFFDC2626),
-                  onTap: () => _navegarDesdeDrawer(context, const ReunionesScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const ReunionesScreen()),
                 ),
                 _buildDrawerItem(
                   icon: Icons.warning_amber_rounded,
                   title: 'Sanciones',
-                  colorIcono: AppColors.danger,
-                  onTap: () => _navegarDesdeDrawer(context, const SancionesScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const SancionesScreen()),
                 ),
                 _buildDrawerItem(
-                  icon: Icons.gps_fixed,
-                  title: 'Monitoreo GPS y Rutas',
-                  colorIcono: const Color(0xFF0284C7),
-                  onTap: () => _navegarDesdeDrawer(context, const GpsScreen()),
+                  icon: Icons.my_location_rounded,
+                  title: 'Monitoreo GPS en Vivo',
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const GpsEnVivoScreen()),
                 ),
 
-                // Sección Administración si tiene permisos
+                // Sección Administración según permisos
+                // DESACTIVADO: el Panel Técnico ya no cuenta para mostrar la sección.
                 if (Permisos.puedeVer(rol, Permisos.moduloUsuarios) ||
                     Permisos.puedeVer(rol, Permisos.moduloConductores) ||
                     Permisos.puedeVer(rol, Permisos.moduloInformes) ||
-                    Permisos.puedeVer(rol, Permisos.moduloPanelTecnico)) ...[
-                  const Divider(height: 20, indent: 16, endIndent: 16),
+                    Permisos.puedeVer(rol, Permisos.moduloPuntosParada)) ...[
+                  const Divider(
+                    height: 20,
+                    thickness: 1,
+                    color: Color(0xFFF1F5F9),
+                    indent: 16,
+                    endIndent: 16,
+                  ),
                   _buildDrawerSectionHeader('ADMINISTRACIÓN'),
                   if (Permisos.puedeVer(rol, Permisos.moduloUsuarios))
                     _buildDrawerItem(
-                      icon: Icons.admin_panel_settings_outlined,
+                      icon: Icons.folder_outlined,
                       title: 'Directorio',
-                      colorIcono: const Color(0xFF1E3A8A),
-                      onTap: () => _navegarDesdeDrawer(context, const UsuariosScreen()),
+                      onTap: () =>
+                          _navegarDesdeDrawer(context, const UsuariosScreen()),
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloConductores))
                     _buildDrawerItem(
-                      icon: Icons.local_taxi_outlined,
+                      icon: Icons.directions_car_outlined,
                       title: 'Conductores',
-                      colorIcono: const Color(0xFF10B981),
-                      onTap: () => _navegarDesdeDrawer(context, const GruposConductoresScreen()),
+                      onTap: () => _navegarDesdeDrawer(
+                        context,
+                        const GruposConductoresScreen(),
+                      ),
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloInformes))
                     _buildDrawerItem(
-                      icon: Icons.bar_chart_outlined,
+                      icon: Icons.bar_chart_rounded,
                       title: 'Informes y Estadísticas',
-                      colorIcono: const Color(0xFF4F46E5),
-                      onTap: () => _navegarDesdeDrawer(context, const InformesScreen()),
+                      onTap: () =>
+                          _navegarDesdeDrawer(context, const InformesScreen()),
                     ),
                   if (Permisos.puedeVer(rol, Permisos.moduloPuntosParada))
                     _buildDrawerItem(
-                      icon: Icons.edit_location_alt_outlined,
+                      icon: Icons.verified_user_outlined,
                       title: 'Puntos de Parada (A y B)',
-                      colorIcono: const Color(0xFF0D9488),
-                      onTap: () => _navegarDesdeDrawer(context, const PuntosControlScreen()),
+                      onTap: () => _navegarDesdeDrawer(
+                        context,
+                        const PuntosControlScreen(),
+                      ),
                     ),
-                  if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico))
-                    _buildDrawerItem(
-                      icon: Icons.admin_panel_settings_outlined,
-                      title: 'Panel Técnico (Superadmin)',
-                      colorIcono: const Color(0xFF8B5CF6),
-                      onTap: () => _navegarDesdeDrawer(context, const PanelTecnicoScreen()),
-                    ),
+                  // DESACTIVADO: acceso al Panel Técnico desde el menú lateral.
+                  // if (Permisos.puedeVer(rol, Permisos.moduloPanelTecnico))
+                  //   _buildDrawerItem(
+                  //     icon: Icons.settings_outlined,
+                  //     title: 'Panel Técnico (Superadmin)',
+                  //     onTap: () => _navegarDesdeDrawer(
+                  //       context,
+                  //       const PanelTecnicoScreen(),
+                  //     ),
+                  //   ),
                 ],
 
-                const Divider(height: 20, indent: 16, endIndent: 16),
+                const Divider(
+                  height: 20,
+                  thickness: 1,
+                  color: Color(0xFFF1F5F9),
+                  indent: 16,
+                  endIndent: 16,
+                ),
                 _buildDrawerSectionHeader('MI CUENTA'),
                 _buildDrawerItem(
-                  icon: Icons.person_outline,
+                  icon: Icons.person_outline_rounded,
                   title: 'Mi Perfil',
-                  onTap: () => _navegarDesdeDrawer(context, const PerfilScreen()),
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const PerfilScreen()),
                 ),
                 _buildDrawerItem(
-                  icon: Icons.logout,
+                  icon: Icons.logout_rounded,
                   title: 'Cerrar Sesión',
                   colorIcono: const Color(0xFFEF4444),
+                  colorTexto: const Color(0xFFEF4444),
                   onTap: () {
                     Navigator.pop(context); // Cierra drawer
                     SesionService.instance.cerrarSesion(context);
@@ -990,25 +1441,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Pie del Drawer
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              border: Border(top: BorderSide(color: Colors.grey.shade200)),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Image.asset(
                   'assets/images/logo.png',
-                  height: 18,
-                  errorBuilder: (c, e, s) => const SizedBox.shrink(),
+                  height: 20,
+                  errorBuilder: (c, e, s) => const Icon(
+                    Icons.local_taxi_rounded,
+                    color: Color(0xFF02634C),
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 const Text(
                   'Continental Trufi 101 – 127',
                   style: TextStyle(
                     color: Color(0xFF64748B),
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1018,6 +1473,23 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  String _etiquetaRolDrawer(String? rol) {
+    switch (rol?.toLowerCase().trim()) {
+      case 'superadmin':
+        return 'Super Administrador';
+      case 'admin':
+        return 'Administrador';
+      case 'supervisor':
+        return 'Supervisor';
+      case 'tesorero':
+        return 'Secretario de Hacienda';
+      case 'conductor':
+        return 'Conductor';
+      default:
+        return rol ?? 'Usuario';
+    }
   }
 
   void _navegarDesdeDrawer(BuildContext context, Widget screen) {
@@ -1030,14 +1502,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDrawerSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
       child: Text(
         title,
         style: const TextStyle(
-          color: Color(0xFF94A3B8),
-          fontSize: 10,
+          color: Color(0xFF475569),
+          fontSize: 11.5,
           fontWeight: FontWeight.w800,
-          letterSpacing: 0.8,
+          letterSpacing: 0.6,
         ),
       ),
     );
@@ -1045,50 +1517,60 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDrawerItem({
     required IconData icon,
-    IconData? activeIcon,
     required String title,
     required VoidCallback onTap,
     Color? colorIcono,
+    Color? colorTexto,
     bool isSelected = false,
   }) {
-    final c = isSelected ? AppColors.primaryBlue : (colorIcono ?? const Color(0xFF334155));
+    const verdeCorporativo = Color(0xFF02634C);
+    final iconColor = isSelected
+        ? verdeCorporativo
+        : (colorIcono ?? verdeCorporativo);
+    final textColor = isSelected
+        ? verdeCorporativo
+        : (colorTexto ?? const Color(0xFF1E293B));
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        color: isSelected ? const Color(0xFFE8F5EF) : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: ListTile(
-          dense: true,
-          visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-          leading: Icon(
-            isSelected && activeIcon != null ? activeIcon : icon,
-            color: c,
-            size: 22,
-          ),
-          title: Text(
-            title,
-            style: TextStyle(
-              color: isSelected ? AppColors.primaryBlue : const Color(0xFF1E293B),
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              fontSize: 13.5,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 22),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w600,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isSelected
+                      ? verdeCorporativo
+                      : const Color(0xFF94A3B8),
+                  size: 19,
+                ),
+              ],
             ),
           ),
-          trailing: isSelected
-              ? Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryBlue,
-                    shape: BoxShape.circle,
-                  ),
-                )
-              : null,
-          onTap: onTap,
         ),
       ),
     );

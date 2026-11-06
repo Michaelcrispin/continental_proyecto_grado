@@ -57,6 +57,37 @@ class Normalizadores {
     return raw.trim().toUpperCase().replaceAll(RegExp(r'[^0-9A-Z]'), '');
   }
 
+  /// Normaliza un nombre completo (sin tildes, en minúsculas y con espacios simples)
+  /// para detectar nombres duplicados.
+  static String normalizarNombre(String? raw) {
+    if (raw == null) return '';
+    var s = raw.trim().toLowerCase();
+    const conAcento = 'áàäâéèëêíìïîóòöôúùüûñ';
+    const sinAcento = 'aaaaeeeeiiiioooouuuun';
+    for (int i = 0; i < conAcento.length; i++) {
+      s = s.replaceAll(conAcento[i], sinAcento[i]);
+    }
+    return s.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  /// Normaliza un número de teléfono/celular boliviano extrayendo los dígitos locales.
+  static String normalizarTelefono(String? raw) {
+    if (raw == null) return '';
+    var s = raw.trim().replaceAll(RegExp(r'[^0-9+]'), '');
+    if (s.startsWith('+591')) {
+      s = s.substring(4);
+    } else if (s.startsWith('591') && s.length > 8) {
+      s = s.substring(3);
+    }
+    return s.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  /// Normaliza un código alfanumérico (Licencia, RUAT, SOAT) quitando espacios y guiones.
+  static String normalizarCodigo(String? raw) {
+    if (raw == null) return '';
+    return raw.trim().toUpperCase().replaceAll(RegExp(r'[^0-9A-Z]'), '');
+  }
+
   /// Detecta la extensión de un texto de CI, o retorna 'LP' por defecto.
   static String extraerExtensionCi(String? raw) {
     if (raw == null || raw.trim().isEmpty) return 'LP';
@@ -67,5 +98,67 @@ class Normalizadores {
       }
     }
     return 'LP';
+  }
+
+  /// Extrae el apellido paterno de un nombre completo para el ordenamiento alfabético sindical.
+  /// Ejemplos:
+  /// - "Pedro Apaza Cruz" -> "Apaza"
+  /// - "Juan Carlos Quispe Mamani" -> "Quispe"
+  /// - "Miguel Angel Choque" -> "Choque"
+  /// - "Carlos Nina Huanca" -> "Nina"
+  /// - "Roberto Vargas" -> "Vargas"
+  static String extraerApellidoPaterno(String? nombreCompleto) {
+    if (nombreCompleto == null) return '';
+    final partes = nombreCompleto
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) return '';
+    if (partes.length == 1) return partes[0];
+    if (partes.length == 2) {
+      // "Roberto Vargas" -> Vargas
+      return partes[1];
+    }
+
+    const compuestos = {
+      'juan carlos',
+      'miguel angel',
+      'jose luis',
+      'victor hugo',
+      'luis alberto',
+      'carlos alberto',
+      'juan pablo',
+      'jose manuel',
+      'marco antonio',
+      'edgar javier',
+      'pedro luis',
+      'julio cesar',
+      'maria elena',
+      'ana maria',
+      'jorge luis',
+      'ruben dario',
+    };
+
+    final dosPrimeros = '${partes[0]} ${partes[1]}'.toLowerCase();
+    if (compuestos.contains(dosPrimeros)) {
+      // Si empieza con nombre compuesto (ej: "Miguel Angel Choque" -> Choque)
+      // O "Juan Carlos Quispe Mamani" -> Quispe
+      if (partes.length == 3) {
+        return partes[2];
+      }
+      return partes[2];
+    }
+
+    if (partes.length == 3) {
+      // Estándar 3 palabras: [Nombre] [Apellido Paterno] [Apellido Materno]
+      // "Pedro Apaza Cruz" -> Apaza
+      // "Luis Mamani Condori" -> Mamani
+      return partes[1];
+    }
+
+    // 4 o más palabras: [Nombre 1] [Nombre 2] [Apellido Paterno] [Apellido Materno]
+    // "Carlos Andres Nina Huanca" -> Nina
+    return partes[partes.length - 2];
   }
 }

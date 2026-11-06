@@ -20,63 +20,46 @@ class FiltroConductoresBar extends StatelessWidget {
 
   Widget _buildChip(String key, String label, int count, {Color? color}) {
     final isSelected = filtroActivo == key;
-    final chipColor = color ?? const Color(0xFF1E3A8A);
+    const verdeMarca = Color(0xFF02634C);
+    final chipColor = color ?? verdeMarca;
 
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
         onTap: () => onFiltroChanged(key),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
           decoration: BoxDecoration(
             color: isSelected ? chipColor : Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: isSelected ? chipColor : const Color(0xFFCBD5E1),
+              color: isSelected ? chipColor : const Color(0xFFE2E8F0),
               width: 1.2,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: chipColor.withValues(alpha: 0.25),
+                      color: chipColor.withOpacity(0.25),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ]
-                : null,
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                  fontSize: 11.5,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFF64748B),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+          child: Text(
+            '$label ($count)',
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              fontSize: 12.5,
+            ),
           ),
         ),
       ),
@@ -86,21 +69,18 @@ class FiltroConductoresBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 36,
+      height: 38,
       child: ListView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         children: [
           _buildChip('todos', 'Todos', cantTotal),
-          _buildChip('activos', 'Activos', cantActivos,
-              color: const Color(0xFF10B981)),
+          _buildChip('activos', 'Activos', cantActivos),
+          _buildChip('alertas', 'Alertas', cantAlertas),
           if (cantInactivos > 0)
             _buildChip('inactivos', 'Inactivos', cantInactivos,
                 color: const Color(0xFFEF4444)),
-          if (cantAlertas > 0)
-            _buildChip('alertas', 'Alertas Docs', cantAlertas,
-                color: const Color(0xFFF59E0B)),
         ],
       ),
     );

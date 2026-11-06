@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'form_field_widgets.dart';
 
-/// Sección 4: Licencia de Conducir
+const Color _kVerdeOscuro = Color(0xFF02634C);
+const Color _kMentaSuave = Color(0xFFE8F5EF);
+
+/// Sección 4: Licencia de Conducir con estética corporativa Continental.
 class SeccionLicencia extends StatelessWidget {
   final TextEditingController licenciaCtrl;
   final String licenciaCategoria;
@@ -9,6 +12,7 @@ class SeccionLicencia extends StatelessWidget {
   final TextEditingController licenciaEmisionCtrl;
   final TextEditingController licenciaVenceCtrl;
   final ValueChanged<String?> onCategoriaChanged;
+  final String? Function(String?)? validadorLicencia;
 
   const SeccionLicencia({
     super.key,
@@ -18,42 +22,45 @@ class SeccionLicencia extends StatelessWidget {
     required this.licenciaEmisionCtrl,
     required this.licenciaVenceCtrl,
     required this.onCategoriaChanged,
+    this.validadorLicencia,
   });
 
   @override
   Widget build(BuildContext context) {
     return FormCardSeccion(
-      icono: Icons.drive_eta_outlined,
-      colorIcono: const Color(0xFFF59E0B),
-      bgIcono: const Color(0xFFFEF3C7),
+      icono: Icons.credit_card_rounded,
+      colorIcono: _kVerdeOscuro,
+      bgIcono: _kMentaSuave,
       titulo: 'Licencia de Conducir',
       subtitulo: 'Número, categoría profesional y vigencia para control',
       contenido: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               flex: 5,
               child: FormTextField(
                 controller: licenciaCtrl,
                 label: 'N° de Licencia',
-                hint: 'Ej. 8493021 (Opcional, usa CI)',
+                hint: 'N° de Licencia',
                 icon: Icons.credit_card_outlined,
+                validator: validadorLicencia,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
-              flex: 6,
+              flex: 5,
               child: FormDropdownField<String>(
                 label: 'Categoría',
                 value: licenciaCategoria,
                 items: categoriasLicencia,
-                icon: Icons.card_membership_outlined,
+                icon: Icons.badge_outlined,
                 onChanged: onCategoriaChanged,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -61,13 +68,13 @@ class SeccionLicencia extends StatelessWidget {
               child: FormDateField(
                 controller: licenciaEmisionCtrl,
                 label: 'Fecha de Emisión',
-                hint: 'AAAA-MM-DD',
+                hint: 'Fecha de ...',
                 tituloPicker: 'Emisión de Licencia',
                 firstDate: DateTime(1980),
                 lastDate: DateTime.now(),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,7 +82,7 @@ class SeccionLicencia extends StatelessWidget {
                   FormDateField(
                     controller: licenciaVenceCtrl,
                     label: 'Fecha de Vencimiento',
-                    hint: 'AAAA-MM-DD',
+                    hint: 'Fecha de ...',
                     tituloPicker: 'Vencimiento de Licencia',
                     firstDate: DateTime(2000),
                     lastDate: DateTime(2045),
@@ -94,110 +101,62 @@ class SeccionLicencia extends StatelessWidget {
   }
 }
 
-/// Sección 5: Vehículo Propio del Conductor
+/// Sección 5: Vehículo Propio del Conductor con estética corporativa Continental.
 class SeccionVehiculo extends StatelessWidget {
   final TextEditingController placaCtrl;
   final TextEditingController ruatCtrl;
-  final TextEditingController marcaCtrl;
-  final TextEditingController modeloCtrl;
-  final TextEditingController colorCtrl;
-  final TextEditingController capacidadCtrl;
   final TextEditingController soatCtrl;
   final TextEditingController soatVenceCtrl;
+  final String? Function(String?)? validadorPlaca;
+  final String? Function(String?)? validadorRuat;
+  final String? Function(String?)? validadorSoat;
 
   const SeccionVehiculo({
     super.key,
     required this.placaCtrl,
     required this.ruatCtrl,
-    required this.marcaCtrl,
-    required this.modeloCtrl,
-    required this.colorCtrl,
-    required this.capacidadCtrl,
     required this.soatCtrl,
     required this.soatVenceCtrl,
+    this.validadorPlaca,
+    this.validadorRuat,
+    this.validadorSoat,
   });
 
   @override
   Widget build(BuildContext context) {
     return FormCardSeccion(
-      icono: Icons.local_taxi_outlined,
-      colorIcono: const Color(0xFF10B981),
-      bgIcono: const Color(0xFFECFDF5),
+      icono: Icons.directions_car_rounded,
+      colorIcono: _kVerdeOscuro,
+      bgIcono: _kMentaSuave,
       titulo: 'Datos del Vehículo',
-      subtitulo: 'Placa, RUAT, características y SOAT',
+      subtitulo: 'Placa, RUAT y seguro obligatorio SOAT',
       contenido: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              flex: 5,
               child: FormTextField(
                 controller: placaCtrl,
                 label: 'Placa del Vehículo',
-                hint: 'Ej. 2849-ABC',
+                hint: 'Placa del Vehículo',
                 icon: Icons.directions_car_outlined,
                 textCapitalization: TextCapitalization.characters,
+                validator: validadorPlaca,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
-              flex: 5,
               child: FormTextField(
                 controller: ruatCtrl,
                 label: 'N° de RUAT',
-                hint: 'Ej. 859302',
+                hint: 'N° de RUAT',
                 icon: Icons.description_outlined,
+                validator: validadorRuat,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: FormTextField(
-                controller: marcaCtrl,
-                label: 'Marca',
-                hint: 'Toyota',
-                icon: Icons.branding_watermark_outlined,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FormTextField(
-                controller: modeloCtrl,
-                label: 'Modelo',
-                hint: 'Hiace',
-                icon: Icons.airport_shuttle_outlined,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              flex: 6,
-              child: FormTextField(
-                controller: colorCtrl,
-                label: 'Color de la Unidad',
-                hint: 'Blanco / Azul',
-                icon: Icons.palette_outlined,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 4,
-              child: FormTextField(
-                controller: capacidadCtrl,
-                label: 'Capacidad',
-                hint: '14 pax',
-                icon: Icons.airline_seat_recline_normal_outlined,
-                keyboardType: TextInputType.number,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -205,19 +164,20 @@ class SeccionVehiculo extends StatelessWidget {
               child: FormTextField(
                 controller: soatCtrl,
                 label: 'N° de Póliza SOAT',
-                hint: 'Ej. SOAT-2026-948',
-                icon: Icons.security_outlined,
+                hint: 'N° de Póliza SOAT',
+                icon: Icons.shield_outlined,
+                validator: validadorSoat,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   FormDateField(
                     controller: soatVenceCtrl,
-                    label: 'Vencimiento SOAT',
-                    hint: 'AAAA-MM-DD',
+                    label: 'Vencimiento',
+                    hint: 'Vencimiento',
                     tituloPicker: 'Vencimiento de SOAT',
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2035),
@@ -236,7 +196,7 @@ class SeccionVehiculo extends StatelessWidget {
   }
 }
 
-/// Sección 6: Estado Operativo (Habilitado / Inhabilitado)
+/// Sección 6: Estado Operativo (Habilitado / Inhabilitado) idéntico al mockup.
 class SeccionEstadoOperativo extends StatelessWidget {
   final bool estadoActivo;
   final ValueChanged<bool> onEstadoChanged;
@@ -250,19 +210,17 @@ class SeccionEstadoOperativo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: estadoActivo
-              ? const Color(0xFFA7F3D0)
-              : const Color(0xFFFECACA),
-          width: 1.2,
+          color: const Color(0xFFE2E8F0),
+          width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.025),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -274,19 +232,15 @@ class SeccionEstadoOperativo extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: estadoActivo
-                  ? const Color(0xFFECFDF5)
-                  : const Color(0xFFFEF2F2),
+              color: estadoActivo ? _kMentaSuave : const Color(0xFFFEF2F2),
               shape: BoxShape.circle,
             ),
             child: Icon(
               estadoActivo
-                  ? Icons.check_circle_outline
-                  : Icons.block_outlined,
-              color: estadoActivo
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFFEF4444),
-              size: 24,
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.block_rounded,
+              color: estadoActivo ? _kVerdeOscuro : const Color(0xFFEF4444),
+              size: 22,
             ),
           ),
           const SizedBox(width: 14),
@@ -300,10 +254,11 @@ class SeccionEstadoOperativo extends StatelessWidget {
                       : 'Estado: INHABILITADO',
                   style: TextStyle(
                     color: estadoActivo
-                        ? const Color(0xFF059669)
+                        ? const Color(0xFF1E293B)
                         : const Color(0xFFDC2626),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    letterSpacing: -0.2,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -313,15 +268,21 @@ class SeccionEstadoOperativo extends StatelessWidget {
                       : 'Conductor bloqueado operativamente en el sistema.',
                   style: const TextStyle(
                     color: Color(0xFF64748B),
-                    fontSize: 11,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Switch(
             value: estadoActivo,
-            activeColor: const Color(0xFF10B981),
+            activeColor: Colors.white,
+            activeTrackColor: _kVerdeOscuro,
+            inactiveThumbColor: Colors.white,
+            inactiveTrackColor: const Color(0xFFCBD5E1),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             onChanged: onEstadoChanged,
           ),
         ],
@@ -330,7 +291,7 @@ class SeccionEstadoOperativo extends StatelessWidget {
   }
 }
 
-/// Barra inferior flotante de acciones: Cancelar y Guardar
+/// Barra inferior de acciones (Cancelar y Guardar / Registrar) coincidente con el mockup.
 class FormBarraAcciones extends StatelessWidget {
   final bool esEdicion;
   final bool isSaving;
@@ -353,9 +314,9 @@ class FormBarraAcciones extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
@@ -367,18 +328,20 @@ class FormBarraAcciones extends StatelessWidget {
               flex: 4,
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size.fromHeight(50),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
                 ),
                 onPressed: isSaving ? null : onCancelar,
                 child: const Text(
                   'Cancelar',
                   style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
                   ),
                 ),
               ),
@@ -388,13 +351,14 @@ class FormBarraAcciones extends StatelessWidget {
               flex: 7,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
+                  backgroundColor: _kVerdeOscuro,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size.fromHeight(50),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  elevation: 2,
+                  elevation: 0,
                 ),
                 onPressed: isSaving ? null : onGuardar,
                 child: isSaving
@@ -409,15 +373,19 @@ class FormBarraAcciones extends StatelessWidget {
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.check_circle_outline, size: 20),
+                          const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 20,
+                            color: Colors.white,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             esEdicion
                                 ? 'Guardar Cambios'
                                 : 'Registrar Conductor',
                             style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14.5,
                             ),
                           ),
                         ],

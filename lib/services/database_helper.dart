@@ -60,6 +60,41 @@ class DatabaseHelper {
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        // Unificar siempre el horario oficial: 07:30 a 08:00 AM (tolerancia 30 min)
+        try {
+          await db.update(
+            'horario',
+            {
+              'nombre': 'Turno Mañana (07:30 - 08:00)',
+              'hora_entrada': '07:30',
+              'tolerancia_min': 30,
+            },
+            where: "id_horario = 'horario_manana' OR activo = 1",
+          );
+        } catch (_) {}
+        try {
+          await _sincronizarHorariosSancionesEnTxn(db);
+        } catch (_) {}
+        try {
+          await _reordenarConductoresEnTxn(db);
+        } catch (_) {}
+        // Borrar definitivamente marca, modelo, color y capacidad de los vehiculos en la BD
+        try {
+          await db.execute(
+            'UPDATE automovil SET marca = NULL, modelo = NULL, color = NULL, capacidad = NULL WHERE marca IS NOT NULL OR modelo IS NOT NULL OR color IS NOT NULL OR capacidad IS NOT NULL',
+          );
+        } catch (_) {}
+        // Sincronizar coordenadas oficiales de Geo Tracker para Parada A y Parada B si siguen con el placeholder antiguo
+        try {
+          await db.execute(
+            "UPDATE punto_de_control SET latitud = -16.53454833, longitud = -68.191605 WHERE (nombre LIKE '%Villadela%' OR es_punto_asistencia = 1) AND ABS(longitud - (-68.19071)) < 0.0005",
+          );
+          await db.execute(
+            "UPDATE punto_de_control SET latitud = -16.51834167, longitud = -68.15143667 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND ABS(latitud - (-16.5050)) < 0.005",
+          );
+        } catch (_) {}
+      },
     );
   }
 
@@ -341,6 +376,11 @@ class DatabaseHelper {
         }
       } catch (_) {}
 
+      try {
+        await db.execute("UPDATE conductor SET grupo = '101-127' WHERE grupo != '101-127'");
+        await _reordenarConductoresEnTxn(db);
+      } catch (_) {}
+
       // 4. Índices únicos sobre campos normalizados
       try {
         await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_conductor_ci_norm ON conductor (ci_normalizado)');
@@ -367,8 +407,8 @@ class DatabaseHelper {
           'punto_de_control',
           {
             'nombre': 'Cruce Villadela',
-            'latitud': -16.53453,
-            'longitud': -68.19071,
+            'latitud': -16.53454833,
+            'longitud': -68.191605,
             'radio_m': 100,
             'orden': 1,
             'activo': 1,
@@ -383,8 +423,8 @@ class DatabaseHelper {
             'punto_de_control',
             {
               'nombre': 'Teleférico Amarillo - Mirador',
-              'latitud': -16.5050,
-              'longitud': -68.1635,
+              'latitud': -16.51834167,
+              'longitud': -68.15143667,
               'radio_m': 100,
               'orden': 2,
               'activo': 1,
@@ -400,8 +440,8 @@ class DatabaseHelper {
         await db.insert('punto_de_control', {
           'id_punto': _uuid.v4(),
           'nombre': 'Cruce Villadela',
-          'latitud': -16.53453,
-          'longitud': -68.19071,
+          'latitud': -16.53454833,
+          'longitud': -68.191605,
           'radio_m': 100,
           'orden': 1,
           'activo': 1,
@@ -414,8 +454,8 @@ class DatabaseHelper {
         await db.insert('punto_de_control', {
           'id_punto': _uuid.v4(),
           'nombre': 'Teleférico Amarillo - Mirador',
-          'latitud': -16.5050,
-          'longitud': -68.1635,
+          'latitud': -16.51834167,
+          'longitud': -68.15143667,
           'radio_m': 100,
           'orden': 2,
           'activo': 1,
@@ -446,9 +486,9 @@ class DatabaseHelper {
       final nowH = _now();
       await db.insert('horario', {
         'id_horario': 'horario_manana',
-        'nombre': 'Turno Mañana (07:00 - 08:00)',
-        'hora_entrada': '07:00',
-        'tolerancia_min': 60,
+        'nombre': 'Turno Mañana (07:30 - 08:00)',
+        'hora_entrada': '07:30',
+        'tolerancia_min': 30,
         'hora_inicio_castigo': '21:00',
         'escucha_desde': '06:00',
         'escucha_hasta': '12:00',
@@ -839,7 +879,7 @@ class DatabaseHelper {
         id_horario          TEXT PRIMARY KEY,
         nombre              TEXT NOT NULL,
         hora_entrada        TEXT NOT NULL,
-        tolerancia_min      INTEGER NOT NULL DEFAULT 60,
+        tolerancia_min      INTEGER NOT NULL DEFAULT 30,
         hora_inicio_castigo TEXT NOT NULL DEFAULT '21:00',
         escucha_desde       TEXT NOT NULL DEFAULT '06:00',
         escucha_hasta       TEXT NOT NULL DEFAULT '12:00',
@@ -922,12 +962,12 @@ class DatabaseHelper {
 
 
 
-    // Puntos de control georreferenciados para sindicato Continental
+    // Puntos de control georreferenciados para sindicato Continental (Geo Tracker oficial)
     await db.insert('punto_de_control', {
       'id_punto': _uuid.v4(),
       'nombre': 'Cruce Villadela',
-      'latitud': -16.53453,
-      'longitud': -68.19071,
+      'latitud': -16.53454833,
+      'longitud': -68.191605,
       'radio_m': 100,
       'orden': 1,
       'activo': 1,
@@ -941,8 +981,8 @@ class DatabaseHelper {
     await db.insert('punto_de_control', {
       'id_punto': _uuid.v4(),
       'nombre': 'Teleférico Amarillo - Mirador',
-      'latitud': -16.5050,
-      'longitud': -68.1635,
+      'latitud': -16.51834167,
+      'longitud': -68.15143667,
       'radio_m': 100,
       'orden': 2,
       'activo': 1,
@@ -953,12 +993,12 @@ class DatabaseHelper {
       'sincronizado': 0,
     });
 
-    // Horario por defecto: Mañana 07:00 a 08:00
+    // Horario por defecto: Mañana 07:30 a 08:00 (tolerancia 30 min)
     await db.insert('horario', {
       'id_horario': 'horario_manana',
-      'nombre': 'Turno Mañana (07:00 - 08:00)',
-      'hora_entrada': '07:00',
-      'tolerancia_min': 60,
+      'nombre': 'Turno Mañana (07:30 - 08:00)',
+      'hora_entrada': '07:30',
+      'tolerancia_min': 30,
       'hora_inicio_castigo': '21:00',
       'escucha_desde': '06:00',
       'escucha_hasta': '12:00',
@@ -996,8 +1036,8 @@ class DatabaseHelper {
         final ciOrig = c['ci']?.toString().trim() ?? '';
         final ciNorm = Normalizadores.normalizarCi(ciOrig);
         final ext = Normalizadores.extraerExtensionCi(ciOrig);
-        final grupo = (i < 10) ? '101' : '127';
-        final interno = (i < 10) ? (i + 1) : (i - 9);
+        final grupo = '101-127';
+        final interno = i + 1;
         final placaOrig = c['placa']?.toString().trim() ?? '';
         final placaNorm = Normalizadores.normalizarPlaca(placaOrig);
         final passHash = hashPassword(c['password']?.toString() ?? '');
@@ -1125,10 +1165,6 @@ class DatabaseHelper {
               'id_auto': idAuto,
               'placa': placaOrig,
               'placa_normalizada': placaNorm,
-              'marca': c['marca'],
-              'modelo': c['modelo'],
-              'color': c['color'],
-              'capacidad': c['capacidad'],
               'soat': c['soat'],
               'fecha_vencimiento_soat': c['fecha_vencimiento_soat'],
               'ruat': c['ruat'],
@@ -1351,8 +1387,8 @@ class DatabaseHelper {
 
     return db.rawQuery('''
       SELECT u.id_usuario, u.rol, u.nombre, u.gmail, u.estado, u.fecha_creacion,
-             c.id_conductor, c.ci, c.licencia,
-             a.id_auto, a.placa
+             c.id_conductor, c.ci, c.licencia, c.foto, c.numero_interno, c.telefono,
+             a.id_auto, a.placa, a.modelo
       FROM usuario u
       LEFT JOIN conductor c ON c.id_usuario = u.id_usuario
       LEFT JOIN conductor_automovil ca ON ca.id_conductor = c.id_conductor
@@ -1397,7 +1433,21 @@ class DatabaseHelper {
     final idUsuario = _uuid.v4();
 
     await db.transaction((txn) async {
-      // 1. Si es conductor, validar primero que el CI no esté duplicado
+      // 1. Si es conductor, validar primero que ningún dato esté duplicado
+      final erroresDup = await _validarDuplicadosConductorEnTxn(
+        txn,
+        nombre: rol == 'conductor' ? nombre : null,
+        ci: rol == 'conductor' ? ci : null,
+        telefono: rol == 'conductor' ? telefono : null,
+        correo: gmail,
+        licencia: rol == 'conductor' ? licencia : null,
+        placa: rol == 'conductor' ? placa : null,
+        ruat: rol == 'conductor' ? ruat : null,
+        soat: rol == 'conductor' ? soat : null,
+      );
+      if (erroresDup.isNotEmpty) {
+        throw Exception(erroresDup.values.first);
+      }
       String? ciNorm;
       String ciLimpio = '';
       if (rol == 'conductor') {
@@ -1489,10 +1539,6 @@ class DatabaseHelper {
               'updated_at': now,
               'sincronizado': 0,
             };
-            if (marca != null) datosAuto['marca'] = marca;
-            if (modelo != null) datosAuto['modelo'] = modelo;
-            if (color != null) datosAuto['color'] = color;
-            if (capacidad != null) datosAuto['capacidad'] = capacidad;
             if (soat != null) datosAuto['soat'] = soat;
             if (fechaVencimientoSoat != null) datosAuto['fecha_vencimiento_soat'] = fechaVencimientoSoat;
             if (ruat != null) datosAuto['ruat'] = ruat;
@@ -1509,10 +1555,6 @@ class DatabaseHelper {
               'id_auto': idAuto,
               'placa': placaLimpia,
               'placa_normalizada': placaNorm,
-              'marca': marca,
-              'modelo': modelo,
-              'color': color,
-              'capacidad': capacidad,
               'soat': soat,
               'fecha_vencimiento_soat': fechaVencimientoSoat,
               'ruat': ruat,
@@ -1536,6 +1578,12 @@ class DatabaseHelper {
         }
       }
     });
+
+    if (rol == 'conductor') {
+      try {
+        await reordenarConductoresPorApellidoPaterno(grupo: grupo ?? '101');
+      } catch (_) {}
+    }
 
     return idUsuario;
   }
@@ -1586,6 +1634,31 @@ class DatabaseHelper {
 
     if (newPassword != null && newPassword.trim().isNotEmpty) {
       datosUsuario['password'] = hashPassword(newPassword.trim());
+    }
+
+    final condPre = await db.query(
+      'conductor',
+      where: 'id_usuario = ?',
+      whereArgs: [idUsuario],
+    );
+    final idConductorExistente = condPre.isNotEmpty
+        ? condPre.first['id_conductor']?.toString()
+        : null;
+    final erroresDup = await _validarDuplicadosConductorEnTxn(
+      db,
+      excluirIdUsuario: idUsuario,
+      excluirIdConductor: idConductorExistente,
+      nombre: rol == 'conductor' ? nombre : null,
+      ci: rol == 'conductor' ? ci : null,
+      telefono: rol == 'conductor' ? telefono : null,
+      correo: gmail,
+      licencia: rol == 'conductor' ? licencia : null,
+      placa: rol == 'conductor' ? placa : null,
+      ruat: rol == 'conductor' ? ruat : null,
+      soat: rol == 'conductor' ? soat : null,
+    );
+    if (erroresDup.isNotEmpty) {
+      throw Exception(erroresDup.values.first);
     }
 
     await db.transaction((txn) async {
@@ -1704,10 +1777,6 @@ class DatabaseHelper {
               'updated_at': now,
               'sincronizado': 0,
             };
-            if (marca != null) datosAuto['marca'] = marca;
-            if (modelo != null) datosAuto['modelo'] = modelo;
-            if (color != null) datosAuto['color'] = color;
-            if (capacidad != null) datosAuto['capacidad'] = capacidad;
             if (soat != null) datosAuto['soat'] = soat;
             if (fechaVencimientoSoat != null) datosAuto['fecha_vencimiento_soat'] = fechaVencimientoSoat;
             if (ruat != null) datosAuto['ruat'] = ruat;
@@ -1724,10 +1793,6 @@ class DatabaseHelper {
               'id_auto': idAuto,
               'placa': placaLimpia,
               'placa_normalizada': placaNorm,
-              'marca': marca,
-              'modelo': modelo,
-              'color': color,
-              'capacidad': capacidad,
               'soat': soat,
               'fecha_vencimiento_soat': fechaVencimientoSoat,
               'ruat': ruat,
@@ -1750,6 +1815,12 @@ class DatabaseHelper {
         }
       }
     });
+
+    if (rol == 'conductor') {
+      try {
+        await reordenarConductoresPorApellidoPaterno(grupo: grupo ?? '101');
+      } catch (_) {}
+    }
   }
 
   /// Da de baja lógica a un conductor (cambia su estado a 'inactivo' y registra fecha y motivo).
@@ -1815,6 +1886,195 @@ class DatabaseHelper {
         whereArgs: [idUsuario],
       );
     });
+  }
+
+  /// Verifica en una sola consulta todos los campos únicos de un conductor
+  /// (nombre completo, CI, teléfono, correo, licencia, placa, RUAT y SOAT)
+  /// y retorna un mapa `campo -> mensajeError` con cualquier duplicado detectado.
+  Future<Map<String, String>> validarDuplicadosConductor({
+    String? excluirIdUsuario,
+    String? excluirIdConductor,
+    String? nombre,
+    String? ci,
+    String? telefono,
+    String? correo,
+    String? licencia,
+    String? placa,
+    String? ruat,
+    String? soat,
+  }) async {
+    final db = await database;
+    return _validarDuplicadosConductorEnTxn(
+      db,
+      excluirIdUsuario: excluirIdUsuario,
+      excluirIdConductor: excluirIdConductor,
+      nombre: nombre,
+      ci: ci,
+      telefono: telefono,
+      correo: correo,
+      licencia: licencia,
+      placa: placa,
+      ruat: ruat,
+      soat: soat,
+    );
+  }
+
+  static Future<Map<String, String>> _validarDuplicadosConductorEnTxn(
+    DatabaseExecutor db, {
+    String? excluirIdUsuario,
+    String? excluirIdConductor,
+    String? nombre,
+    String? ci,
+    String? telefono,
+    String? correo,
+    String? licencia,
+    String? placa,
+    String? ruat,
+    String? soat,
+  }) async {
+    final errores = <String, String>{};
+
+    final nombreNorm = Normalizadores.normalizarNombre(nombre);
+    final ciLimpio = ci?.trim() ?? '';
+    final ciNorm = Normalizadores.normalizarCi(ciLimpio);
+    final telLimpio = telefono?.trim() ?? '';
+    final telNorm = Normalizadores.normalizarTelefono(telLimpio);
+    final correoNorm = correo?.trim().toLowerCase() ?? '';
+    final licLimpia = licencia?.trim() ?? '';
+    final licNorm = Normalizadores.normalizarCodigo(licLimpia);
+    final placaLimpia = placa?.trim().toUpperCase() ?? '';
+    final placaNorm = Normalizadores.normalizarPlaca(placaLimpia);
+    final ruatLimpio = ruat?.trim() ?? '';
+    final ruatNorm = Normalizadores.normalizarCodigo(ruatLimpio);
+    final soatLimpio = soat?.trim() ?? '';
+    final soatNorm = Normalizadores.normalizarCodigo(soatLimpio);
+
+    // 1. Revisar conductores existentes (nombre, CI, teléfono, licencia)
+    final conductores = await db.query('conductor');
+    for (final c in conductores) {
+      final idCond = c['id_conductor']?.toString() ?? '';
+      final idUsu = c['id_usuario']?.toString() ?? '';
+      if (excluirIdConductor != null && idCond == excluirIdConductor) continue;
+      if (excluirIdUsuario != null && idUsu == excluirIdUsuario) continue;
+
+      final cNombre = c['nombre']?.toString() ?? 'otro conductor';
+
+      if (nombreNorm.isNotEmpty &&
+          !errores.containsKey('nombre') &&
+          Normalizadores.normalizarNombre(cNombre) == nombreNorm) {
+        errores['nombre'] =
+            'El conductor "$cNombre" ya se encuentra registrado.';
+      }
+
+      final cCi = c['ci']?.toString() ?? '';
+      final cCiNorm = (c['ci_normalizado']?.toString().isNotEmpty ?? false)
+          ? c['ci_normalizado'].toString()
+          : Normalizadores.normalizarCi(cCi);
+      if (ciNorm.isNotEmpty &&
+          !errores.containsKey('ci') &&
+          (cCiNorm == ciNorm || cCi.trim().toUpperCase() == ciLimpio.toUpperCase())) {
+        errores['ci'] = 'El CI "$ciLimpio" ya pertenece a $cNombre.';
+      }
+
+      final cTel = c['telefono']?.toString() ?? '';
+      final cTelNorm = Normalizadores.normalizarTelefono(cTel);
+      if (telNorm.isNotEmpty &&
+          !errores.containsKey('telefono') &&
+          cTelNorm.isNotEmpty &&
+          cTelNorm == telNorm) {
+        errores['telefono'] =
+            'El teléfono "$telLimpio" ya pertenece a $cNombre.';
+      }
+
+      final cLic = c['licencia']?.toString() ?? '';
+      final cLicNorm = Normalizadores.normalizarCodigo(cLic);
+      if (licNorm.isNotEmpty &&
+          !errores.containsKey('licencia') &&
+          ((cLicNorm.isNotEmpty && cLicNorm == licNorm) ||
+              (cCiNorm.isNotEmpty && cCiNorm == licNorm))) {
+        errores['licencia'] =
+            'La licencia "$licLimpia" ya pertenece a $cNombre.';
+      }
+    }
+
+    // 2. Revisar correos en tabla usuario
+    if (correoNorm.isNotEmpty) {
+      final usuarios = await db.query(
+        'usuario',
+        where: 'LOWER(gmail) = ?',
+        whereArgs: [correoNorm],
+      );
+      for (final u in usuarios) {
+        final idUsu = u['id_usuario']?.toString() ?? '';
+        if (excluirIdUsuario != null && idUsu == excluirIdUsuario) continue;
+        final uNombre = u['nombre']?.toString() ?? 'otro usuario';
+        errores['correo'] =
+            'El correo "$correoNorm" ya pertenece a $uNombre.';
+        break;
+      }
+    }
+
+    // 3. Revisar vehículos (placa, RUAT, SOAT)
+    if (placaNorm.isNotEmpty || ruatNorm.isNotEmpty || soatNorm.isNotEmpty) {
+      final autos = await db.rawQuery('''
+        SELECT a.id_auto, a.placa, a.placa_normalizada, a.ruat, a.soat,
+               ca.id_conductor, c.nombre AS conductor_nombre, c.id_usuario
+        FROM automovil a
+        LEFT JOIN conductor_automovil ca ON ca.id_auto = a.id_auto
+        LEFT JOIN conductor c ON c.id_conductor = ca.id_conductor
+      ''');
+
+      for (final a in autos) {
+        final idCond = a['id_conductor']?.toString();
+        final idUsu = a['id_usuario']?.toString();
+        if (excluirIdConductor != null && idCond == excluirIdConductor) {
+          continue;
+        }
+        if (excluirIdUsuario != null && idUsu == excluirIdUsuario) {
+          continue;
+        }
+        // Si estamos editando un conductor y el auto no tiene ningún dueño asignado,
+        // permitir reutilizarlo salvo que pertenezca a otro conductor
+        final dueno = a['conductor_nombre']?.toString();
+        final sufijoDueno = (dueno != null && dueno.isNotEmpty)
+            ? ' para $dueno'
+            : ' en otro vehículo';
+
+        final aPlaca = a['placa']?.toString() ?? '';
+        final aPlacaNorm = (a['placa_normalizada']?.toString().isNotEmpty ?? false)
+            ? a['placa_normalizada'].toString()
+            : Normalizadores.normalizarPlaca(aPlaca);
+
+        if (placaNorm.isNotEmpty &&
+            !errores.containsKey('placa') &&
+            aPlacaNorm.isNotEmpty &&
+            aPlacaNorm == placaNorm &&
+            (idCond != null || excluirIdConductor == null)) {
+          errores['placa'] =
+              'La placa "$placaLimpia" ya está registrada$sufijoDueno.';
+        }
+
+        final aRuatNorm = Normalizadores.normalizarCodigo(a['ruat']?.toString());
+        if (ruatNorm.isNotEmpty &&
+            !errores.containsKey('ruat') &&
+            aRuatNorm.isNotEmpty &&
+            aRuatNorm == ruatNorm) {
+          errores['ruat'] =
+              'El RUAT "$ruatLimpio" ya está registrado$sufijoDueno.';
+        }
+
+        final aSoatNorm = Normalizadores.normalizarCodigo(a['soat']?.toString());
+        if (soatNorm.isNotEmpty &&
+            !errores.containsKey('soat') &&
+            aSoatNorm.isNotEmpty &&
+            aSoatNorm == soatNorm) {
+          errores['soat'] =
+              'El SOAT "$soatLimpio" ya está registrado$sufijoDueno.';
+        }
+      }
+    }
+
+    return errores;
   }
 
   /// Verifica si un CI (normalizado) ya se encuentra registrado por otro conductor.
@@ -1895,6 +2155,69 @@ class DatabaseHelper {
     );
   }
 
+  /// Promueve o asigna a un conductor un cargo en el Directorio (tesorero, supervisor, admin).
+  /// Actualiza su rol en la tabla `usuario` y opcionalmente su correo o contraseña.
+  Future<void> designarConductorDirectorio({
+    required String idUsuario,
+    required String nuevoRol,
+    String? gmail,
+    String? password,
+  }) async {
+    final db = await database;
+    final now = _now();
+    final datos = <String, dynamic>{
+      'rol': nuevoRol,
+      'updated_at': now,
+      'sincronizado': 0,
+    };
+    if (gmail != null && gmail.trim().isNotEmpty) {
+      datos['gmail'] = gmail.trim().toLowerCase();
+    }
+    if (password != null && password.trim().isNotEmpty) {
+      datos['password'] = hashPassword(password.trim());
+    }
+    await db.update(
+      'usuario',
+      datos,
+      where: 'id_usuario = ?',
+      whereArgs: [idUsuario],
+    );
+  }
+
+  /// Releva a un miembro del Directorio.
+  /// Si es un conductor, revierte su rol a 'conductor' sin perder ninguno de sus datos.
+  /// Si es un usuario administrativo sin ficha de conductor, lo marca como 'inactivo'.
+  Future<bool> relevarDeDirectorio(String idUsuario) async {
+    final db = await database;
+    final now = _now();
+    final cond = await conductorDeUsuario(idUsuario);
+    if (cond != null) {
+      await db.update(
+        'usuario',
+        {
+          'rol': 'conductor',
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+      return true; // Es conductor y volvió a rol conductor
+    } else {
+      await db.update(
+        'usuario',
+        {
+          'estado': 'inactivo',
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_usuario = ?',
+        whereArgs: [idUsuario],
+      );
+      return false; // Era usuario externo
+    }
+  }
+
   /// Actualiza únicamente la foto de perfil de un conductor.
   Future<void> actualizarFotoConductor(String idConductor, String? foto) async {
     final db = await database;
@@ -1922,6 +2245,16 @@ class DatabaseHelper {
     String? fechaIncorporacion,
   }) async {
     final db = await database;
+    final erroresDup = await _validarDuplicadosConductorEnTxn(
+      db,
+      nombre: nombre,
+      ci: ci,
+      correo: gmail,
+      licencia: licencia,
+    );
+    if (erroresDup.isNotEmpty) {
+      throw Exception(erroresDup.values.first);
+    }
     final now = _now();
     final idUsuario = _uuid.v4();
     final idConductor = _uuid.v4();
@@ -1976,10 +2309,52 @@ class DatabaseHelper {
   // CONSULTAS CON JOIN (para las pantallas)
   // ---------------------------------------------------------------------------
 
+  /// Reordena automáticamente los conductores por apellido paterno (alfabéticamente)
+  /// y asigna su número interno correlativo (1, 2, 3...) de forma unificada (101-127).
+  static Future<void> _reordenarConductoresEnTxn(DatabaseExecutor db, {String? grupo}) async {
+    final rows = await db.query(
+      'conductor',
+      columns: ['id_conductor', 'nombre', 'estado'],
+    );
+
+    final listaModificable = List<Map<String, dynamic>>.from(rows);
+    listaModificable.sort((a, b) {
+      final estadoA = (a['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+      final estadoB = (b['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+      if (estadoA != estadoB) return estadoA.compareTo(estadoB);
+
+      final apA = Normalizadores.extraerApellidoPaterno(a['nombre']?.toString()).toLowerCase();
+      final apB = Normalizadores.extraerApellidoPaterno(b['nombre']?.toString()).toLowerCase();
+      final comp = apA.compareTo(apB);
+      if (comp != 0) return comp;
+
+      return (a['nombre'] ?? '').toString().toLowerCase().compareTo((b['nombre'] ?? '').toString().toLowerCase());
+    });
+
+    for (int i = 0; i < listaModificable.length; i++) {
+      final idConductor = listaModificable[i]['id_conductor'] as String;
+      await db.update(
+        'conductor',
+        {
+          'grupo': '101-127',
+          'numero_interno': i + 1,
+        },
+        where: 'id_conductor = ?',
+        whereArgs: [idConductor],
+      );
+    }
+  }
+
+  /// Reordena externamente los conductores por apellido paterno.
+  Future<void> reordenarConductoresPorApellidoPaterno({String? grupo}) async {
+    final db = await database;
+    await _reordenarConductoresEnTxn(db, grupo: grupo);
+  }
+
   /// conductores_screen: conductores con su(s) auto(s) y datos ampliados.
   Future<List<Map<String, dynamic>>> conductoresConAuto() async {
     final db = await database;
-    return db.rawQuery('''
+    final list = await db.rawQuery('''
       SELECT 
         c.id_conductor, c.id_usuario, c.nombre, c.ci, c.ci_normalizado, c.extension_ci,
         c.grupo, c.numero_interno, c.fecha_baja, c.motivo_baja, c.licencia,
@@ -1999,6 +2374,25 @@ class DatabaseHelper {
         c.numero_interno ASC,
         c.nombre ASC
     ''');
+
+    final res = List<Map<String, dynamic>>.from(list);
+    res.sort((a, b) {
+      final grpA = (a['grupo'] ?? '101').toString();
+      final grpB = (b['grupo'] ?? '101').toString();
+      if (grpA != grpB) return grpA.compareTo(grpB);
+
+      final estA = (a['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+      final estB = (b['estado'] ?? 'activo').toString().toLowerCase() == 'activo' ? 0 : 1;
+      if (estA != estB) return estA.compareTo(estB);
+
+      final apA = Normalizadores.extraerApellidoPaterno(a['nombre']?.toString()).toLowerCase();
+      final apB = Normalizadores.extraerApellidoPaterno(b['nombre']?.toString()).toLowerCase();
+      final comp = apA.compareTo(apB);
+      if (comp != 0) return comp;
+
+      return (a['nombre'] ?? '').toString().toLowerCase().compareTo((b['nombre'] ?? '').toString().toLowerCase());
+    });
+    return res;
   }
 
   /// Obtiene la ficha completa y detallada de un conductor por su id_conductor.
@@ -2107,6 +2501,35 @@ class DatabaseHelper {
     ''', args);
   }
 
+  /// Registra una nueva vuelta en SQLite para el conductor.
+  Future<Map<String, dynamic>> registrarVuelta({
+    required String idConductor,
+    String? tipo,
+    String? idAsistencia,
+    String? fecha,
+    String? hora,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+    final fechaReal = fecha ?? now.toIso8601String().substring(0, 10);
+    final horaReal = hora ??
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final idVuelta = _uuid.v4();
+    final data = {
+      'id_vuelta': idVuelta,
+      'id_conductor': idConductor,
+      'id_asistencia': idAsistencia,
+      'fecha': fechaReal,
+      'hora': horaReal,
+      'tipo': tipo ?? 'normal',
+      'created_at': now.toIso8601String(),
+      'updated_at': now.toIso8601String(),
+      'sincronizado': 0,
+    };
+    await db.insert('vueltas', data);
+    return data;
+  }
+
   /// sanciones_screen: sanciones con nombre del conductor.
   Future<List<Map<String, dynamic>>> sancionesDetalle({
     String? idConductor,
@@ -2126,12 +2549,228 @@ class DatabaseHelper {
     final where = condiciones.isEmpty ? '' : 'WHERE ${condiciones.join(' AND ')}';
 
     return db.rawQuery('''
-      SELECT s.*, c.nombre AS conductor_nombre
+      SELECT s.*,
+             c.nombre AS conductor_nombre,
+             c.foto AS conductor_foto,
+             c.numero_interno AS numero_interno,
+             a.hora_llegada AS hora_llegada,
+             a.minutos_retraso AS minutos_retraso,
+             a.estado AS asistencia_estado,
+             p.nombre AS punto_nombre,
+             (
+               SELECT au.placa
+               FROM conductor_automovil ca
+               JOIN automovil au ON au.id_auto = ca.id_auto
+               WHERE ca.id_conductor = s.id_conductor
+               LIMIT 1
+             ) AS placa
       FROM sancion s
       JOIN conductor c ON c.id_conductor = s.id_conductor
+      LEFT JOIN asistencia a ON a.id_asistencia = s.id_asistencia
+      LEFT JOIN punto_de_control p ON p.id_punto = a.id_punto
       $where
       ORDER BY s.fecha DESC, s.hora DESC
     ''', args);
+  }
+
+  /// Registra una vuelta de sanción: suma 1 al progreso, inserta la vuelta
+  /// en el historial y cierra la sanción automáticamente al llegar a la meta.
+  Future<Map<String, dynamic>> registrarVueltaSancion(String idSancion) async {
+    final db = await database;
+    final now = DateTime.now();
+    final nowIso = now.toIso8601String();
+    final hoy = now.toIso8601String().substring(0, 10);
+    final hora =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    return db.transaction((txn) async {
+      final filas = await txn.query(
+        'sancion',
+        where: 'id_sancion = ?',
+        whereArgs: [idSancion],
+        limit: 1,
+      );
+      if (filas.isEmpty) {
+        throw StateError('La sanción no existe o fue eliminada.');
+      }
+
+      final sancion = filas.first;
+      final asignadas = (sancion['vueltas_asignadas'] as num?)?.toInt() ?? 0;
+      final cumplidas = (sancion['vueltas_cumplidas'] as num?)?.toInt() ?? 0;
+
+      if (cumplidas >= asignadas) {
+        return sancion;
+      }
+
+      final nuevas = cumplidas + 1;
+      final estado = nuevas >= asignadas ? 'cumplida' : 'pendiente';
+
+      await txn.update(
+        'sancion',
+        {
+          'vueltas_cumplidas': nuevas,
+          'estado': estado,
+          'updated_at': nowIso,
+          'sincronizado': 0,
+        },
+        where: 'id_sancion = ?',
+        whereArgs: [idSancion],
+      );
+
+      await txn.insert('vueltas', {
+        'id_vuelta': _uuid.v4(),
+        'id_conductor': sancion['id_conductor'],
+        'id_asistencia': sancion['id_asistencia'],
+        'fecha': hoy,
+        'hora': hora,
+        'tipo': 'sancion',
+        'created_at': nowIso,
+        'updated_at': nowIso,
+        'sincronizado': 0,
+      });
+
+      return {
+        ...sancion,
+        'vueltas_cumplidas': nuevas,
+        'estado': estado,
+      };
+    });
+  }
+
+  /// Datos de DEMOSTRACIÓN para el módulo de vueltas de castigo (se crean una sola vez).
+  /// Deja 3 sanciones por tardanza marcadas como simuladas (es_simulada = 1):
+  ///  1) castigo cumplido (2/2), 2) castigo a medias (1/2) y 3) castigo sin iniciar (0/2).
+  /// Corrige automáticamente cualquier sanción en SQLite con horas anteriores a 08:00 AM
+  /// (como las pruebas antiguas de 07:42 o 07:51) para reflejar la regla oficial:
+  /// entrada de 07:30 a 08:00 AM (a tiempo); atraso a partir de las 08:00 AM (> 08:00 AM).
+  Future<void> sincronizarHorariosSanciones() async {
+    final db = await database;
+    await _sincronizarHorariosSancionesEnTxn(db);
+  }
+
+  static Future<void> _sincronizarHorariosSancionesEnTxn(DatabaseExecutor db) async {
+    try {
+      // 1. Actualizar sanciones demo a horas después de las 08:00 AM
+      await db.execute('''
+        UPDATE sancion 
+        SET hora = '08:12 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
+        WHERE (hora LIKE '07:42%' OR (hora LIKE '07:%' AND estado = 'cumplida')) AND origen = 'demo_castigo';
+      ''');
+      await db.execute('''
+        UPDATE sancion 
+        SET hora = '08:21 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
+        WHERE (hora LIKE '07:51%' OR (hora LIKE '07:%' AND vueltas_cumplidas = 1)) AND origen = 'demo_castigo';
+      ''');
+      await db.execute('''
+        UPDATE sancion 
+        SET hora = '08:35 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
+        WHERE (hora LIKE '07:%' AND vueltas_cumplidas = 0) AND origen = 'demo_castigo';
+      ''');
+      await db.execute('''
+        UPDATE sancion 
+        SET motivo = 'Tardanza en asistencia (> 08:00 AM)'
+        WHERE motivo LIKE '%> 07:30%' OR motivo LIKE '%> 07:00%';
+      ''');
+
+      // 2. Si alguna asistencia entre 07:30 y 08:00 fue guardada erróneamente como tardanza,
+      // regularizar a 'presente' porque está dentro de la tolerancia de 30 minutos
+      await db.execute('''
+        UPDATE asistencia
+        SET estado = 'presente', minutos_retraso = 0
+        WHERE hora_llegada >= '07:30' AND hora_llegada <= '08:00' AND estado = 'tardanza' AND es_simulada = 1;
+      ''');
+
+      // 3. Eliminar sanciones vinculadas a asistencias regulares (<= 08:00 AM)
+      await db.execute('''
+        DELETE FROM sancion
+        WHERE id_asistencia IN (
+          SELECT id_asistencia FROM asistencia WHERE hora_llegada >= '07:30' AND hora_llegada <= '08:00' AND estado = 'presente'
+        );
+      ''');
+    } catch (_) {}
+  }
+
+  Future<void> sembrarVueltasCastigoDemo() async {
+    final db = await database;
+    // Si ya existen pero tienen horas de llegada anteriores a las 08:00 AM (como 07:42 o 07:51),
+    // se limpian para resembrar con los horarios reglamentarios (> 08:00 AM)
+    final antiguas = await db.query(
+      'sancion',
+      where: "origen = 'demo_castigo' AND (hora LIKE '07:%' OR motivo LIKE '%07:30%')",
+    );
+    if (antiguas.isNotEmpty) {
+      await db.delete('sancion', where: "origen = 'demo_castigo'");
+      await db.delete('vueltas', where: "tipo = 'sancion'");
+    } else {
+      final yaExiste = await db.query(
+        'sancion',
+        where: "origen = 'demo_castigo'",
+        limit: 1,
+      );
+      if (yaExiste.isNotEmpty) return;
+    }
+
+    final conductores = await db.query(
+      'conductor',
+      where: "estado = 'activo'",
+      orderBy: 'CAST(numero_interno AS INTEGER) ASC',
+      limit: 3,
+    );
+    if (conductores.isEmpty) return;
+
+    final ahora = DateTime.now();
+    final nowIso = ahora.toIso8601String();
+    final ayer = ahora.subtract(const Duration(days: 1));
+    final fechaTardanza = ayer.toIso8601String().substring(0, 10);
+    final creadaIso = DateTime(ayer.year, ayer.month, ayer.day, 8, 0).toIso8601String();
+
+    // [hora de llegada, vueltas cumplidas, estado, horas de cierre de cada vuelta]
+    final escenarios = <List<Object>>[
+      ['08:12 AM', 2, 'cumplida', ['21:42', '22:24']],
+      ['08:21 AM', 1, 'pendiente', ['21:38']],
+      ['08:35 AM', 0, 'pendiente', <String>[]],
+    ];
+
+    await db.transaction((txn) async {
+      for (int i = 0; i < conductores.length && i < escenarios.length; i++) {
+        final idConductor = conductores[i]['id_conductor'];
+        final e = escenarios[i];
+        final cumplidas = e[1] as int;
+        final cierres = e[3] as List<String>;
+
+        await txn.insert('sancion', {
+          'id_sancion': _uuid.v4(),
+          'id_conductor': idConductor,
+          'id_asistencia': null,
+          'motivo': 'Tardanza en asistencia (> 08:00 AM)',
+          'vueltas_asignadas': 2,
+          'vueltas_cumplidas': cumplidas,
+          'estado': e[2],
+          'origen': 'demo_castigo',
+          'tipo': 'tardanza',
+          'es_simulada': 1,
+          'fecha': fechaTardanza,
+          'hora': e[0],
+          'created_at': creadaIso,
+          'updated_at': nowIso,
+          'sincronizado': 0,
+        });
+
+        for (final hora in cierres) {
+          await txn.insert('vueltas', {
+            'id_vuelta': _uuid.v4(),
+            'id_conductor': idConductor,
+            'id_asistencia': null,
+            'fecha': fechaTardanza,
+            'hora': hora,
+            'tipo': 'sancion',
+            'created_at': nowIso,
+            'updated_at': nowIso,
+            'sincronizado': 0,
+          });
+        }
+      }
+    });
   }
 
   /// control_economico_screen: cuotas con conductor, tipo y saldo calculado.
@@ -2246,6 +2885,42 @@ class DatabaseHelper {
       'vueltas_hoy': vueltasHoy,
       'sanciones_pendientes': sancionesPendientes,
       'cuotas_pendientes_monto': (deuda.first['total'] as num?) ?? 0,
+    };
+  }
+
+  /// Números reales y consolidados para la pantalla de Informes.
+  Future<Map<String, dynamic>> resumenInformesHoy() async {
+    final hoy = DateTime.now().toIso8601String().substring(0, 10);
+    final db = await database;
+
+    final totalConductores = await _contar(
+        "SELECT COUNT(*) FROM conductor WHERE estado = 'activo'");
+    final asistenciasHoy = await asistenciasDetalle(fecha: hoy);
+    final aTiempo = asistenciasHoy.where((a) {
+      final st = a['estado']?.toString().toLowerCase();
+      return st == 'presente' || st == 'tiempo';
+    }).length;
+    final tardanzas = asistenciasHoy.where((a) {
+      final st = a['estado']?.toString().toLowerCase();
+      return st == 'tardanza';
+    }).toList();
+
+    final totalVueltas = await _contar(
+        'SELECT COUNT(*) FROM vueltas WHERE fecha = ?', [hoy]);
+
+    final cajaRow = await db.rawQuery(
+        'SELECT COALESCE(SUM(monto), 0) AS total FROM pago WHERE fecha = ?',
+        [hoy]);
+    final cajaHoy = (cajaRow.first['total'] as num?)?.toDouble() ?? 0.0;
+
+    return {
+      'fecha': hoy,
+      'total_conductores': totalConductores,
+      'a_tiempo': aTiempo,
+      'tardanzas_count': tardanzas.length,
+      'tardanzas_lista': tardanzas,
+      'total_vueltas': totalVueltas,
+      'caja_hoy': cajaHoy,
     };
   }
 

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../core/app_colors.dart';
 import '../../../core/documentos_alerta.dart';
 
 /// Pestaña que lista en detalle los documentos del conductor con vigencia y días restantes.
@@ -92,12 +91,12 @@ class TabDocumentos extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: const Color(0xFFE6F4F0),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   d['icono'] as IconData,
-                  color: AppColors.primaryBlue,
+                  color: const Color(0xFF02634C),
                   size: 22,
                 ),
               ),
@@ -109,7 +108,7 @@ class TabDocumentos extends StatelessWidget {
                     Text(
                       d['nombre'] as String,
                       style: const TextStyle(
-                        color: Color(0xFF1E3A8A),
+                        color: Color(0xFF0F172A),
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),

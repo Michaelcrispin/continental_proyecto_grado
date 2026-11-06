@@ -7,6 +7,8 @@ import 'dialogo_cobro.dart';
 import 'dialogo_recibo_modal.dart';
 import 'dialogo_informe_whatsapp.dart';
 
+const _kVerdeOscuro = Color(0xFF02634C);
+
 /// Modal Bottom Sheet que muestra el detalle completo de un conductor dentro de una cuota:
 /// - Información personal del conductor (Avatar, nombre, CI, teléfono, estado).
 /// - Resumen de importes (Total, pagado, saldo pendiente).
@@ -400,7 +402,7 @@ class _DetalleConductorCuotasSheetState
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F2B5B),
+                        color: Color(0xFF1E293B),
                       ),
                     ),
                     Text(
@@ -427,7 +429,7 @@ class _DetalleConductorCuotasSheetState
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
                   )
                 : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
@@ -438,9 +440,16 @@ class _DetalleConductorCuotasSheetState
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.03),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Row(
                             children: [
@@ -459,7 +468,7 @@ class _DetalleConductorCuotasSheetState
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 17.5,
-                                        color: Color(0xFF0F2B5B),
+                                        color: Color(0xFF1E293B),
                                         letterSpacing: -0.2,
                                       ),
                                     ),
@@ -531,14 +540,11 @@ class _DetalleConductorCuotasSheetState
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(18),
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: const Color(0xFFBFDBFE),
+                                color: const Color(0xFFFDE68A),
+                                width: 1.2,
                               ),
                             ),
                             child: Column(
@@ -549,7 +555,7 @@ class _DetalleConductorCuotasSheetState
                                     Container(
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF2563EB),
+                                        color: const Color(0xFFD97706),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: const Icon(
@@ -573,7 +579,7 @@ class _DetalleConductorCuotasSheetState
                                             style: const TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
-                                              color: Color(0xFF1D4ED8),
+                                              color: Color(0xFFB45309),
                                               letterSpacing: 0.5,
                                             ),
                                           ),
@@ -583,7 +589,7 @@ class _DetalleConductorCuotasSheetState
                                             style: const TextStyle(
                                               fontSize: 16.5,
                                               fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F2B5B),
+                                              color: Color(0xFF1E293B),
                                               height: 1.2,
                                             ),
                                           ),
@@ -602,15 +608,13 @@ class _DetalleConductorCuotasSheetState
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 15.5,
-                                        color: Color(0xFF0F2B5B),
+                                        color: Color(0xFF1E293B),
                                       ),
                                     ),
                                     if (puedeEditar)
                                       ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(
-                                            0xFF10B981,
-                                          ),
+                                          backgroundColor: _kVerdeOscuro,
                                           foregroundColor: Colors.white,
                                           elevation: 0,
                                           padding: const EdgeInsets.symmetric(
@@ -669,13 +673,13 @@ class _DetalleConductorCuotasSheetState
                                   width: 48,
                                   height: 48,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981),
+                                    color: _kVerdeOscuro,
                                     borderRadius: BorderRadius.circular(14),
-                                    boxShadow: const [
+                                    boxShadow: [
                                       BoxShadow(
-                                        color: Color(0x2010B981),
+                                        color: _kVerdeOscuro.withOpacity(0.25),
                                         blurRadius: 8,
-                                        offset: Offset(0, 3),
+                                        offset: const Offset(0, 3),
                                       ),
                                     ],
                                   ),
@@ -743,7 +747,7 @@ class _DetalleConductorCuotasSheetState
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F2B5B),
+                                color: Color(0xFF1E293B),
                                 letterSpacing: 0.4,
                               ),
                             ),
@@ -815,11 +819,11 @@ class _DetalleConductorCuotasSheetState
                                           vertical: 4.5,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFEFF6FF),
+                                          color: const Color(0xFFE8F5EF),
                                           borderRadius:
                                               BorderRadius.circular(8),
                                           border: Border.all(
-                                            color: const Color(0xFFDBEAFE),
+                                            color: const Color(0xFFE8F5EF),
                                           ),
                                         ),
                                         child: Row(
@@ -828,7 +832,7 @@ class _DetalleConductorCuotasSheetState
                                             const Icon(
                                               Icons.calendar_month_rounded,
                                               size: 14,
-                                              color: Color(0xFF1D4ED8),
+                                              color: _kVerdeOscuro,
                                             ),
                                             const SizedBox(width: 6),
                                             Text(
@@ -837,7 +841,7 @@ class _DetalleConductorCuotasSheetState
                                               style: const TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w800,
-                                                color: Color(0xFF1E3A8A),
+                                                color: _kVerdeOscuro,
                                                 letterSpacing: 0.5,
                                               ),
                                             ),
@@ -913,7 +917,7 @@ class _DetalleConductorCuotasSheetState
                 height: 48,
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: _kVerdeOscuro,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -951,23 +955,40 @@ class _DetalleConductorCuotasSheetState
 
   Widget _buildChip(String filtro, String texto, {Color? color}) {
     final activo = _filtroFechas == filtro;
+    final chipColor = color ?? _kVerdeOscuro;
     return GestureDetector(
       onTap: () => setState(() => _filtroFechas = filtro),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6.5),
         decoration: BoxDecoration(
-          color: activo ? const Color(0xFF1E3A8A) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: activo ? chipColor : Colors.white,
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: activo ? const Color(0xFF1E3A8A) : const Color(0xFFE2E8F0),
+            color: activo ? chipColor : const Color(0xFFE2E8F0),
+            width: 1.2,
           ),
+          boxShadow: activo
+              ? [
+                  BoxShadow(
+                    color: chipColor.withOpacity(0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
         ),
         child: Text(
           texto,
           style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: activo ? FontWeight.bold : FontWeight.normal,
-            color: activo ? Colors.white : (color ?? const Color(0xFF475569)),
+            fontSize: 12,
+            fontWeight: activo ? FontWeight.w700 : FontWeight.w600,
+            color: activo ? Colors.white : const Color(0xFF475569),
           ),
         ),
       ),
@@ -1017,7 +1038,7 @@ class _DetalleConductorCuotasSheetState
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x040F2B5B),
+                color: Color(0x041E293B),
                 blurRadius: 6,
                 offset: Offset(0, 2),
               ),
@@ -1067,7 +1088,7 @@ class _DetalleConductorCuotasSheetState
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13.5,
-                              color: Color(0xFF0F2B5B),
+                              color: Color(0xFF1E293B),
                             ),
                           ),
                         ),
@@ -1076,7 +1097,7 @@ class _DetalleConductorCuotasSheetState
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
-                            color: Color(0xFF1E3A8A),
+                            color: _kVerdeOscuro,
                           ),
                         ),
                       ],
@@ -1172,10 +1193,10 @@ class _DetalleConductorCuotasSheetState
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: const Color(0xFFE8F5EF),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: const Color(0xFFBFDBFE),
+                        color: Color(0x3302634C),
                       ),
                     ),
                     child: const Row(
@@ -1184,7 +1205,7 @@ class _DetalleConductorCuotasSheetState
                         Icon(
                           Icons.visibility_outlined,
                           size: 14,
-                          color: Color(0xFF1D4ED8),
+                          color: Color(0xFFB45309),
                         ),
                         SizedBox(width: 4),
                         Text(
@@ -1192,7 +1213,7 @@ class _DetalleConductorCuotasSheetState
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1D4ED8),
+                            color: Color(0xFFB45309),
                           ),
                         ),
                       ],
@@ -1202,7 +1223,7 @@ class _DetalleConductorCuotasSheetState
               else if (puedeEditar)
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: _kVerdeOscuro,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(

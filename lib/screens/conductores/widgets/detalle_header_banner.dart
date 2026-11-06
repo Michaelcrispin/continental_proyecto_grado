@@ -21,7 +21,7 @@ class DetalleHeaderBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nombre = conductor['nombre']?.toString() ?? 'Sin nombre';
-    final grupo = conductor['grupo']?.toString() ?? '101';
+    final grupo = conductor['grupo']?.toString() ?? '101-127';
     final numInterno = conductor['numero_interno']?.toString();
 
     return Container(
@@ -33,15 +33,11 @@ class DetalleHeaderBanner extends StatelessWidget {
         24,
       ),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F265C), Color(0xFF1E3A8A), Color(0xFF1D4ED8)],
-        ),
+        color: Color(0xFF02634C),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x331E3A8A),
+            color: Color(0x3302634C),
             blurRadius: 16,
             offset: Offset(0, 6),
           ),
@@ -56,28 +52,25 @@ class DetalleHeaderBanner extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 22,
                         ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
-                          tooltip: 'Volver',
-                          onPressed: onVolver,
-                        ),
+                        tooltip: 'Volver',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: onVolver,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       const Text(
                         'Ficha del Conductor',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],

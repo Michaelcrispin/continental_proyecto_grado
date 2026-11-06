@@ -20,17 +20,61 @@ class ResultadoEvaluacionAsistencia {
   bool get esTardanza => estado == 'tardanza';
 }
 
-/// Reglas de negocio del Sindicato Continental para el Objetivo b:
-/// - Control de asistencia en Cruce Villadela.
-/// - Horario matutino: 07:00 con tolerancia de 60 min (hasta las 08:00 AM).
+/// Confirmación por lecturas consecutivas e histéresis para evitar que una sola lectura
+/// con rebote de señal cambie falsamente el estado de "Dentro" a "Fuera".
+class EstadoGeocerca {
+  bool dentro = false;
+  int _seguidas = 0;
+
+  int get lecturasSeguidas => _seguidas;
+
+  /// Devuelve el estado confirmado tras exigir 3 lecturas consecutivas.
+  /// Incluye margen de precisión (accuracy hasta 40 m) e histéresis (radio * 1.3 para salir).
+  bool actualizar({
+    required double distancia,
+    required double accuracy,
+    required double radio,
+  }) {
+    final margen = accuracy.clamp(0.0, 40.0);
+    final limite = dentro ? radio * 1.3 : radio; // histéresis
+    final lecturaDentro = (distancia - margen) <= limite;
+
+    if (lecturaDentro != dentro) {
+      _seguidas++;
+      if (_seguidas >= 3) {
+        dentro = lecturaDentro;
+        _seguidas = 0;
+      }
+    } else {
+      _seguidas = 0;
+    }
+    return dentro;
+  }
+
+  /// Fuerza inmediatamente el estado al capturar o cambiar manualmente de punto.
+  void forzarEstado({
+    required double distancia,
+    required double accuracy,
+    required double radio,
+  }) {
+    final margen = accuracy.clamp(0.0, 40.0);
+    dentro = (distancia - margen) <= radio;
+    _seguidas = 0;
+  }
+}
+
+/// Reglas de negocio del Sindicato Continental:
+/// - Control de asistencia en Cruce Villadela y Teleférico Amarillo.
+/// - Horario matutino unificado: entrada 07:30 AM con tolerancia de 30 min (límite 08:00 AM).
 /// - Si llega hasta las 08:00 -> 'presente' (0 vueltas de sanción).
-/// - Si llega después de las 08:00 -> 'tardanza' + 2 vueltas de castigo para la noche (a partir de las 21:00).
+/// - Si llega después de las 08:00 -> 'tardanza' + 2 vueltas de castigo.
 class ReglasAsistencia {
   const ReglasAsistencia._();
 
   /// Convierte una cadena "HH:mm" a minutos transcurridos desde las 00:00.
   static int minutosDesdeMedianoche(String hora) {
-    final partes = hora.trim().split(':');
+    final limpia = hora.replaceAll('AM', '').replaceAll('PM', '').trim();
+    final partes = limpia.split(':');
     if (partes.length < 2) return 0;
     final h = int.tryParse(partes[0]) ?? 0;
     final m = int.tryParse(partes[1]) ?? 0;
@@ -46,14 +90,14 @@ class ReglasAsistencia {
 
   /// Evalúa si la llegada califica como `presente` o `tardanza`.
   ///
-  /// [horaLlegada]: formato "HH:mm" (ej. "07:55" o "08:14").
-  /// [horaEntrada]: formato "HH:mm" (por defecto "07:00").
-  /// [toleranciaMin]: minutos de gracia desde horaEntrada (por defecto 60 min -> 08:00).
+  /// [horaLlegada]: formato "HH:mm" (ej. "07:45" o "08:12").
+  /// [horaEntrada]: formato "HH:mm" (por defecto "07:30").
+  /// [toleranciaMin]: minutos de gracia desde horaEntrada (unificado a 30 min -> 08:00).
   /// [vueltasPorTardanza]: cantidad de vueltas de castigo impuestas (por defecto 2).
   static ResultadoEvaluacionAsistencia evaluarLlegada({
     required String horaLlegada,
-    String horaEntrada = '07:00',
-    int toleranciaMin = 60,
+    String horaEntrada = '07:30',
+    int toleranciaMin = 30,
     int vueltasPorTardanza = 2,
   }) {
     final minLlegada = minutosDesdeMedianoche(horaLlegada);
@@ -75,14 +119,14 @@ class ReglasAsistencia {
         estado: 'tardanza',
         minutosRetraso: retraso,
         vueltasSancion: vueltasPorTardanza,
-        motivoSancion: 'Tardanza (llegó $horaLlegada, límite $horaLimiteStr, $retraso min de retraso)',
+        motivoSancion:
+            'Tardanza (llegó $horaLlegada, límite $horaLimiteStr, $retraso min de retraso)',
         generaSancion: vueltasPorTardanza > 0,
       );
     }
   }
 
   /// Determina si una hora dada corresponde al horario nocturno de castigo.
-  /// En el sindicato Continental, las vueltas de castigo se cumplen a partir de las 21:00.
   static bool esHoraCastigo({
     required String horaActual,
     String horaInicioCastigo = '21:00',
@@ -113,13 +157,15 @@ class ReglasAsistencia {
     return radioTierra * c;
   }
 
-  /// Verifica si una ubicación está dentro del radio de geocerca del punto de control.
+  /// Verifica si una ubicación está dentro del radio de geocerca del punto de control
+  /// considerando opcionalmente el margen de precisión (accuracy).
   static bool estaDentroDeGeocerca({
     required double latUsuario,
     required double lonUsuario,
     required double latPunto,
     required double lonPunto,
     required double radioMetros,
+    double accuracyMetros = 0.0,
   }) {
     final distancia = calcularDistanciaMetros(
       lat1: latUsuario,
@@ -127,7 +173,8 @@ class ReglasAsistencia {
       lat2: latPunto,
       lon2: lonPunto,
     );
-    return distancia <= radioMetros;
+    final margen = accuracyMetros.clamp(0.0, 40.0);
+    return (distancia - margen) <= radioMetros;
   }
 
   static double _gradosARadianes(double grados) => grados * (math.pi / 180.0);

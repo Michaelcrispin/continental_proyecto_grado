@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+
 import '../../core/permisos.dart';
 import '../../services/database_helper.dart';
 import '../../services/sesion_service.dart';
-import '../../widgets/app_background.dart';
+import '../perfil_screen.dart';
 import 'conductores_screen.dart';
 
-/// Pantalla Principal de Grupos de Conductores (Sindicato Continental Trufi)
-/// Muestra las dos grandes tarjetas para:
-/// - Grupo Continental 101
-/// - Grupo Continental 127
-/// con el diseño visual, colores y métricas fieles al módulo de Cuotas.
+// Paleta verde corporativa (coherente con toda la app)
+const _kVerdeOscuro = Color(0xFF02634C);
+const _kMentaFondo = Color(0xFFE8F5EF);
+const _kGrisTexto = Color(0xFF64748B);
+
 class GruposConductoresScreen extends StatefulWidget {
   const GruposConductoresScreen({super.key});
 
@@ -35,6 +36,11 @@ class _GruposConductoresScreenState extends State<GruposConductoresScreen> {
       }
     });
     _cargarDatos();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _cargarDatos() async {
@@ -66,155 +72,147 @@ class _GruposConductoresScreenState extends State<GruposConductoresScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Métricas Grupo 101
-    final cond101 = _conductores
-        .where((c) => (c['grupo'] ?? '101').toString() == '101')
-        .toList();
-    final cant101 = cond101.length;
-    final activos101 = cond101
+    // Métricas unificadas para el Grupo Continental 101-127
+    final cantTotal = _conductores.length;
+    final cantActivos = _conductores
         .where((c) =>
             (c['estado'] ?? 'activo').toString().toLowerCase() == 'activo')
         .length;
-    final autos101 = cond101
-        .where((c) =>
-            c['placa'] != null && c['placa'].toString().trim().isNotEmpty)
-        .length;
-
-    // Métricas Grupo 127
-    final cond127 = _conductores
-        .where((c) => (c['grupo'] ?? '101').toString() == '127')
-        .toList();
-    final cant127 = cond127.length;
-    final activos127 = cond127
-        .where((c) =>
-            (c['estado'] ?? 'activo').toString().toLowerCase() == 'activo')
-        .length;
-    final autos127 = cond127
+    final cantAutos = _conductores
         .where((c) =>
             c['placa'] != null && c['placa'].toString().trim().isNotEmpty)
         .length;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F2B5B)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Conductores',
-          style: TextStyle(
-            color: Color(0xFF0F2B5B),
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF0F2B5B)),
-            tooltip: 'Actualizar',
-            onPressed: _cargarDatos,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Image.asset(
-              'assets/images/logo.png',
-              height: 34,
-              fit: BoxFit.contain,
-              errorBuilder: (c, e, s) => const Icon(
-                Icons.local_taxi_rounded,
-                color: Color(0xFF0F2B5B),
-                size: 26,
-              ),
-            ),
+      backgroundColor: Colors.white,
+      body: Column(
+        children: [
+          // Encabezado Verde Curvo
+          _buildGreenHeader(context),
+
+          // Cuerpo con tarjeta unificada
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
+                  )
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 22,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 820),
+                        child: _buildTarjetaGrupo(
+                          grupo: '101-127',
+                          titulo: 'Grupo Continental 101-127',
+                          subtitulo: 'Sector Trufi 101-127',
+                          etiquetaSector: 'Sector 101-127',
+                          cantTotal: cantTotal,
+                          cantActivos: cantActivos,
+                          cantAutos: cantAutos,
+                          onTap: () => _abrirGrupo('101-127'),
+                        ),
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
-                )
-              : ListView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-                  children: [
-                    // ENCABEZADO DE PRESENTACIÓN
-                    const Text(
-                      'Padrón por Grupos',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F2B5B),
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    const Text(
-                      'Selecciona el grupo de conductores para ver y gestionar sus miembros, vehículos y estado operativo.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+    );
+  }
 
-                    // TARJETA GRANDE 1: GRUPO CONTINENTAL 101
-                    _buildTarjetaGrupo(
-                      grupo: '101',
-                      titulo: 'Grupo Continental 101',
-                      subtitulo: 'Sector Trufi 101 • Línea Oficial',
-                      cantTotal: cant101,
-                      cantActivos: activos101,
-                      cantAutos: autos101,
-                      colorTema: const Color(0xFF1E3A8A),
-                      colorFondoIcono: const Color(0xFFEFF6FF),
-                      colorBorde: const Color(0xFF93C5FD),
-                      colorBadgeFondo: const Color(0xFFDBEAFE),
-                      colorBadgeTexto: const Color(0xFF1E40AF),
-                      onTap: () => _abrirGrupo('101'),
-                    ),
+  /// Encabezado verde corporativo con tamaño original espacioso y prominente
+  Widget _buildGreenHeader(BuildContext context) {
+    final padding = MediaQuery.of(context).padding;
 
-                    const SizedBox(height: 18),
-
-                    // TARJETA GRANDE 2: GRUPO CONTINENTAL 127
-                    _buildTarjetaGrupo(
-                      grupo: '127',
-                      titulo: 'Grupo Continental 127',
-                      subtitulo: 'Sector Trufi 127 • Línea Oficial',
-                      cantTotal: cant127,
-                      cantActivos: activos127,
-                      cantAutos: autos127,
-                      colorTema: const Color(0xFF0D9488),
-                      colorFondoIcono: const Color(0xFFF0FDF4),
-                      colorBorde: const Color(0xFF99F6E4),
-                      colorBadgeFondo: const Color(0xFFCCFBF1),
-                      colorBadgeTexto: const Color(0xFF115E59),
-                      onTap: () => _abrirGrupo('127'),
-                    ),
-                  ],
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, padding.top + 8, 20, 26),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Fila 1: Flecha atrás a la izquierda y Botón de Avatar a la derecha
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  tooltip: 'Volver',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context),
                 ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PerfilScreen()),
+                    );
+                  },
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: _kVerdeOscuro,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Fila 2: Título grande como estaba antes
+            const Text(
+              'Conductores',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  /// Tarjeta de Grupo con tamaño equilibrado (ni muy grande ni muy pequeña)
   Widget _buildTarjetaGrupo({
     required String grupo,
     required String titulo,
     required String subtitulo,
+    required String etiquetaSector,
     required int cantTotal,
     required int cantActivos,
     required int cantAutos,
-    required Color colorTema,
-    required Color colorFondoIcono,
-    required Color colorBorde,
-    required Color colorBadgeFondo,
-    required Color colorBadgeTexto,
     required VoidCallback onTap,
   }) {
     return Container(
@@ -222,11 +220,11 @@ class _GruposConductoresScreenState extends State<GruposConductoresScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A0F2B5B),
-            blurRadius: 16,
-            offset: Offset(0, 5),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -236,190 +234,166 @@ class _GruposConductoresScreenState extends State<GruposConductoresScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
           onTap: onTap,
-          splashColor: colorTema.withOpacity(0.08),
-          highlightColor: colorTema.withOpacity(0.04),
+          splashColor: _kVerdeOscuro.withOpacity(0.06),
+          highlightColor: _kVerdeOscuro.withOpacity(0.03),
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Fila Superior: Ícono de Taxi + Título + Badge
+                // 1. Fila Superior: Ícono de Auto en círculo menta + Título + Badge de Sector
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Ícono de Taxi destacado
+                    // Ícono de auto en círculo color menta
                     Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: colorFondoIcono,
+                      width: 52,
+                      height: 52,
+                      decoration: const BoxDecoration(
+                        color: _kMentaFondo,
                         shape: BoxShape.circle,
-                        border: Border.all(color: colorBorde, width: 1.2),
                       ),
-                      child: Icon(
-                        Icons.local_taxi_rounded,
-                        color: colorTema,
+                      child: const Icon(
+                        Icons.directions_car_rounded,
+                        color: _kVerdeOscuro,
                         size: 28,
                       ),
                     ),
                     const SizedBox(width: 14),
-                    // Título y Sector
+
+                    // Título y Subtítulo
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  titulo,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 17,
-                                    color: Color(0xFF0F2B5B),
-                                    letterSpacing: -0.2,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Badge de Sector
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colorBadgeFondo,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'Sector $grupo',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: colorBadgeTexto,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          Text(
+                            titulo,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                              letterSpacing: -0.3,
+                            ),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             subtitulo,
                             style: const TextStyle(
-                              fontSize: 12.5,
-                              color: Color(0xFF64748B),
+                              fontSize: 13,
+                              color: _kGrisTexto,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                     ),
+
+                    // Pastilla con "Sector 101" / "Sector 127"
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _kMentaFondo,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        etiquetaSector,
+                        style: const TextStyle(
+                          color: _kVerdeOscuro,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // 2. Fila Intermedia de Estado: Indicadores útiles
+                Row(
+                  children: [
+                    _buildPillInfo(
+                      Icons.check_circle_outline_rounded,
+                      '$cantActivos Activos',
+                      const Color(0xFF10B981),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildPillInfo(
+                      Icons.local_taxi_rounded,
+                      '$cantAutos con Trufi',
+                      const Color(0xFF0284C7),
+                    ),
                   ],
                 ),
 
                 const SizedBox(height: 16),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 14),
 
-                // Fila de Métricas del Grupo (Mismo estilo que Cuotas)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 11,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      // Total Conductores
-                      Expanded(
-                        child: _buildMiniStat(
-                          icono: Icons.people_outline_rounded,
-                          colorIcono: colorTema,
-                          label: 'Conductores',
-                          valor: '$cantTotal',
+                // 3. Fila Inferior: Conteo de Conductores a la izquierda + Botón "Ver grupo →" a la derecha
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Conteo de conductores
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.groups_rounded,
+                          color: _kVerdeOscuro,
+                          size: 20,
                         ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 28,
-                        color: const Color(0xFFE2E8F0),
-                      ),
-                      // Activos
-                      Expanded(
-                        child: _buildMiniStat(
-                          icono: Icons.check_circle_outline_rounded,
-                          colorIcono: const Color(0xFF10B981),
-                          label: 'Activos',
-                          valor: '$cantActivos',
+                        const SizedBox(width: 7),
+                        Text(
+                          '$cantTotal Conductores',
+                          style: const TextStyle(
+                            color: Color(0xFF334155),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 28,
-                        color: const Color(0xFFE2E8F0),
-                      ),
-                      // Vehículos Trufis
-                      Expanded(
-                        child: _buildMiniStat(
-                          icono: Icons.local_taxi_outlined,
-                          colorIcono: const Color(0xFF3B82F6),
-                          label: 'Trufis',
-                          valor: '$cantAutos',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                      ],
+                    ),
 
-                const SizedBox(height: 14),
-
-                // Botón elegante de Acceso al Grupo
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: colorTema,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colorTema.withOpacity(0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
+                    // Botón píldora verde oscuro "Ver grupo →"
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 9,
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.visibility_outlined,
-                        color: Colors.white,
-                        size: 18,
+                      decoration: BoxDecoration(
+                        color: _kVerdeOscuro,
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _kVerdeOscuro.withOpacity(0.25),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Ver Conductores del Grupo $grupo',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13.5,
-                        ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Ver grupo',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -429,40 +403,29 @@ class _GruposConductoresScreenState extends State<GruposConductoresScreen> {
     );
   }
 
-  Widget _buildMiniStat({
-    required IconData icono,
-    required Color colorIcono,
-    required String label,
-    required String valor,
-  }) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icono, size: 14, color: colorIcono),
-            const SizedBox(width: 4),
-            Text(
-              valor,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 14,
-                color: Color(0xFF0F2B5B),
-              ),
+  Widget _buildPillInfo(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
             ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w500,
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
-

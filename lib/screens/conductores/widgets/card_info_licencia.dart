@@ -146,19 +146,19 @@ class CardDocumentosResumen extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: const Color(0xFFE6F4F0),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFBFDBFE)),
+                border: Border.all(color: const Color(0x3302634C)),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.description, size: 18, color: Color(0xFF2563EB)),
+                  Icon(Icons.description, size: 18, color: Color(0xFF02634C)),
                   SizedBox(width: 8),
                   Text(
                     'Ver documentos del conductor',
                     style: TextStyle(
-                      color: Color(0xFF2563EB),
+                      color: Color(0xFF02634C),
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -167,7 +167,7 @@ class CardDocumentosResumen extends StatelessWidget {
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 12,
-                    color: Color(0xFF2563EB),
+                    color: Color(0xFF02634C),
                   ),
                 ],
               ),

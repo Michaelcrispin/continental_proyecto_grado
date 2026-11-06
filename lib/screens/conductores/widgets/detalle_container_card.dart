@@ -41,10 +41,10 @@ class DetalleContainerCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF2563EB),
+                  color: Color(0xFFE6F4F0),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: Colors.white, size: 20),
+                child: Icon(icon, color: const Color(0xFF02634C), size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -54,7 +54,7 @@ class DetalleContainerCard extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: Color(0xFF1E3A8A),
+                        color: Color(0xFF0F172A),
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
                       ),
@@ -117,8 +117,8 @@ class DetalleDatoItem extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            color: Color(0xFF1E3A8A),
-            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.w600,
             fontSize: 13,
           ),
           maxLines: 1,

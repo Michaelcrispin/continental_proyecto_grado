@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/permisos.dart';
 import '../services/economia_repo.dart';
 import '../services/sesion_service.dart';
-import '../widgets/app_background.dart';
 import '../widgets/avatar_conductor.dart';
 import 'crear_reunion_screen.dart';
 import 'cuotas/cuota_detalle_screen.dart';
 
-/// Vista E10: Reuniones (Asambleas, Control de Asistencia y Cierre con Multas Automáticas)
+const _kVerdeOscuro = Color(0xFF02634C);
+
+/// Vista E10: Reuniones y Asambleas (Diseño corporativo idéntico a Cuotas)
 ///
 /// Permite al Secretario de Hacienda / Directorio:
 /// 1. Crear reuniones/asambleas fijando el monto de la multa por falta.
@@ -23,12 +25,24 @@ class ReunionesScreen extends StatefulWidget {
 
 class _ReunionesScreenState extends State<ReunionesScreen> {
   List<Map<String, dynamic>> _reuniones = [];
+  List<Map<String, dynamic>> _reunionesFiltradas = [];
   bool _isLoading = true;
+
+  String _busqueda = '';
+  String _filtroEstado = 'todas'; // 'todas' | 'en_curso' | 'completada'
+  bool _mostrarBuscador = false;
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _cargarReuniones();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _cargarReuniones() async {
@@ -40,10 +54,33 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
           _reuniones = list;
           _isLoading = false;
         });
+        _filtrar(_busqueda);
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _filtrar(String query) {
+    _busqueda = query;
+    final q = query.toLowerCase().trim();
+    setState(() {
+      _reunionesFiltradas = _reuniones.where((r) {
+        final estado = r['estado']?.toString().toLowerCase() ?? 'pendiente';
+        final esCerrada = estado == 'cerrada';
+
+        if (_filtroEstado == 'en_curso' && esCerrada) return false;
+        if (_filtroEstado == 'completada' && !esCerrada) return false;
+
+        if (q.isNotEmpty) {
+          final tema = (r['tema'] ?? '').toString().toLowerCase();
+          final fecha = (r['fecha'] ?? '').toString().toLowerCase();
+          if (!tema.contains(q) && !fecha.contains(q)) return false;
+        }
+
+        return true;
+      }).toList();
+    });
   }
 
   Future<void> _abrirCrearReunion() async {
@@ -87,7 +124,8 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
           children: [
             Icon(Icons.gavel_rounded, color: Color(0xFFDC2626)),
             SizedBox(width: 8),
-            Text('Finalizar Reunión', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text('Finalizar Reunión',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           ],
         ),
         content: Column(
@@ -112,40 +150,53 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
                   if (faltas > 0) ...[
                     Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFDC2626)),
+                        const Icon(Icons.warning_amber_rounded,
+                            size: 18, color: Color(0xFFDC2626)),
                         const SizedBox(width: 6),
                         Text(
                           '$faltas choferes con FALTA detectados',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF991B1B)),
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF991B1B)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
                     Text(
                       'Se generará una cuota de Bs. ${multa.toStringAsFixed(2)} para cada uno.\nTotal a cobrar en multas: Bs. ${totalMultas.toStringAsFixed(2)}.',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF7F1D1D)),
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF7F1D1D)),
                     ),
                   ] else ...[
                     const Row(
                       children: [
-                        Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF059669)),
+                        Icon(Icons.check_circle_rounded,
+                            size: 18, color: Color(0xFF059669)),
                         SizedBox(width: 6),
                         Text(
                           '¡Asistencia perfecta! 0 faltas.',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF065F46)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     const Text(
                       'Todos asistieron o tienen permiso. No se generarán multas.',
-                      style: TextStyle(fontSize: 11.5, color: Color(0xFF065F46)),
+                      style: TextStyle(
+                          fontSize: 11.5, color: Color(0xFF065F46)),
                     ),
                   ],
                   const SizedBox(height: 8),
                   const Text(
                     'Una vez cerrada, la lista no podrá ser modificada.',
-                    style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF64748B)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                        color: Color(0xFF64748B)),
                   ),
                 ],
               ),
@@ -155,13 +206,15 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text('Cancelar',
+                style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(faltas > 0 ? 'Cerrar y Multar' : 'Cerrar Reunión'),
@@ -211,7 +264,8 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
           children: [
             Icon(Icons.delete_outline, color: Colors.red),
             SizedBox(width: 8),
-            Text('Eliminar Reunión', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text('Eliminar Reunión',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           ],
         ),
         content: Text(
@@ -227,10 +281,12 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Eliminar',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -255,6 +311,574 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
     }
   }
 
+  /// Encabezado verde curvo corporativo con botón atrás, buscador y squircle de usuario
+  Widget _buildHeader(BuildContext context, bool puedeGestionar) {
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  tooltip: 'Volver',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        _mostrarBuscador ? Icons.close : Icons.search,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                      tooltip: _mostrarBuscador
+                          ? 'Cerrar búsqueda'
+                          : 'Buscar reunión',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        setState(() {
+                          _mostrarBuscador = !_mostrarBuscador;
+                          if (!_mostrarBuscador) {
+                            _searchCtrl.clear();
+                            _filtrar('');
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 10),
+                    // Botón blanco squircle con menú / usuario idéntico a Cuotas
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(
+                          Icons.person_rounded,
+                          color: _kVerdeOscuro,
+                          size: 26,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        onSelected: (val) {
+                          if (val == 'crear') _abrirCrearReunion();
+                          if (val == 'recargar') _cargarReuniones();
+                        },
+                        itemBuilder: (ctx) => [
+                          if (puedeGestionar)
+                            const PopupMenuItem(
+                              value: 'crear',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.add_circle_outline,
+                                      color: _kVerdeOscuro, size: 20),
+                                  SizedBox(width: 8),
+                                  Text('Nueva Reunión'),
+                                ],
+                              ),
+                            ),
+                          const PopupMenuItem(
+                            value: 'recargar',
+                            child: Row(
+                              children: [
+                                Icon(Icons.refresh,
+                                    color: _kVerdeOscuro, size: 20),
+                                SizedBox(width: 8),
+                                Text('Recargar Lista'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // Título grande "Reuniones" idéntico a Cuotas
+            const Text(
+              'Reuniones',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.4,
+              ),
+            ),
+            if (_mostrarBuscador) ...[
+              const SizedBox(height: 12),
+              Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  onChanged: _filtrar,
+                  style: const TextStyle(
+                      fontSize: 14, color: _kVerdeOscuro),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar reunión o tema...',
+                    hintStyle: const TextStyle(
+                        fontSize: 13.5, color: Color(0xFF94A3B8)),
+                    prefixIcon: const Icon(Icons.search,
+                        color: _kVerdeOscuro, size: 20),
+                    suffixIcon: _busqueda.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear,
+                                size: 18, color: Color(0xFF94A3B8)),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              _filtrar('');
+                            },
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Píldora de filtrado estilo Cuotas ([Todas] [En curso] [Completadas])
+  Widget _buildFilterPill(String filtro, String label) {
+    final isSelected = _filtroEstado == filtro;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _filtroEstado = filtro;
+        });
+        _filtrar(_busqueda);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? _kVerdeOscuro : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? _kVerdeOscuro : const Color(0xFFE2E8F0),
+            width: 1.2,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: _kVerdeOscuro.withOpacity(0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : const Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Tarjeta moderna de reunión / asamblea idéntica al diseño de CuotaCard
+  Widget _buildReunionCard(Map<String, dynamic> r, bool puedeGestionar, int index) {
+    final tema = r['tema']?.toString() ?? 'Reunión';
+    final fecha = r['fecha']?.toString() ?? '';
+    final multa = (r['monto_multa'] as num?)?.toDouble() ?? 50.0;
+    final estado = r['estado']?.toString().toLowerCase() ?? 'pendiente';
+    final esCerrada = estado == 'cerrada';
+    final idTipoCuota = r['id_tipo_cuota']?.toString();
+
+    final presentes = (r['presentes'] as num?)?.toInt() ?? 0;
+    final faltas = (r['faltas'] as num?)?.toInt() ?? 0;
+    final licencias = (r['licencias'] as num?)?.toInt() ?? 0;
+    final totalConductores = (r['total_asistentes'] as num?)?.toInt() ??
+        (presentes + faltas + licencias);
+
+    final total = totalConductores > 0 ? totalConductores : 1;
+    final progreso = (presentes / total).clamp(0.0, 1.0);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _abrirPasarLista(r),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Fila superior: Ícono en círculo + Título / Subtítulo / Fecha + Monto por chofer
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Círculo con ícono en tono suave verde idéntico a CuotaCard
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE6F4F0),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        esCerrada
+                            ? Icons.gavel_rounded
+                            : Icons.groups_rounded,
+                        color: _kVerdeOscuro,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Título, subtítulo y fecha
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tema,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.bold,
+                              color: _kVerdeOscuro,
+                              height: 1.2,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            esCerrada
+                                ? 'Asamblea finalizada • $faltas faltas registradas'
+                                : 'Asamblea ordinaria • Control de asistencia activo',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                              height: 1.25,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (fecha.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.calendar_today_rounded,
+                                  size: 11.5,
+                                  color: _kVerdeOscuro,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  fecha,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: _kVerdeOscuro,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Monto y "por chofer" + Menú de opciones
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Bs. ${multa.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                                color: _kVerdeOscuro,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            const Text(
+                              'por chofer',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (puedeGestionar) ...[
+                          const SizedBox(width: 4),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded,
+                                size: 18, color: Color(0xFF94A3B8)),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onSelected: (val) {
+                              if (val == 'asistencia') _abrirPasarLista(r);
+                              if (val == 'cerrar') _cerrarReunionConfirmar(r);
+                              if (val == 'cobrar' && idTipoCuota != null) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CuotaDetalleScreen(
+                                      cuota: {
+                                        'id_tipo_cuota': idTipoCuota,
+                                        'nombre': 'Multa: $tema',
+                                        'descripcion':
+                                            'Multas por falta a la reunión "$tema" ($fecha)',
+                                        'monto_sugerido': multa,
+                                        'categoria': 'multa',
+                                      },
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (val == 'eliminar') _confirmarEliminarReunion(r);
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: 'asistencia',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                        esCerrada
+                                            ? Icons.visibility_outlined
+                                            : Icons.how_to_reg_rounded,
+                                        color: _kVerdeOscuro,
+                                        size: 18),
+                                    const SizedBox(width: 8),
+                                    Text(esCerrada
+                                        ? 'Ver Asistencia'
+                                        : 'Llamar Lista'),
+                                  ],
+                                ),
+                              ),
+                              if (!esCerrada)
+                                const PopupMenuItem(
+                                  value: 'cerrar',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.lock_clock_rounded,
+                                          color: Color(0xFFDC2626), size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Cerrar y Multar',
+                                          style: TextStyle(
+                                              color: Color(0xFFDC2626))),
+                                    ],
+                                  ),
+                                ),
+                              if (esCerrada && idTipoCuota != null && faltas > 0)
+                                const PopupMenuItem(
+                                  value: 'cobrar',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_note_rounded,
+                                          color: _kVerdeOscuro, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Cobrar Multas'),
+                                    ],
+                                  ),
+                                ),
+                              const PopupMenuDivider(),
+                              const PopupMenuItem(
+                                value: 'eliminar',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded,
+                                        color: Colors.red, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Eliminar Reunión',
+                                        style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // 2. Barra de progreso en verde corporativo
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progreso,
+                    minHeight: 4.5,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    color: _kVerdeOscuro,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // 3. Fila inferior: "X de Y asistieron" + Estado ("Completa" / "En curso")
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$presentes de $totalConductores choferes asistieron',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      esCerrada ? 'Completa' : 'En curso',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: esCerrada
+                            ? _kVerdeOscuro
+                            : const Color(0xFFD97706),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEstadoVacio(bool puedeGestionar) {
+    final hayFiltro = _busqueda.isNotEmpty || _filtroEstado != 'todas';
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE6F4F0),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFBBF7D0), width: 2),
+              ),
+              child: Icon(
+                hayFiltro
+                    ? Icons.filter_alt_off_rounded
+                    : Icons.groups_rounded,
+                size: 48,
+                color: _kVerdeOscuro,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Aún no hay reuniones creadas',
+              style: TextStyle(
+                fontSize: 16.5,
+                fontWeight: FontWeight.bold,
+                color: _kVerdeOscuro,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hayFiltro
+                  ? 'Prueba cambiando el término de búsqueda o seleccionando "Todas".'
+                  : 'Crea una reunión o asamblea para controlar asistencia y multas de choferes.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            if (!hayFiltro && puedeGestionar) ...[
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kVerdeOscuro,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: _abrirCrearReunion,
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text(
+                  'Crear Primera Reunión',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final puedeGestionar = Permisos.puedeEditar(
@@ -263,368 +887,76 @@ class _ReunionesScreenState extends State<ReunionesScreen> {
     );
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Reuniones y Asambleas',
-          style: TextStyle(
-            color: Color(0xFF0F2B5B),
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
-      ),
-      body: AppBackground(
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: _cargarReuniones,
-            color: const Color(0xFF1E3A8A),
-            child: Column(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Encabezado verde curvo corporativo con buscador integrado
+          _buildHeader(context, puedeGestionar),
+
+          // 2. Píldoras de filtrado: [Todas] [En curso] [Completadas]
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Row(
               children: [
-                // BANNER EXPLICATIVO SUPERIOR
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x060F2B5B),
-                          blurRadius: 8,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFEF2F2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.gavel_rounded, color: Color(0xFFDC2626), size: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Control de Asistencias y Multas',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF0F2B5B)),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Pasa lista en las reuniones sindicales. Al cerrar la reunión, se crean las multas automáticas.',
-                                style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // LISTA DE REUNIONES
-                Expanded(
-                  child: _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _reuniones.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.groups_outlined, size: 56, color: Colors.grey.shade400),
-                                  const SizedBox(height: 12),
-                                  const Text(
-                                    'No hay reuniones registradas.',
-                                    style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    'Presiona "+ Nueva Reunión" para convocar una asamblea.',
-                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                              itemCount: _reuniones.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 12),
-                              itemBuilder: (ctx, i) {
-                                final r = _reuniones[i];
-                                final tema = r['tema']?.toString() ?? 'Reunión';
-                                final fecha = r['fecha']?.toString() ?? '';
-                                final multa = (r['monto_multa'] as num?)?.toDouble() ?? 50.0;
-                                final estado = r['estado']?.toString().toLowerCase() ?? 'pendiente';
-                                final esCerrada = estado == 'cerrada';
-                                final idTipoCuota = r['id_tipo_cuota']?.toString();
-
-                                final presentes = (r['presentes'] as num?)?.toInt() ?? 0;
-                                final faltas = (r['faltas'] as num?)?.toInt() ?? 0;
-                                final licencias = (r['licencias'] as num?)?.toInt() ?? 0;
-
-                                return Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: esCerrada ? const Color(0xFFE2E8F0) : const Color(0xFFFECACA),
-                                      width: 1.2,
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x080F2B5B),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // CABECERA: TÍTULO + BADGE ESTADO + POPUP
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            width: 40,
-                                            height: 40,
-                                            decoration: BoxDecoration(
-                                              color: esCerrada ? const Color(0xFFF1F5F9) : const Color(0xFFFEF2F2),
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Icon(
-                                              esCerrada ? Icons.lock_outline_rounded : Icons.groups_rounded,
-                                              color: esCerrada ? const Color(0xFF64748B) : const Color(0xFFDC2626),
-                                              size: 20,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  tema,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                    color: Color(0xFF0F2B5B),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Wrap(
-                                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                                  spacing: 6,
-                                                  runSpacing: 2,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        const Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF64748B)),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          fecha,
-                                                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    Text(
-                                                      '• Multa: Bs. ${multa.toStringAsFixed(0)}',
-                                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFDC2626)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: esCerrada ? const Color(0xFFF1F5F9) : const Color(0xFFFEF2F2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              esCerrada ? 'CERRADA' : 'EN CURSO',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: esCerrada ? const Color(0xFF64748B) : const Color(0xFFDC2626),
-                                              ),
-                                            ),
-                                          ),
-                                          if (puedeGestionar)
-                                            PopupMenuButton<String>(
-                                              icon: const Icon(Icons.more_vert, size: 18, color: Color(0xFF64748B)),
-                                              padding: EdgeInsets.zero,
-                                              onSelected: (val) {
-                                                if (val == 'eliminar') {
-                                                  _confirmarEliminarReunion(r);
-                                                }
-                                              },
-                                              itemBuilder: (_) => [
-                                                const PopupMenuItem(
-                                                  value: 'eliminar',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                                                      SizedBox(width: 8),
-                                                      Text('Eliminar Reunión', style: TextStyle(color: Colors.red, fontSize: 13)),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-
-                                      // PÍLDORAS DE ESTADÍSTICAS
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 6,
-                                        children: [
-                                          _buildBadgeAsist(
-                                            'Presentes',
-                                            presentes,
-                                            const Color(0xFF059669),
-                                            const Color(0xFFECFDF5),
-                                            Icons.check_circle_outline_rounded,
-                                          ),
-                                          _buildBadgeAsist(
-                                            'Faltas',
-                                            faltas,
-                                            const Color(0xFFDC2626),
-                                            const Color(0xFFFEF2F2),
-                                            Icons.cancel_outlined,
-                                            subTexto: faltas > 0 ? ' (Bs. ${(faltas * multa).toStringAsFixed(0)})' : null,
-                                          ),
-                                          _buildBadgeAsist(
-                                            'Licencias',
-                                            licencias,
-                                            const Color(0xFFD97706),
-                                            const Color(0xFFFFFBEB),
-                                            Icons.assignment_turned_in_outlined,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 14),
-
-                                      // BOTONES DE ACCIÓN
-                                      Wrap(
-                                        alignment: WrapAlignment.end,
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          OutlinedButton.icon(
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: const Color(0xFF1E3A8A),
-                                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            ),
-                                            icon: Icon(esCerrada ? Icons.visibility_outlined : Icons.how_to_reg_rounded, size: 16),
-                                            label: Text(esCerrada ? 'Ver Asistencia' : 'Llamar Lista'),
-                                            onPressed: () => _abrirPasarLista(r),
-                                          ),
-                                          if (puedeGestionar && !esCerrada)
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: const Color(0xFFDC2626),
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                                elevation: 0,
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                              ),
-                                              icon: const Icon(Icons.lock_clock, size: 16),
-                                              label: const Text('Cerrar y Multar'),
-                                              onPressed: () => _cerrarReunionConfirmar(r),
-                                            ),
-                                          if (esCerrada && idTipoCuota != null && faltas > 0)
-                                            ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: const Color(0xFF0F2B5B),
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                                elevation: 0,
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                              ),
-                                              icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                                              label: const Text('Cobrar Multas'),
-                                              onPressed: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) => CuotaDetalleScreen(
-                                                      cuota: {
-                                                        'id_tipo_cuota': idTipoCuota,
-                                                        'nombre': 'Multa: $tema',
-                                                        'descripcion': 'Multas por falta a la reunión "$tema" ($fecha)',
-                                                        'monto_sugerido': multa,
-                                                        'categoria': 'multa',
-                                                      },
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                ),
+                _buildFilterPill('todas', 'Todas'),
+                const SizedBox(width: 8),
+                _buildFilterPill('en_curso', 'En curso'),
+                const SizedBox(width: 8),
+                _buildFilterPill('completada', 'Completadas'),
               ],
             ),
           ),
-        ),
+
+          // 3. Lista de tarjetas de reuniones
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
+                  )
+                : _reunionesFiltradas.isEmpty
+                    ? _buildEstadoVacio(puedeGestionar)
+                    : RefreshIndicator(
+                        onRefresh: _cargarReuniones,
+                        color: _kVerdeOscuro,
+                        child: ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 85),
+                          itemCount: _reunionesFiltradas.length,
+                          itemBuilder: (context, index) {
+                            return _buildReunionCard(
+                              _reunionesFiltradas[index],
+                              puedeGestionar,
+                              index,
+                            );
+                          },
+                        ),
+                      ),
+          ),
+        ],
       ),
       floatingActionButton: puedeGestionar
           ? FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF1E3A8A),
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Nueva Reunión', style: TextStyle(fontWeight: FontWeight.bold)),
               onPressed: _abrirCrearReunion,
+              backgroundColor: _kVerdeOscuro,
+              foregroundColor: Colors.white,
+              elevation: 4,
+              icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
+              label: const Text(
+                'Nueva reunión',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14.5,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
             )
           : null,
-    );
-  }
-
-  Widget _buildBadgeAsist(String label, int cant, Color color, Color bg, IconData icon, {String? subTexto}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text('$label: ', style: TextStyle(fontSize: 10.5, color: color, fontWeight: FontWeight.w600)),
-          Text('$cant', style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
-          if (subTexto != null)
-            Text(subTexto, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w700)),
-        ],
-      ),
     );
   }
 }
@@ -647,7 +979,7 @@ class ContainerIcon extends StatelessWidget {
   }
 }
 
-/// Pantalla para pasar lista en una reunión específica
+/// Pantalla para pasar lista en una reunión específica con el diseño de ConductorCard
 class PasarListaScreen extends StatefulWidget {
   final Map<String, dynamic> reunion;
 
@@ -662,6 +994,7 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
   List<Map<String, dynamic>> _asistentesFiltrados = [];
   bool _isLoading = true;
   String _busqueda = '';
+  String _filtroActivo = 'todos'; // 'todos', 'presentes', 'faltas', 'licencias'
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
@@ -684,32 +1017,53 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
       if (mounted) {
         setState(() {
           _asistentes = list;
-          _filtrar(_busqueda);
           _isLoading = false;
         });
+        _aplicarFiltros(_busqueda);
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _filtrar(String query) {
-    _busqueda = query.toLowerCase().trim();
+  void _aplicarFiltros([String? query]) {
+    if (query != null) {
+      _busqueda = query.toLowerCase().trim();
+    }
+    final q = _busqueda;
     setState(() {
-      if (_busqueda.isEmpty) {
-        _asistentesFiltrados = List.from(_asistentes);
-      } else {
-        _asistentesFiltrados = _asistentes.where((a) {
-          final nombre = (a['conductor_nombre'] ?? '').toString().toLowerCase();
-          final ci = (a['conductor_ci'] ?? '').toString().toLowerCase();
-          return nombre.contains(_busqueda) || ci.contains(_busqueda);
-        }).toList();
-      }
+      _asistentesFiltrados = _asistentes.where((a) {
+        // 1. Filtrado por texto (nombre, CI o auto)
+        final nombre = (a['conductor_nombre'] ?? '').toString().toLowerCase();
+        final ci = (a['conductor_ci'] ?? '').toString().toLowerCase();
+        final auto = (a['conductor_numero_interno'] ?? a['numero_interno'] ?? '')
+            .toString()
+            .toLowerCase();
+        final coincide = q.isEmpty ||
+            nombre.contains(q) ||
+            ci.contains(q) ||
+            auto.contains(q);
+        if (!coincide) return false;
+
+        // 2. Sub-filtro por estado
+        final estado = (a['estado'] ?? 'falta').toString().toLowerCase();
+        switch (_filtroActivo) {
+          case 'presentes':
+            return estado == 'presente';
+          case 'faltas':
+            return estado == 'falta';
+          case 'licencias':
+            return estado == 'licencia';
+          default:
+            return true;
+        }
+      }).toList();
     });
   }
 
   Future<void> _marcar(String idAsistencia, String nuevoEstado) async {
-    final esCerrada = widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
+    final esCerrada =
+        widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
     if (esCerrada) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Esta reunión ya fue cerrada.')),
@@ -718,29 +1072,33 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
     }
 
     try {
-      await EconomiaRepo.instance.actualizarAsistenciaReunion(idAsistencia, nuevoEstado);
-      // Actualización optimista local rápida para máxima fluidez
+      await EconomiaRepo.instance
+          .actualizarAsistenciaReunion(idAsistencia, nuevoEstado);
+      // Actualización optimista local para fluidez inmediata
       setState(() {
-        final idx = _asistentes.indexWhere((a) => a['id_asistencia_reunion'].toString() == idAsistencia);
+        final idx = _asistentes.indexWhere(
+            (a) => a['id_asistencia_reunion'].toString() == idAsistencia);
         if (idx != -1) {
           final map = Map<String, dynamic>.from(_asistentes[idx]);
           map['estado'] = nuevoEstado;
           _asistentes[idx] = map;
-          _filtrar(_busqueda);
         }
       });
+      _aplicarFiltros();
     } catch (_) {
       _cargarAsistencia();
     }
   }
 
   Future<void> _marcarTodos(String nuevoEstado) async {
-    final esCerrada = widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
+    final esCerrada =
+        widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
     if (esCerrada) return;
 
     try {
       final idReunion = widget.reunion['id_reunion'].toString();
-      await EconomiaRepo.instance.marcarTodosAsistenciaReunion(idReunion, nuevoEstado);
+      await EconomiaRepo.instance
+          .marcarTodosAsistenciaReunion(idReunion, nuevoEstado);
       await _cargarAsistencia();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -758,7 +1116,9 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
   }
 
   Future<void> _cerrarDesdeAqui() async {
-    final faltas = _asistentes.where((a) => a['estado']?.toString().toLowerCase() == 'falta').length;
+    final faltas = _asistentes
+        .where((a) => a['estado']?.toString().toLowerCase() == 'falta')
+        .length;
     final multa = (widget.reunion['monto_multa'] as num?)?.toDouble() ?? 50.0;
     final totalMultas = faltas * multa;
 
@@ -770,7 +1130,8 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
           children: [
             Icon(Icons.gavel_rounded, color: Color(0xFFDC2626)),
             SizedBox(width: 8),
-            Text('Finalizar Reunión', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text('Finalizar Reunión',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           ],
         ),
         content: Column(
@@ -799,7 +1160,9 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
                     style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: faltas > 0 ? const Color(0xFF991B1B) : const Color(0xFF065F46),
+                      color: faltas > 0
+                          ? const Color(0xFF991B1B)
+                          : const Color(0xFF065F46),
                     ),
                   ),
                 ],
@@ -810,13 +1173,15 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text('Cancelar',
+                style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Cerrar y Generar'),
@@ -838,7 +1203,8 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
         final total = (res['total_multas_bs'] as num?)?.toDouble() ?? 0.0;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Reunión cerrada. Se crearon $cant multas por Bs. ${total.toStringAsFixed(2)}.'),
+            content: Text(
+                'Reunión cerrada. Se crearon $cant multas por Bs. ${total.toStringAsFixed(2)}.'),
             backgroundColor: const Color(0xFF10B981),
           ),
         );
@@ -858,379 +1224,789 @@ class _PasarListaScreenState extends State<PasarListaScreen> {
     final tema = widget.reunion['tema']?.toString() ?? 'Reunión';
     final fecha = widget.reunion['fecha']?.toString() ?? '';
     final multa = (widget.reunion['monto_multa'] as num?)?.toDouble() ?? 50.0;
-    final esCerrada = widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
+    final esCerrada =
+        widget.reunion['estado']?.toString().toLowerCase() == 'cerrada';
 
-    final presentes = _asistentes.where((a) => a['estado']?.toString().toLowerCase() == 'presente').length;
-    final faltas = _asistentes.where((a) => a['estado']?.toString().toLowerCase() == 'falta').length;
-    final licencias = _asistentes.where((a) => a['estado']?.toString().toLowerCase() == 'licencia').length;
+    final total = _asistentes.length;
+    final presentes = _asistentes
+        .where((a) => a['estado']?.toString().toLowerCase() == 'presente')
+        .length;
+    final faltas = _asistentes
+        .where((a) => a['estado']?.toString().toLowerCase() == 'falta')
+        .length;
+    final licencias = _asistentes
+        .where((a) => a['estado']?.toString().toLowerCase() == 'licencia')
+        .length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1),
-        ),
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              tema,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Color(0xFF0F2B5B),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              'Fecha: $fecha • ${_asistentes.length} Choferes • Multa: Bs. ${multa.toStringAsFixed(0)}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-            ),
-          ],
-        ),
-        actions: [
-          if (!esCerrada)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Color(0xFF1E3A8A)),
-              onSelected: (val) {
-                if (val == 'todos_presentes') _marcarTodos('presente');
-                if (val == 'todos_faltas') _marcarTodos('falta');
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'todos_presentes',
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 18),
-                      SizedBox(width: 8),
-                      Text('Marcar todos Presentes', style: TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'todos_faltas',
-                  child: Row(
-                    children: [
-                      Icon(Icons.cancel_rounded, color: Color(0xFFDC2626), size: 18),
-                      SizedBox(width: 8),
-                      Text('Marcar todos con Falta', style: TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      body: Column(
+        children: [
+          // 1. ENCABEZADO VERDE CURVO CON BUSCADOR Y ACCIONES INTEGRADAS
+          _buildHeader(
+            context: context,
+            tema: tema,
+            fecha: fecha,
+            multa: multa,
+            esCerrada: esCerrada,
+          ),
+
+          const SizedBox(height: 12),
+
+          // 2. SUB-FILTROS HORIZONTALES (Todos, Presentes, Faltas, Licencias)
+          _buildFiltrosBar(
+            total: total,
+            presentes: presentes,
+            faltas: faltas,
+            licencias: licencias,
+          ),
+
+          const SizedBox(height: 10),
+
+          // 3. LISTADO DE CONDUCTORES EN EL FORMATO DE CONDUCTORCARD
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
+                  )
+                : _asistentesFiltrados.isEmpty
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        color: _kVerdeOscuro,
+                        onRefresh: _cargarAsistencia,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _asistentesFiltrados.length,
+                          itemBuilder: (context, index) {
+                            final a = _asistentesFiltrados[index];
+                            final idAsistencia =
+                                a['id_asistencia_reunion'].toString();
+                            final nombre =
+                                a['conductor_nombre']?.toString() ?? 'Chofer';
+                            final ci = a['conductor_ci']?.toString() ?? '';
+                            final foto = a['conductor_foto']?.toString();
+                            final auto =
+                                a['conductor_numero_interno']?.toString() ??
+                                    a['numero_interno']?.toString();
+                            final estado =
+                                a['estado']?.toString().toLowerCase() ??
+                                    'falta';
+
+                            return ConductorAsistenciaCard(
+                              numeroLista: index + 1,
+                              nombre: nombre,
+                              ci: ci,
+                              auto: auto,
+                              foto: foto,
+                              estado: estado,
+                              multa: multa,
+                              esCerrada: esCerrada,
+                              onMarcar: (nuevoEstado) =>
+                                  _marcar(idAsistencia, nuevoEstado),
+                            );
+                          },
+                        ),
+                      ),
+          ),
         ],
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              // RESUMEN EN VIVO DE ASISTENCIA
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x060F2B5B),
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildHeaderPill('PRESENTES', presentes, const Color(0xFF059669), const Color(0xFFECFDF5)),
-                      _buildHeaderPill(
-                        'FALTAS',
-                        faltas,
-                        const Color(0xFFDC2626),
-                        const Color(0xFFFEF2F2),
-                        sub: 'Bs. ${(faltas * multa).toStringAsFixed(0)}',
-                      ),
-                      _buildHeaderPill('LICENCIAS', licencias, const Color(0xFFD97706), const Color(0xFFFFFBEB)),
-                    ],
-                  ),
-                ),
+      floatingActionButton: !esCerrada
+          ? FloatingActionButton.extended(
+              backgroundColor: _kVerdeOscuro,
+              foregroundColor: Colors.white,
+              elevation: 4,
+              icon: const Icon(Icons.gavel_rounded),
+              label: Text(
+                faltas > 0
+                    ? 'Finalizar ($faltas Faltas)'
+                    : 'Finalizar Reunión',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-
-              // BUSCADOR DE CONDUCTOR
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: _filtrar,
-                    decoration: const InputDecoration(
-                      hintText: 'Buscar conductor por nombre o CI...',
-                      hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
-                      prefixIcon: Icon(Icons.search, size: 18, color: Color(0xFF64748B)),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // LISTA DE ASISTENCIA
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _asistentesFiltrados.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No se encontraron conductores.',
-                              style: TextStyle(color: Color(0xFF64748B)),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: _asistentesFiltrados.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 8),
-                            itemBuilder: (ctx, i) {
-                              final a = _asistentesFiltrados[i];
-                              final idAsistencia = a['id_asistencia_reunion'].toString();
-                              final nombre = a['conductor_nombre']?.toString() ?? 'Chofer';
-                              final ci = a['conductor_ci']?.toString() ?? '';
-                              final foto = a['conductor_foto']?.toString();
-                              final estado = a['estado']?.toString().toLowerCase() ?? 'falta';
-
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: estado == 'falta'
-                                        ? const Color(0xFFFECACA)
-                                        : estado == 'presente'
-                                            ? const Color(0xFFA7F3D0)
-                                            : const Color(0xFFFDE68A),
-                                    width: 1.1,
-                                  ),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x050F2B5B),
-                                      blurRadius: 6,
-                                      offset: Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: [
-                                    AvatarConductor(
-                                      foto: foto,
-                                      nombre: nombre,
-                                      radio: 20,
-                                      fontSize: 11,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            nombre,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13.5,
-                                              color: Color(0xFF0F2B5B),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 1),
-                                          Text('CI: $ci', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                                        ],
-                                      ),
-                                    ),
-                                    if (esCerrada) ...[
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: estado == 'presente'
-                                              ? const Color(0xFFECFDF5)
-                                              : estado == 'falta'
-                                                  ? const Color(0xFFFEF2F2)
-                                                  : const Color(0xFFFFFBEB),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          estado == 'falta'
-                                              ? 'FALTA (Bs. ${multa.toStringAsFixed(0)})'
-                                              : estado.toUpperCase(),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 11,
-                                            color: estado == 'presente'
-                                                ? const Color(0xFF059669)
-                                                : estado == 'falta'
-                                                    ? const Color(0xFFDC2626)
-                                                    : const Color(0xFFD97706),
-                                          ),
-                                        ),
-                                      ),
-                                    ] else ...[
-                                      // 3 BOTONES TÁCTILES RÁPIDOS (P / F / L)
-                                      _buildBotonToggle(
-                                        'presente',
-                                        'P',
-                                        'Presente',
-                                        estado,
-                                        const Color(0xFF059669),
-                                        () => _marcar(idAsistencia, 'presente'),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildBotonToggle(
-                                        'falta',
-                                        'F',
-                                        'Falta',
-                                        estado,
-                                        const Color(0xFFDC2626),
-                                        () => _marcar(idAsistencia, 'falta'),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _buildBotonToggle(
-                                        'licencia',
-                                        'L',
-                                        'Permiso',
-                                        estado,
-                                        const Color(0xFFD97706),
-                                        () => _marcar(idAsistencia, 'licencia'),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-              ),
-            ],
-          ),
-        ),
-      ),
-      bottomSheet: !esCerrada
-          ? Container(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.gavel_rounded, size: 18),
-                    label: Text(
-                      'Finalizar Reunión ($faltas Faltas = Bs. ${(faltas * multa).toStringAsFixed(0)})',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                    ),
-                    onPressed: _cerrarDesdeAqui,
-                  ),
-                ),
-              ),
+              onPressed: _cerrarDesdeAqui,
             )
           : null,
     );
   }
 
-  Widget _buildHeaderPill(String title, int count, Color color, Color bg, {String? sub}) {
-    return Column(
-      children: [
-        Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.5)),
-        const SizedBox(height: 2),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
+  /// Encabezado verde curvo idéntico a ConductoresScreen
+  Widget _buildHeader({
+    required BuildContext context,
+    required String tema,
+    required String fecha,
+    required double multa,
+    required bool esCerrada,
+  }) {
+    final padding = MediaQuery.of(context).padding;
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, padding.top + 8, 16, 20),
+        child: Column(
           children: [
-            Text(
-              '$count',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  tooltip: 'Volver',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              tema,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (esCerrada)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.white70),
+                              ),
+                              child: const Text(
+                                'CERRADA',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Fecha: $fecha • Multa: Bs. ${multa.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Logo Continental en círculo blanco como en ConductoresScreen
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.local_taxi_rounded,
+                        color: _kVerdeOscuro,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            if (sub != null) ...[
-              const SizedBox(width: 3),
+            const SizedBox(height: 16),
+            // Buscador blanco y botón de opciones DENTRO del encabezado verde
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1E293B),
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nombre, CI o placa...',
+                        hintStyle: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF94A3B8),
+                          size: 20,
+                        ),
+                        suffixIcon: _busqueda.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  _aplicarFiltros('');
+                                },
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: _aplicarFiltros,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _buildBotonAccionesRapidas(esCerrada),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Botón de opciones rápidas (Marcar todos Presentes / Faltas)
+  Widget _buildBotonAccionesRapidas(bool esCerrada) {
+    return PopupMenuButton<String>(
+      enabled: !esCerrada,
+      tooltip: 'Opciones de lista',
+      offset: const Offset(0, 52),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      icon: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.tune_rounded,
+          size: 22,
+          color: _kVerdeOscuro,
+        ),
+      ),
+      onSelected: (val) {
+        if (val == 'todos_presentes') _marcarTodos('presente');
+        if (val == 'todos_faltas') _marcarTodos('falta');
+      },
+      itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: 'todos_presentes',
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_rounded,
+                  color: Color(0xFF059669), size: 18),
+              SizedBox(width: 8),
               Text(
-                sub,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color.withOpacity(0.85)),
+                'Marcar todos Presentes',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ],
-          ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'todos_faltas',
+          child: Row(
+            children: [
+              Icon(Icons.cancel_rounded,
+                  color: Color(0xFFDC2626), size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Marcar todos con Falta',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildBotonToggle(
-    String valor,
-    String sigla,
-    String tooltip,
-    String actual,
-    Color color,
-    VoidCallback onTap,
-  ) {
+  /// Sub-filtros estilo FiltroConductoresBar
+  Widget _buildFiltrosBar({
+    required int total,
+    required int presentes,
+    required int faltas,
+    required int licencias,
+  }) {
+    return SizedBox(
+      height: 38,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _buildChip('todos', 'Todos', total),
+          _buildChip('presentes', 'Presentes', presentes,
+              color: const Color(0xFF059669)),
+          _buildChip('faltas', 'Faltas', faltas,
+              color: const Color(0xFFDC2626)),
+          if (licencias > 0 || _filtroActivo == 'licencias')
+            _buildChip('licencias', 'Licencias', licencias,
+                color: const Color(0xFFD97706)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String key, String label, int count, {Color? color}) {
+    final isSelected = _filtroActivo == key;
+    final chipColor = color ?? _kVerdeOscuro;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _filtroActivo = key;
+            _aplicarFiltros();
+          });
+        },
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? chipColor : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isSelected ? chipColor : const Color(0xFFE2E8F0),
+              width: 1.2,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: chipColor.withOpacity(0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+          ),
+          child: Text(
+            '$label ($count)',
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              fontSize: 12.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline_rounded,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No hay conductores encontrados',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Intenta con otro filtro o término de búsqueda.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de conductor para Asistencia siguiendo el diseño exacto de ConductorCard
+class ConductorAsistenciaCard extends StatelessWidget {
+  final int numeroLista;
+  final String nombre;
+  final String ci;
+  final String? auto;
+  final String? foto;
+  final String estado;
+  final double multa;
+  final bool esCerrada;
+  final ValueChanged<String> onMarcar;
+
+  const ConductorAsistenciaCard({
+    super.key,
+    required this.numeroLista,
+    required this.nombre,
+    required this.ci,
+    required this.auto,
+    required this.foto,
+    required this.estado,
+    required this.multa,
+    required this.esCerrada,
+    required this.onMarcar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color estadoColor;
+    String estadoTexto;
+    switch (estado) {
+      case 'presente':
+        estadoColor = const Color(0xFF059669);
+        estadoTexto = 'Presente';
+        break;
+      case 'licencia':
+        estadoColor = const Color(0xFFD97706);
+        estadoTexto = 'Licencia / Permiso';
+        break;
+      case 'falta':
+      default:
+        estadoColor = const Color(0xFFDC2626);
+        estadoTexto = 'Falta';
+        break;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            // 1. Avatar del conductor idéntico a ConductorCard
+            AvatarConductor(
+              foto: foto,
+              nombre: nombre,
+              radio: 22,
+              fontSize: 12,
+            ),
+            const SizedBox(width: 14),
+
+            // 2. Información del conductor (Número de lista, Nombre, Auto/CI, Estado)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Arribita de la columna: solo el número de lista ("solo número")
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 1.5),
+                    margin: const EdgeInsets.only(bottom: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5EF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: const Color(0xFF02634C).withOpacity(0.2),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      '$numeroLista',
+                      style: const TextStyle(
+                        color: Color(0xFF02634C),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    nombre,
+                    style: const TextStyle(
+                      color: Color(0xFF1E293B),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15.5,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.directions_car_rounded,
+                        size: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          (auto != null && auto!.isNotEmpty)
+                              ? 'Auto N° $auto'
+                              : (ci.isNotEmpty
+                                  ? 'CI: $ci'
+                                  : 'Sin unidad asignada'),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: estadoColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        estadoTexto,
+                        style: TextStyle(
+                          color: estadoColor,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (estado == 'falta') ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: const Color(0xFFEF4444).withOpacity(0.3),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            'Bs. ${multa.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              color: Color(0xFFDC2626),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 3. Marcación rápida táctil (P / F / L) o Badge si reunión cerrada
+            if (!esCerrada) ...[
+              _buildBotonToggle(
+                valor: 'presente',
+                sigla: 'P',
+                tooltip: 'Presente',
+                actual: estado,
+                color: const Color(0xFF059669),
+                onTap: () => onMarcar('presente'),
+              ),
+              const SizedBox(width: 4),
+              _buildBotonToggle(
+                valor: 'falta',
+                sigla: 'F',
+                tooltip: 'Falta',
+                actual: estado,
+                color: const Color(0xFFDC2626),
+                onTap: () => onMarcar('falta'),
+              ),
+              const SizedBox(width: 4),
+              _buildBotonToggle(
+                valor: 'licencia',
+                sigla: 'L',
+                tooltip: 'Licencia',
+                actual: estado,
+                color: const Color(0xFFD97706),
+                onTap: () => onMarcar('licencia'),
+              ),
+            ] else ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: estado == 'presente'
+                      ? const Color(0xFFE6F4F0)
+                      : estado == 'falta'
+                          ? const Color(0xFFFEF2F2)
+                          : const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: estado == 'presente'
+                        ? const Color(0xFF10B981).withOpacity(0.4)
+                        : estado == 'falta'
+                            ? const Color(0xFFEF4444).withOpacity(0.4)
+                            : const Color(0xFFF59E0B).withOpacity(0.4),
+                  ),
+                ),
+                child: Text(
+                  estado == 'falta'
+                      ? 'FALTA (Bs. ${multa.toStringAsFixed(0)})'
+                      : estado.toUpperCase(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    color: estado == 'presente'
+                        ? const Color(0xFF059669)
+                        : estado == 'falta'
+                            ? const Color(0xFFDC2626)
+                            : const Color(0xFFD97706),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBotonToggle({
+    required String valor,
+    required String sigla,
+    required String tooltip,
+    required String actual,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     final seleccionado = actual == valor;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: seleccionado ? color : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: seleccionado
-              ? [
-                  BoxShadow(
-                    color: color.withOpacity(0.35),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Center(
-          child: Text(
-            sigla,
-            style: TextStyle(
-              color: seleccionado ? Colors.white : const Color(0xFF64748B),
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Tooltip(
+        message: tooltip,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: seleccionado ? color : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: seleccionado ? color : const Color(0xFFCBD5E1),
+              width: seleccionado ? 1.5 : 1,
+            ),
+            boxShadow: seleccionado
+                ? [
+                    BoxShadow(
+                      color: color.withOpacity(0.32),
+                      blurRadius: 5,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              sigla,
+              style: TextStyle(
+                color: seleccionado ? Colors.white : const Color(0xFF64748B),
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
             ),
           ),
         ),

@@ -174,7 +174,7 @@ class _SimulacionAsistenciaDialogState extends State<SimulacionAsistenciaDialog>
                           isExpanded: true,
                           value: _horaSimulada,
                           items: const [
-                            DropdownMenuItem(value: '07:15', child: Text('07:15 AM (Presente)')),
+                            DropdownMenuItem(value: '07:35', child: Text('07:35 AM (Presente)')),
                             DropdownMenuItem(value: '07:55', child: Text('07:55 AM (Presente)')),
                             DropdownMenuItem(value: '08:00', child: Text('08:00 AM (Límite)')),
                             DropdownMenuItem(value: '08:05', child: Text('08:05 AM (Tardanza)')),

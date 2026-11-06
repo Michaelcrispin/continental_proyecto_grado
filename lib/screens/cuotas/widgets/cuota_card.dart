@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// Tarjeta moderna e interactiva para cada Cuota (Vista UI Cuotas).
-/// Refleja fielmente el diseño de tarjetas con ícono temático, título,
-/// badge de estado ('En cobro', 'Pendiente', 'Completada'), motivo y monto por chofer.
+const _kVerdeOscuro = Color(0xFF02634C);
+
+/// Tarjeta moderna e interactiva para cada Cuota (Diseño Verde Corporativo).
+/// Presenta:
+/// - Ícono en círculo (con íconos temáticos y de la pantalla de inicio en verde corporativo).
+/// - Título, subtítulo y FECHA visible destacada.
+/// - Monto por chofer en verde en la esquina superior derecha.
+/// - Barra de progreso en verde corporativo (LinearProgressIndicator).
+/// - Pie con "X de Y pagaron" y etiqueta de estado ("Completa" / "En cobro").
 class CuotaCard extends StatelessWidget {
   final Map<String, dynamic> cuota;
   final int index;
@@ -20,25 +26,30 @@ class CuotaCard extends StatelessWidget {
     final nombre = cuota['nombre']?.toString() ?? 'Cuota';
     final descripcion = cuota['descripcion']?.toString();
     final montoSugerido = (cuota['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
-    final estado = cuota['estado_calculado']?.toString().toLowerCase() ?? 'pendiente';
     final totalConductores = (cuota['total_conductores'] as num?)?.toInt() ?? 0;
-    final fechaCreacion = _formatearFechaCreacion(cuota['created_at']);
-
+    final cantPagados = (cuota['cant_pagados'] as num?)?.toInt() ?? 0;
     final categoria = cuota['categoria']?.toString();
-    final theme = _getCuotaTheme(nombre, index, categoria: categoria);
-    final badge = _getBadgeInfo(estado);
+    final fechaRaw = cuota['fecha'] ?? cuota['created_at'];
+    final fecha = _formatearFecha(fechaRaw);
+
+    final total = totalConductores > 0 ? totalConductores : 1;
+    final progreso = (cantPagados / total).clamp(0.0, 1.0);
+    final esCompleta = (cantPagados >= totalConductores && totalConductores > 0) ||
+        cuota['estado_calculado'] == 'completada';
+
+    final icono = _getIcono(nombre, categoria: categoria);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
-        boxShadow: const [
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A0F2B5B),
-            blurRadius: 14,
-            offset: Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -48,119 +59,77 @@ class CuotaCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: onTap,
-          splashColor: theme.color.withOpacity(0.08),
-          highlightColor: theme.color.withOpacity(0.04),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Fila superior: Ícono + Título + Badge de estado
+                // 1. Fila superior: Ícono en círculo + Título / Subtítulo / Fecha + Monto por chofer
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Círculo con ícono
+                    // Círculo con ícono en tono suave verde
                     Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: theme.bgColor,
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE6F4F0),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        theme.icon,
-                        color: theme.color,
-                        size: 26,
+                        icono,
+                        color: _kVerdeOscuro,
+                        size: 24,
                       ),
                     ),
                     const SizedBox(width: 14),
 
-                    // Título y motivo detallado
+                    // Título, subtítulo y fecha
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  nombre,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: Color(0xFF0F2B5B),
-                                    height: 1.25,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Badge de estado ('En cobro', 'Pendiente', 'Completada')
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: badge.bgColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: badge.dotColor,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      badge.label,
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: badge.textColor,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
                           Text(
-                            (descripcion != null && descripcion.trim().isNotEmpty)
-                                ? descripcion.trim()
-                                : 'Sin motivo registrado',
+                            nombre,
                             style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              height: 1.35,
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.bold,
+                              color: _kVerdeOscuro,
+                              height: 1.2,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (fechaCreacion.isNotEmpty) ...[
-                            const SizedBox(height: 6),
+                          if (descripcion != null && descripcion.trim().isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              descripcion.trim(),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                                height: 1.25,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          if (fecha.isNotEmpty) ...[
+                            const SizedBox(height: 3),
                             Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Icon(
                                   Icons.calendar_today_rounded,
-                                  size: 12,
-                                  color: Color(0xFF94A3B8),
+                                  size: 11.5,
+                                  color: _kVerdeOscuro,
                                 ),
-                                const SizedBox(width: 5),
+                                const SizedBox(width: 4),
                                 Text(
-                                  'Creada el $fechaCreacion',
+                                  fecha,
                                   style: const TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF64748B),
-                                    fontWeight: FontWeight.w500,
+                                    color: _kVerdeOscuro,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -169,71 +138,69 @@ class CuotaCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 10),
+
+                    // Monto y "por chofer"
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Bs. ${_formatearMonto(montoSugerido)}',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            color: _kVerdeOscuro,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        const Text(
+                          'por chofer',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
 
                 const SizedBox(height: 14),
-                // Separador tenue
-                const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 12),
 
-                // Fila inferior: Monto por chofer + Choferes participantes + Flecha
+                // 2. Barra de progreso en verde corporativo
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progreso,
+                    minHeight: 4.5,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    color: _kVerdeOscuro,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // 3. Fila inferior: "X de Y pagaron" + Estado ("Completa" / "En cobro")
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        RichText(
-                          text: TextSpan(
-                            text: 'Bs. ${_formatearMonto(montoSugerido)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15.5,
-                              color: Color(0xFF0F2B5B),
-                            ),
-                            children: const [
-                              TextSpan(
-                                text: ' por chofer',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.normal,
-                                  fontSize: 13,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (totalConductores > 0) ...[
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.people_alt_rounded, size: 13, color: Color(0xFF64748B)),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$totalConductores choferes',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
+                    Text(
+                      '$cantPagados de $totalConductores pagaron',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Color(0xFF2563EB),
-                      size: 24,
+                    Text(
+                      esCompleta ? 'Completa' : 'En cobro',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: esCompleta
+                            ? _kVerdeOscuro
+                            : const Color(0xFF64748B),
+                      ),
                     ),
                   ],
                 ),
@@ -252,7 +219,7 @@ class CuotaCard extends StatelessWidget {
     return monto.toStringAsFixed(2);
   }
 
-  static String _formatearFechaCreacion(dynamic raw) {
+  static String _formatearFecha(dynamic raw) {
     if (raw == null) return '';
     final str = raw.toString().trim();
     if (str.isEmpty) return '';
@@ -273,133 +240,34 @@ class CuotaCard extends StatelessWidget {
     }
   }
 
-  static _CuotaTheme _getCuotaTheme(String nombre, int index, {String? categoria}) {
+  static IconData _getIcono(String nombre, {String? categoria}) {
     final cat = (categoria ?? '').toLowerCase();
     final lower = nombre.toLowerCase();
 
-    if (cat == 'multa' || lower.contains('multa') || lower.contains('reuni')) {
-      return const _CuotaTheme(
-        icon: Icons.gavel_rounded,
-        color: Color(0xFFDC2626),
-        bgColor: Color(0xFFFEF2F2),
-      );
+    if (cat == 'ayuda' || lower.contains('apoyo') || lower.contains('solidaridad')) {
+      return Icons.volunteer_activism_outlined;
     }
     if (cat == 'canaston' || lower.contains('canast')) {
-      return const _CuotaTheme(
-        icon: Icons.card_giftcard_rounded,
-        color: Color(0xFFEA580C),
-        bgColor: Color(0xFFFFF7ED),
-      );
+      return Icons.card_giftcard_rounded;
+    }
+    if (cat == 'multa' ||
+        lower.contains('multa') ||
+        lower.contains('falta') ||
+        lower.contains('sancion')) {
+      return Icons.gavel_rounded;
     }
     if (cat == 'deporte' || lower.contains('deport') || lower.contains('campeonato')) {
-      return const _CuotaTheme(
-        icon: Icons.sports_soccer_rounded,
-        color: Color(0xFF0D9488),
-        bgColor: Color(0xFFF0FDFA),
-      );
+      return Icons.sports_soccer_rounded;
     }
-    if (cat == 'ayuda' || lower.contains('apoyo') || lower.contains('solidaridad')) {
-      return const _CuotaTheme(
-        icon: Icons.volunteer_activism_rounded,
-        color: Color(0xFF2563EB),
-        bgColor: Color(0xFFEFF6FF),
-      );
+    if (lower.contains('mantenimiento') ||
+        lower.contains('reparaci') ||
+        lower.contains('taller')) {
+      return Icons.build_rounded;
     }
-    if (lower.contains('mantenimiento') || lower.contains('reparación') || lower.contains('taller')) {
-      return const _CuotaTheme(
-        icon: Icons.build_rounded,
-        color: Color(0xFF9333EA),
-        bgColor: Color(0xFFFAF5FF),
-      );
+    if (lower.contains('reuni') || lower.contains('asamblea')) {
+      return Icons.groups_rounded;
     }
-    if (lower.contains('actividad') || lower.contains('sindicato') || lower.contains('social')) {
-      return const _CuotaTheme(
-        icon: Icons.groups_rounded,
-        color: Color(0xFF059669),
-        bgColor: Color(0xFFECFDF5),
-      );
-    }
-    if (lower.contains('aporte') || lower.contains('extraordinario') || lower.contains('pro')) {
-      return const _CuotaTheme(
-        icon: Icons.stars_rounded,
-        color: Color(0xFF6366F1),
-        bgColor: Color(0xFFEEF2FF),
-      );
-    }
-
-    // Variaciones cíclicas elegantes
-    switch (index % 4) {
-      case 0:
-        return const _CuotaTheme(
-          icon: Icons.account_balance_wallet_rounded,
-          color: Color(0xFF2563EB),
-          bgColor: Color(0xFFEFF6FF),
-        );
-      case 1:
-        return const _CuotaTheme(
-          icon: Icons.build_rounded,
-          color: Color(0xFF9333EA),
-          bgColor: Color(0xFFFAF5FF),
-        );
-      case 2:
-        return const _CuotaTheme(
-          icon: Icons.groups_rounded,
-          color: Color(0xFF059669),
-          bgColor: Color(0xFFECFDF5),
-        );
-      default:
-        return const _CuotaTheme(
-          icon: Icons.stars_rounded,
-          color: Color(0xFF6366F1),
-          bgColor: Color(0xFFEEF2FF),
-        );
-    }
+    // Icono principal de Cuotas de la pantalla de inicio
+    return Icons.account_balance_wallet_rounded;
   }
-
-  static _BadgeInfo _getBadgeInfo(String estado) {
-    switch (estado) {
-      case 'en_cobro':
-        return const _BadgeInfo(
-          label: 'En cobro',
-          bgColor: Color(0xFFE8F5E9),
-          dotColor: Color(0xFF2E7D32),
-          textColor: Color(0xFF2E7D32),
-        );
-      case 'completada':
-        return const _BadgeInfo(
-          label: 'Completada',
-          bgColor: Color(0xFFD1FAE5),
-          dotColor: Color(0xFF059669),
-          textColor: Color(0xFF065F46),
-        );
-      case 'pendiente':
-      default:
-        return const _BadgeInfo(
-          label: 'Pendiente',
-          bgColor: Color(0xFFFEF3C7),
-          dotColor: Color(0xFFD97706),
-          textColor: Color(0xFFB45309),
-        );
-    }
-  }
-}
-
-class _CuotaTheme {
-  final IconData icon;
-  final Color color;
-  final Color bgColor;
-  const _CuotaTheme({required this.icon, required this.color, required this.bgColor});
-}
-
-class _BadgeInfo {
-  final String label;
-  final Color bgColor;
-  final Color dotColor;
-  final Color textColor;
-  const _BadgeInfo({
-    required this.label,
-    required this.bgColor,
-    required this.dotColor,
-    required this.textColor,
-  });
 }

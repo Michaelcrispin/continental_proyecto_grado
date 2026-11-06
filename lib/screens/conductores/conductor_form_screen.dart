@@ -25,6 +25,12 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
 
   bool get _esEdicion => widget.conductor != null;
   String? get _idUsuario => widget.conductor?['id_usuario']?.toString();
+  String? get _idConductor => widget.conductor?['id_conductor']?.toString();
+
+  // Registros existentes para validación en tiempo real de duplicados
+  List<Map<String, dynamic>> _conductoresExistentes = [];
+  List<Map<String, dynamic>> _usuariosExistentes = [];
+  Map<String, String> _erroresDuplicadosDb = {};
 
   // Controladores - Cuenta y Acceso
   late final TextEditingController _nombreCtrl;
@@ -33,7 +39,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
   late final TextEditingController _correoCtrl;
 
   // Asignación Sindical y Padrón
-  String _grupo = '101';
+  String _grupo = '101-127';
   String _extensionCi = 'LP';
   late final TextEditingController _numeroInternoCtrl;
 
@@ -51,10 +57,6 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
 
   // Controladores - Vehículo del conductor
   late final TextEditingController _placaCtrl;
-  late final TextEditingController _marcaCtrl;
-  late final TextEditingController _modeloCtrl;
-  late final TextEditingController _colorCtrl;
-  late final TextEditingController _capacidadCtrl;
   late final TextEditingController _soatCtrl;
   late final TextEditingController _soatVenceCtrl;
   late final TextEditingController _ruatCtrl;
@@ -132,18 +134,6 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
 
     // Vehículo
     _placaCtrl = TextEditingController(text: c?['placa']?.toString() ?? '');
-    _marcaCtrl = TextEditingController(
-      text: c?['marca']?.toString() ?? 'Toyota',
-    );
-    _modeloCtrl = TextEditingController(
-      text: c?['modelo']?.toString() ?? 'Hiace',
-    );
-    _colorCtrl = TextEditingController(
-      text: c?['color']?.toString() ?? 'Blanco / Azul',
-    );
-    _capacidadCtrl = TextEditingController(
-      text: c?['capacidad'] != null ? c!['capacidad'].toString() : '14',
-    );
     _soatCtrl = TextEditingController(text: c?['soat']?.toString() ?? '');
     _soatVenceCtrl = TextEditingController(
       text: c?['fecha_vencimiento_soat']?.toString() ?? '',
@@ -153,6 +143,201 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
     // Estado operativo
     final est = c?['estado']?.toString() ?? 'activo';
     _estadoActivo = est.toLowerCase() == 'activo';
+
+    _cargarRegistrosParaValidacion();
+  }
+
+  Future<void> _cargarRegistrosParaValidacion() async {
+    try {
+      final conds = await DatabaseHelper.instance.conductoresConAuto();
+      final usus = await DatabaseHelper.instance.listar('usuario');
+      if (mounted) {
+        setState(() {
+          _conductoresExistentes = conds;
+          _usuariosExistentes = usus;
+        });
+      }
+    } catch (_) {}
+  }
+
+  bool _esMismoRegistro(Map<String, dynamic> row) {
+    final idCond = row['id_conductor']?.toString();
+    final idUsu = row['id_usuario']?.toString();
+    if (_idConductor != null && idCond == _idConductor) return true;
+    if (_idUsuario != null && idUsu == _idUsuario) return true;
+    return false;
+  }
+
+  String? _validarNombre(String? v) {
+    final val = (v ?? '').trim();
+    if (val.isEmpty) return 'El nombre completo es obligatorio';
+    final partes = val.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (val.length < 5 || partes.length < 2) {
+      return 'Ingresa nombre y apellido completos';
+    }
+    if (RegExp(r'[0-9]').hasMatch(val)) {
+      return 'El nombre no debe contener números';
+    }
+    final norm = Normalizadores.normalizarNombre(val);
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cNom = c['nombre']?.toString() ?? '';
+      if (Normalizadores.normalizarNombre(cNom) == norm) {
+        return 'El conductor "$cNom" ya está registrado';
+      }
+    }
+    return _erroresDuplicadosDb['nombre'];
+  }
+
+  String? _validarCi(String? v) {
+    final val = (v ?? '').trim();
+    if (val.isEmpty) return 'El CI es obligatorio';
+    final ciNorm = Normalizadores.normalizarCi(val);
+    final soloDigitos = ciNorm.replaceAll(RegExp(r'[^0-9]'), '');
+    if (soloDigitos.length < 5 || ciNorm.length > 12) {
+      return 'CI inválido (mínimo 5 dígitos)';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cCi = c['ci']?.toString() ?? '';
+      final cCiNorm = (c['ci_normalizado']?.toString().isNotEmpty ?? false)
+          ? c['ci_normalizado'].toString()
+          : Normalizadores.normalizarCi(cCi);
+      if (cCiNorm == ciNorm || cCi.trim().toUpperCase() == val.toUpperCase()) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Este CI ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['ci'];
+  }
+
+  String? _validarTelefono(String? v) {
+    final val = (v ?? '').trim();
+    if (val.isEmpty) return 'El teléfono/celular es obligatorio';
+    final telNorm = Normalizadores.normalizarTelefono(val);
+    if (telNorm.length < 7 || telNorm.length > 8) {
+      return 'Ingresa un número válido de 7 u 8 dígitos';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cTelNorm = Normalizadores.normalizarTelefono(
+        c['telefono']?.toString(),
+      );
+      if (cTelNorm.isNotEmpty && cTelNorm == telNorm) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Este teléfono ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['telefono'];
+  }
+
+  String? _validarCorreo(String? v) {
+    final val = (v ?? '').trim().toLowerCase();
+    if (val.isEmpty) return null;
+    final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    if (!emailRegex.hasMatch(val)) {
+      return 'Ingresa un correo electrónico válido';
+    }
+    for (final u in _usuariosExistentes) {
+      final idUsu = u['id_usuario']?.toString();
+      if (_idUsuario != null && idUsu == _idUsuario) continue;
+      final uGmail = (u['gmail']?.toString() ?? '').trim().toLowerCase();
+      if (uGmail.isNotEmpty && uGmail == val) {
+        final dueno = u['nombre']?.toString() ?? 'otro usuario';
+        return 'Este correo ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['correo'];
+  }
+
+  String? _validarPassword(String? v) {
+    final val = (v ?? '').trim();
+    if (!_esEdicion && val.isEmpty) {
+      return 'La contraseña de acceso es obligatoria';
+    }
+    if (val.isNotEmpty && val.length < 4) {
+      return 'La contraseña debe tener al menos 4 caracteres';
+    }
+    return null;
+  }
+
+  String? _validarLicencia(String? v) {
+    final val = (v ?? '').trim();
+    final efectivo = val.isEmpty ? _ciCtrl.text.trim() : val;
+    if (efectivo.isEmpty) return null;
+    final licNorm = Normalizadores.normalizarCodigo(efectivo);
+    if (val.isNotEmpty && licNorm.length < 5) {
+      return 'N° de licencia inválido (mín. 5 caracteres)';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cLicNorm = Normalizadores.normalizarCodigo(
+        c['licencia']?.toString(),
+      );
+      final cCiNorm = Normalizadores.normalizarCi(c['ci']?.toString());
+      if ((cLicNorm.isNotEmpty && cLicNorm == licNorm) ||
+          (cCiNorm.isNotEmpty && cCiNorm == licNorm)) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Esta licencia ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['licencia'];
+  }
+
+  String? _validarPlaca(String? v) {
+    final val = (v ?? '').trim().toUpperCase();
+    if (val.isEmpty) return null;
+    final placaNorm = Normalizadores.normalizarPlaca(val);
+    if (placaNorm.length < 5 || placaNorm.length > 9) {
+      return 'Placa inválida (ej. 1234ABC)';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cPlacaNorm = Normalizadores.normalizarPlaca(
+        c['placa']?.toString(),
+      );
+      if (cPlacaNorm.isNotEmpty && cPlacaNorm == placaNorm) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Esta placa ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['placa'];
+  }
+
+  String? _validarRuat(String? v) {
+    final val = (v ?? '').trim();
+    if (val.isEmpty) return null;
+    final ruatNorm = Normalizadores.normalizarCodigo(val);
+    if (ruatNorm.length < 4) {
+      return 'N° de RUAT inválido';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cRuatNorm = Normalizadores.normalizarCodigo(c['ruat']?.toString());
+      if (cRuatNorm.isNotEmpty && cRuatNorm == ruatNorm) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Este RUAT ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['ruat'];
+  }
+
+  String? _validarSoat(String? v) {
+    final val = (v ?? '').trim();
+    if (val.isEmpty) return null;
+    final soatNorm = Normalizadores.normalizarCodigo(val);
+    if (soatNorm.length < 4) {
+      return 'N° de póliza SOAT inválido';
+    }
+    for (final c in _conductoresExistentes) {
+      if (_esMismoRegistro(c)) continue;
+      final cSoatNorm = Normalizadores.normalizarCodigo(c['soat']?.toString());
+      if (cSoatNorm.isNotEmpty && cSoatNorm == soatNorm) {
+        final dueno = c['nombre']?.toString() ?? 'otro conductor';
+        return 'Este SOAT ya pertenece a $dueno';
+      }
+    }
+    return _erroresDuplicadosDb['soat'];
   }
 
   @override
@@ -168,10 +353,6 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
     _licenciaEmisionCtrl.dispose();
     _licenciaVenceCtrl.dispose();
     _placaCtrl.dispose();
-    _marcaCtrl.dispose();
-    _modeloCtrl.dispose();
-    _colorCtrl.dispose();
-    _capacidadCtrl.dispose();
     _soatCtrl.dispose();
     _soatVenceCtrl.dispose();
     _ruatCtrl.dispose();
@@ -183,36 +364,13 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
   // GUARDAR CONDUCTOR (CREAR O ACTUALIZAR)
   // ---------------------------------------------------------------------------
   Future<void> _guardarConductor() async {
-    if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Por favor completa los campos obligatorios marcados con *',
-          ),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
-      return;
-    }
+    if (_isSaving) return;
+
+    setState(() => _erroresDuplicadosDb = {});
 
     final nombre = _nombreCtrl.text.trim();
     final ci = _ciCtrl.text.trim();
     final pass = _passCtrl.text.trim();
-
-    if (!_esEdicion && pass.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Debes asignar una contraseña para el acceso del conductor',
-          ),
-          backgroundColor: Color(0xFFEF4444),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
     final correo = _correoCtrl.text.trim();
     final telefono = _telefonoCtrl.text.trim();
     final nacimiento = _fechaNacimientoCtrl.text.trim();
@@ -223,15 +381,47 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
     final licenciaEmision = _licenciaEmisionCtrl.text.trim();
     final licenciaVence = _licenciaVenceCtrl.text.trim();
     final placa = _placaCtrl.text.trim().toUpperCase();
-    final marca = _marcaCtrl.text.trim();
-    final modelo = _modeloCtrl.text.trim();
-    final color = _colorCtrl.text.trim();
-    final capacidad = int.tryParse(_capacidadCtrl.text.trim()) ?? 14;
     final soat = _soatCtrl.text.trim();
     final soatVence = _soatVenceCtrl.text.trim();
     final ruat = _ruatCtrl.text.trim();
     final estado = _estadoActivo ? 'activo' : 'inactivo';
     final numeroInterno = int.tryParse(_numeroInternoCtrl.text.trim());
+
+    // Verificar duplicados directamente contra la base de datos antes de validar formulario
+    final duplicados = await DatabaseHelper.instance.validarDuplicadosConductor(
+      excluirIdUsuario: _idUsuario,
+      excluirIdConductor: _idConductor,
+      nombre: nombre,
+      ci: ci,
+      telefono: telefono,
+      correo: correo.isEmpty ? null : correo,
+      licencia: licenciaNum.isEmpty ? null : licenciaNum,
+      placa: placa.isEmpty ? null : placa,
+      ruat: ruat.isEmpty ? null : ruat,
+      soat: soat.isEmpty ? null : soat,
+    );
+
+    if (!mounted) return;
+
+    if (duplicados.isNotEmpty) {
+      setState(() => _erroresDuplicadosDb = duplicados);
+    }
+
+    if (!_formKey.currentState!.validate() || duplicados.isNotEmpty) {
+      final mensajeError = duplicados.isNotEmpty
+          ? duplicados.values.first
+          : 'Revisa los campos marcados en rojo antes de continuar';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(mensajeError),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
 
     try {
       if (_esEdicion && _idUsuario != null) {
@@ -255,10 +445,6 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
           licenciaEmision: licenciaEmision.isEmpty ? null : licenciaEmision,
           licenciaVencimiento: licenciaVence.isEmpty ? null : licenciaVence,
           placa: placa.isEmpty ? null : placa,
-          marca: marca.isEmpty ? null : marca,
-          modelo: modelo.isEmpty ? null : modelo,
-          color: color.isEmpty ? null : color,
-          capacidad: capacidad,
           soat: soat.isEmpty ? null : soat,
           fechaVencimientoSoat: soatVence.isEmpty ? null : soatVence,
           ruat: ruat.isEmpty ? null : ruat,
@@ -283,10 +469,6 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
           licenciaEmision: licenciaEmision.isEmpty ? null : licenciaEmision,
           licenciaVencimiento: licenciaVence.isEmpty ? null : licenciaVence,
           placa: placa.isEmpty ? null : placa,
-          marca: marca.isEmpty ? null : marca,
-          modelo: modelo.isEmpty ? null : modelo,
-          color: color.isEmpty ? null : color,
-          capacidad: capacidad,
           soat: soat.isEmpty ? null : soat,
           fechaVencimientoSoat: soatVence.isEmpty ? null : soatVence,
           ruat: ruat.isEmpty ? null : ruat,
@@ -296,7 +478,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: const Color(0xFF10B981),
+            backgroundColor: const Color(0xFF02634C),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -337,21 +519,17 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    final titulo = _esEdicion ? 'Editar Conductor' : 'Nuevo Conductor';
-    final subtitulo = _esEdicion
-        ? 'Actualizar datos de padrón, documentos y unidad'
-        : 'Registro de chofer, credenciales, licencia y vehículo';
+    final titulo = _esEdicion ? 'Editar Conductor' : 'Registro de Conductores';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         top: false,
         child: Column(
           children: [
-            // 1. HEADER BANNER AZUL MARINO
+            // 1. BANNER HEADER CORPORATIVO CONTINENTAL
             FormHeaderBanner(
               titulo: titulo,
-              subtitulo: subtitulo,
               onVolver: () => Navigator.pop(context),
             ),
 
@@ -365,15 +543,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // SECCIÓN 1: ASIGNACIÓN SINDICAL Y GRUPO
-                      SeccionPadronSindical(
-                        grupo: _grupo,
-                        numeroInternoCtrl: _numeroInternoCtrl,
-                        onGrupoChanged: (val) => setState(() => _grupo = val),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // SECCIÓN 2: DATOS DE CUENTA Y ACCESO
+                      // SECCIÓN 1: DATOS DE CUENTA Y ACCESO
                       SeccionCuentaAcceso(
                         nombreCtrl: _nombreCtrl,
                         ciCtrl: _ciCtrl,
@@ -383,6 +553,11 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
                         passCtrl: _passCtrl,
                         esEdicion: _esEdicion,
                         obscurePass: _obscurePass,
+                        validadorNombre: _validarNombre,
+                        validadorCi: _validarCi,
+                        validadorTelefono: _validarTelefono,
+                        validadorCorreo: _validarCorreo,
+                        validadorPass: _validarPassword,
                         onToggleObscure: () =>
                             setState(() => _obscurePass = !_obscurePass),
                         onExtensionChanged: (val) {
@@ -410,6 +585,7 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
                         categoriasLicencia: _categoriasLicencia,
                         licenciaEmisionCtrl: _licenciaEmisionCtrl,
                         licenciaVenceCtrl: _licenciaVenceCtrl,
+                        validadorLicencia: _validarLicencia,
                         onCategoriaChanged: (val) {
                           if (val != null) {
                             setState(() => _licenciaCategoria = val);
@@ -422,12 +598,11 @@ class _ConductorFormScreenState extends State<ConductorFormScreen> {
                       SeccionVehiculo(
                         placaCtrl: _placaCtrl,
                         ruatCtrl: _ruatCtrl,
-                        marcaCtrl: _marcaCtrl,
-                        modeloCtrl: _modeloCtrl,
-                        colorCtrl: _colorCtrl,
-                        capacidadCtrl: _capacidadCtrl,
                         soatCtrl: _soatCtrl,
                         soatVenceCtrl: _soatVenceCtrl,
+                        validadorPlaca: _validarPlaca,
+                        validadorRuat: _validarRuat,
+                        validadorSoat: _validarSoat,
                       ),
                       const SizedBox(height: 16),
 

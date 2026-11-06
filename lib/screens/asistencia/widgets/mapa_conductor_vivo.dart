@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../domain/ruta_continental.dart';
 
 /// Mapa en tiempo real para el modo Conductor.
 /// Muestra simultáneamente la Parada A (Cruce Villadela), la Parada B (Teleférico Amarillo),
@@ -34,7 +35,7 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
       final lon = (widget.puntos[0]['longitud'] as num?)?.toDouble();
       if (lat != null && lon != null) return LatLng(lat, lon);
     }
-    return const LatLng(-16.53453, -68.19071);
+    return RutaContinental.paradaAVilladela;
   }
 
   LatLng get _coordB {
@@ -43,19 +44,12 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
       final lon = (widget.puntos[1]['longitud'] as num?)?.toDouble();
       if (lat != null && lon != null) return LatLng(lat, lon);
     }
-    return const LatLng(-16.5050, -68.1635);
+    return RutaContinental.paradaBTeleferico;
   }
 
   double get _radioA {
     if (widget.puntos.isNotEmpty) {
       return ((widget.puntos[0]['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 500.0);
-    }
-    return 100.0;
-  }
-
-  double get _radioB {
-    if (widget.puntos.length > 1) {
-      return ((widget.puntos[1]['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 500.0);
     }
     return 100.0;
   }
@@ -129,10 +123,24 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
                   maxZoom: 20,
                 ),
 
-                // Línea de guía entre el Conductor y la Parada A
-                if (widget.posicionConductor != null)
-                  PolylineLayer(
-                    polylines: [
+                // Trazado vial oficial y línea de guía al Conductor
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: RutaContinental.puntosVuelta,
+                      strokeWidth: 3.5,
+                      color: const Color(0xFFD97706),
+                      borderStrokeWidth: 1.2,
+                      borderColor: Colors.white,
+                    ),
+                    Polyline(
+                      points: RutaContinental.puntosIda,
+                      strokeWidth: 4.0,
+                      color: const Color(0xFF02634C),
+                      borderStrokeWidth: 1.2,
+                      borderColor: Colors.white,
+                    ),
+                    if (widget.posicionConductor != null)
                       Polyline(
                         points: [widget.posicionConductor!, _coordA],
                         color: widget.dentroDeGeocerca
@@ -140,27 +148,28 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
                             : const Color(0xFF3B82F6).withValues(alpha: 0.75),
                         strokeWidth: 3.0,
                       ),
-                    ],
-                  ),
+                  ],
+                ),
 
-                // Geocercas reales en metros de Parada A y Parada B
-                CircleLayer(
-                  circles: [
-                    CircleMarker(
-                      point: _coordA,
-                      radius: _radioA,
-                      useRadiusInMeter: true,
-                      color: const Color(0xFF10B981).withValues(alpha: 0.25),
-                      borderColor: const Color(0xFF10B981),
-                      borderStrokeWidth: 2.5,
+                // Geocercas Rectangulares Oficiales de Parada A y Parada B
+                PolygonLayer(
+                  polygons: [
+                    Polygon(
+                      points: RutaContinental.obtenerRectanguloParadaA(_coordA),
+                      color: (widget.dentroDeGeocerca
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF2563EB))
+                          .withValues(alpha: 0.28),
+                      borderColor: widget.dentroDeGeocerca
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFF2563EB),
+                      borderStrokeWidth: 3.2,
                     ),
-                    CircleMarker(
-                      point: _coordB,
-                      radius: _radioB,
-                      useRadiusInMeter: true,
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.22),
+                    Polygon(
+                      points: RutaContinental.obtenerRectanguloParadaB(_coordB),
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.26),
                       borderColor: const Color(0xFFF59E0B),
-                      borderStrokeWidth: 2.5,
+                      borderStrokeWidth: 3.0,
                     ),
                   ],
                 ),
@@ -272,15 +281,15 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
                   Row(
                     children: [
                       _buildBotonMapa(
-                        label: 'Parada A (${_radioA.toInt()}m)',
+                        label: 'Parada A (Villadela)',
                         color: const Color(0xFF10B981),
-                        onTap: () => _enfocarPunto(_coordA, _radioA <= 15 ? 18.8 : 16.5),
+                        onTap: () => _enfocarPunto(_coordA, 18.2),
                       ),
                       const SizedBox(width: 6),
                       _buildBotonMapa(
-                        label: 'Parada B (${_radioB.toInt()}m)',
+                        label: 'Parada B (Teleférico)',
                         color: const Color(0xFFF59E0B),
-                        onTap: () => _enfocarPunto(_coordB, _radioB <= 15 ? 18.8 : 16.5),
+                        onTap: () => _enfocarPunto(_coordB, 18.2),
                       ),
                     ],
                   ),

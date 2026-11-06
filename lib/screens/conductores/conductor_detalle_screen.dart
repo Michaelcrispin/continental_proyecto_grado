@@ -5,10 +5,8 @@ import 'conductor_form_screen.dart';
 import 'widgets/detalle_header_banner.dart';
 import 'widgets/dialogo_baja_conductor.dart';
 import 'widgets/dialogo_reactivar_conductor.dart';
-import 'widgets/tab_asistencias.dart';
 import 'widgets/tab_documentos.dart';
 import 'widgets/tab_info_general.dart';
-import 'widgets/tab_observaciones.dart';
 
 /// Pantalla completa de detalle/ficha técnica sindical del conductor.
 class ConductorDetalleScreen extends StatefulWidget {
@@ -22,12 +20,7 @@ class ConductorDetalleScreen extends StatefulWidget {
 
 class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
   late Map<String, dynamic> _c;
-  int _tabSeleccionada =
-      0; // 0: Info general, 1: Documentos, 2: Trufi, 3: Asistencias, 4: Observaciones
-
-  List<Map<String, dynamic>> _asistencias = [];
-  List<Map<String, dynamic>> _sanciones = [];
-  bool _isLoadingDetalles = true;
+  int _tabSeleccionada = 0; // 0: Info general, 1: Documentos
   bool _fueModificado = false;
 
   @override
@@ -38,31 +31,18 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
   }
 
   Future<void> _cargarDetalles() async {
-    setState(() => _isLoadingDetalles = true);
     final idConductor = _c['id_conductor']?.toString();
     try {
       if (idConductor != null && idConductor.isNotEmpty) {
         final ficha = await DatabaseHelper.instance.fichaConductor(idConductor);
-        final asists = await DatabaseHelper.instance.asistenciasDetalle(
-          idConductor: idConductor,
-        );
-        final sancs = await DatabaseHelper.instance.sancionesDetalle(
-          idConductor: idConductor,
-        );
-        if (mounted) {
+        if (mounted && ficha != null) {
           setState(() {
-            if (ficha != null) {
-              _c = Map<String, dynamic>.from(ficha);
-            }
-            _asistencias = asists;
-            _sanciones = sancs;
-            _isLoadingDetalles = false;
+            _c = Map<String, dynamic>.from(ficha);
           });
           return;
         }
       }
     } catch (_) {}
-    if (mounted) setState(() => _isLoadingDetalles = false);
   }
 
   Future<void> _editarConductor() async {
@@ -234,8 +214,6 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
     final pestanas = [
       {'icon': Icons.person, 'label': 'Información general'},
       {'icon': Icons.description_outlined, 'label': 'Documentos'},
-      {'icon': Icons.calendar_today_outlined, 'label': 'Asistencias'},
-      {'icon': Icons.edit_note_outlined, 'label': 'Observaciones'},
     ];
     return Container(
       height: 52,
@@ -251,13 +229,13 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
           return GestureDetector(
             onTap: () => setState(() => _tabSeleccionada = index),
             child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
                     color: isSelected
-                        ? const Color(0xFF1D4ED8)
+                        ? const Color(0xFF02634C)
                         : Colors.transparent,
                     width: 3,
                   ),
@@ -267,22 +245,22 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
                 children: [
                   Icon(
                     p['icon'] as IconData,
-                    size: 17,
+                    size: 18,
                     color: isSelected
-                        ? const Color(0xFF1D4ED8)
+                        ? const Color(0xFF02634C)
                         : const Color(0xFF64748B),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Text(
                     p['label'] as String,
                     style: TextStyle(
                       color: isSelected
-                          ? const Color(0xFF1D4ED8)
+                          ? const Color(0xFF02634C)
                           : const Color(0xFF64748B),
                       fontWeight: isSelected
                           ? FontWeight.bold
                           : FontWeight.w500,
-                      fontSize: 13,
+                      fontSize: 14,
                     ),
                   ),
                 ],
@@ -301,16 +279,6 @@ class _ConductorDetalleScreenState extends State<ConductorDetalleScreen> {
     switch (_tabSeleccionada) {
       case 1:
         return TabDocumentos(conductor: _c, ci: ci);
-      case 2:
-        return TabAsistencias(
-          isLoading: _isLoadingDetalles,
-          asistencias: _asistencias,
-        );
-      case 3:
-        return TabObservaciones(
-          isLoading: _isLoadingDetalles,
-          sanciones: _sanciones,
-        );
       case 0:
       default:
         return TabInfoGeneral(

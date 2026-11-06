@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
-import '../core/app_colors.dart';
 import '../core/permisos.dart';
 import '../services/database_helper.dart';
 import '../services/sesion_service.dart';
-import '../widgets/app_background.dart';
+import '../widgets/app_snackbar.dart';
+import '../widgets/avatar_conductor.dart';
 
+const _kVerdeOscuro = Color(0xFF02634C);
+const _kMintBg = Color(0xFFE6F4F0);
+
+/// Pantalla "Directorio": Gestión de la Mesa Directiva Sindical y Supervisores.
+/// Permite designar democráticamente a los propios conductores de la flota como
+/// miembros del Directorio (Secretario de Hacienda, Supervisor, etc.) asignándoles
+/// los permisos correspondientes sin duplicar cuentas ni crearlas desde cero.
 class UsuariosScreen extends StatefulWidget {
   const UsuariosScreen({super.key});
 
@@ -14,6 +21,7 @@ class UsuariosScreen extends StatefulWidget {
 
 class _UsuariosScreenState extends State<UsuariosScreen> {
   List<Map<String, dynamic>> _todosUsuarios = [];
+  List<Map<String, dynamic>> _todosConductores = [];
   bool _isLoading = true;
   String _busqueda = '';
   final TextEditingController _searchController = TextEditingController();
@@ -27,7 +35,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
         return;
       }
     });
-    _cargarUsuarios();
+    _cargarDatos();
   }
 
   @override
@@ -36,15 +44,17 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     super.dispose();
   }
 
-  Future<void> _cargarUsuarios() async {
+  Future<void> _cargarDatos() async {
     setState(() => _isLoading = true);
     try {
-      final lista = await DatabaseHelper.instance.usuariosDetalle(
+      final usuarios = await DatabaseHelper.instance.usuariosDetalle(
         busqueda: _busqueda,
       );
+      final conductores = await DatabaseHelper.instance.conductoresConAuto();
       if (mounted) {
         setState(() {
-          _todosUsuarios = lista;
+          _todosUsuarios = usuarios;
+          _todosConductores = conductores;
           _isLoading = false;
         });
       }
@@ -53,33 +63,21 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     }
   }
 
-  // Lista exclusiva de miembros del Directorio (Directiva sindical, administradores, tesoreros y supervisores)
+  // Lista exclusiva de miembros del Directorio (superadmin, admin, supervisor, tesorero)
   List<Map<String, dynamic>> get _directorio => _todosUsuarios.where((u) {
         final r = u['rol']?.toString().toLowerCase();
-        return r == 'admin' || r == 'superadmin' || r == 'supervisor' || r == 'tesorero';
+        return r == 'admin' ||
+            r == 'superadmin' ||
+            r == 'supervisor' ||
+            r == 'tesorero';
       }).toList();
-
-  Color _colorPorRol(String rol) {
-    switch (rol.toLowerCase()) {
-      case 'superadmin':
-        return const Color(0xFF8B5CF6);
-      case 'admin':
-        return AppColors.primaryBlue;
-      case 'supervisor':
-        return const Color(0xFFF59E0B);
-      case 'tesorero':
-        return const Color(0xFF0D9488);
-      default:
-        return AppColors.textGray;
-    }
-  }
 
   String _etiquetaRol(String rol) {
     switch (rol.toLowerCase()) {
       case 'superadmin':
         return 'SUPERADMIN';
       case 'admin':
-        return 'ADMINISTRADOR';
+        return 'SEC. GENERAL';
       case 'supervisor':
         return 'SUPERVISOR';
       case 'tesorero':
@@ -94,9 +92,9 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
       case 'superadmin':
         return {
           'avatarBg': const Color(0xFFF3E8FF),
-          'avatarIcon': const Color(0xFF9333EA),
+          'avatarIcon': const Color(0xFF7E22CE),
           'badgeBg': const Color(0xFFFAF5FF),
-          'badgeText': const Color(0xFF9333EA),
+          'badgeText': const Color(0xFF7E22CE),
         };
       case 'supervisor':
         return {
@@ -107,785 +105,1104 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
         };
       case 'tesorero':
         return {
-          'avatarBg': const Color(0xFFCCFBF1),
-          'avatarIcon': const Color(0xFF0F766E),
+          'avatarBg': _kMintBg,
+          'avatarIcon': _kVerdeOscuro,
           'badgeBg': const Color(0xFFF0FDFA),
-          'badgeText': const Color(0xFF0F766E),
+          'badgeText': _kVerdeOscuro,
         };
       case 'admin':
       default:
         return {
           'avatarBg': const Color(0xFFDBEAFE),
-          'avatarIcon': const Color(0xFF2563EB),
+          'avatarIcon': const Color(0xFF1E40AF),
           'badgeBg': const Color(0xFFEFF6FF),
-          'badgeText': const Color(0xFF2563EB),
+          'badgeText': const Color(0xFF1E40AF),
         };
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // MODAL DE ÉXITO
-  // ---------------------------------------------------------------------------
-  void _mostrarModalExito({
-    required String titulo,
-    required String nombre,
-    required String rol,
-    String? identificador,
-    bool esEdicion = false,
-  }) {
-    showDialog(
+  // ===========================================================================
+  // MODAL: DESIGNAR CONDUCTOR EXISTENTE AL DIRECTORIO
+  // ===========================================================================
+  void _mostrarModalDesignarConductor({Map<String, dynamic>? usuarioExistente}) {
+    final esEdicion = usuarioExistente != null;
+    final idUsuario = usuarioExistente?['id_usuario']?.toString();
+
+    // Si es edición, preseleccionamos el rol actual
+    String rolSeleccionado = usuarioExistente?['rol']?.toString() ?? 'tesorero';
+    if (rolSeleccionado == 'conductor') rolSeleccionado = 'tesorero';
+
+    // Conductor seleccionado (en modo nuevo o al editar)
+    Map<String, dynamic>? conductorSeleccionado;
+    if (esEdicion) {
+      final idCond = usuarioExistente['id_conductor']?.toString();
+      conductorSeleccionado = _todosConductores.firstWhere(
+        (c) =>
+            c['id_conductor']?.toString() == idCond ||
+            c['id_usuario']?.toString() == idUsuario,
+        orElse: () => usuarioExistente,
+      );
+    }
+
+    final correoCtrl = TextEditingController(
+      text: usuarioExistente?['gmail']?.toString() ?? '',
+    );
+    final passCtrl = TextEditingController();
+    bool obscurePass = true;
+
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 10,
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFA7F3D0), width: 2),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF10B981),
-                    size: 44,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.88,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              children: [
+                // Píldora superior
+                const SizedBox(height: 12),
+                Container(
+                  width: 44,
+                  height: 4.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                titulo,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                esEdicion
-                    ? 'Los datos fueron actualizados correctamente en la base de datos.'
-                    : 'El registro se guardó correctamente. La cuenta del directorio ya se encuentra habilitada.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF64748B),
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 18, color: AppColors.primaryBlue),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Nombre: ',
-                          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                        ),
-                        Expanded(
-                          child: Text(
-                            nombre,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF1E293B),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(Icons.badge_outlined, size: 18, color: AppColors.primaryBlue),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Cargo: ',
-                          style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _colorPorRol(rol).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            _etiquetaRol(rol),
-                            style: TextStyle(
-                              color: _colorPorRol(rol),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (identificador != null && identificador.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                const SizedBox(height: 14),
+
+                // Cabecera del modal
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
                       Row(
                         children: [
-                          const Icon(Icons.email_outlined, size: 18, color: AppColors.primaryBlue),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Correo de acceso: ',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: _kMintBg,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.badge_rounded,
+                              color: _kVerdeOscuro,
+                              size: 22,
+                            ),
                           ),
-                          Expanded(
-                            child: Text(
-                              identificador,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Color(0xFF1E293B),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                esEdicion
+                                    ? 'Modificar Cargo Directivo'
+                                    : 'Designar al Directorio',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              Text(
+                                esEdicion
+                                    ? 'Actualiza el cargo y permisos del miembro'
+                                    : 'Elige un conductor activo para asignarle cargo',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded,
+                            color: Color(0xFF64748B)),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 20, color: Color(0xFFE2E8F0)),
+
+                // Contenido desplazable
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+                    children: [
+                      // PASO 1: SELECCIONAR CONDUCTOR
+                      const Text(
+                        '1. Conductor Sindical',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: _kVerdeOscuro,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (!esEdicion) ...[
+                        InkWell(
+                          onTap: () async {
+                            final elegido = await _abrirSelectorConductor();
+                            if (elegido != null) {
+                              setSheetState(() {
+                                conductorSeleccionado = elegido;
+                                if (correoCtrl.text.isEmpty &&
+                                    elegido['gmail'] != null) {
+                                  correoCtrl.text =
+                                      elegido['gmail'].toString();
+                                }
+                              });
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: conductorSeleccionado == null
+                                  ? const Color(0xFFF8FAFC)
+                                  : _kMintBg,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: conductorSeleccionado == null
+                                    ? const Color(0xFFE2E8F0)
+                                    : _kVerdeOscuro,
+                                width: conductorSeleccionado == null ? 1 : 1.5,
+                              ),
+                            ),
+                            child: conductorSeleccionado == null
+                                ? const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.person_search_rounded,
+                                        color: _kVerdeOscuro,
+                                        size: 22,
+                                      ),
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'Toca para seleccionar un conductor de la flota...',
+                                          style: TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.arrow_forward_ios_rounded,
+                                        size: 16,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      AvatarConductor(
+                                        foto: conductorSeleccionado!['foto']
+                                            ?.toString(),
+                                        nombre:
+                                            conductorSeleccionado!['nombre']
+                                                    ?.toString() ??
+                                                '',
+                                        radio: 20,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              conductorSeleccionado!['nombre']
+                                                      ?.toString() ??
+                                                  '',
+                                              style: const TextStyle(
+                                                fontSize: 14.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Auto: ${conductorSeleccionado!['numero_interno'] ?? conductorSeleccionado!['placa'] ?? 'S/N'} • CI: ${conductorSeleccionado!['ci'] ?? 'S/CI'}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF64748B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                              color: _kVerdeOscuro),
+                                        ),
+                                        child: const Text(
+                                          'Cambiar',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: _kVerdeOscuro,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ] else ...[
+                        // En modo edición mostramos el miembro actual
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              AvatarConductor(
+                                foto: conductorSeleccionado?['foto']?.toString(),
+                                nombre: conductorSeleccionado?['nombre']
+                                        ?.toString() ??
+                                    '',
+                                radio: 18,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  conductorSeleccionado?['nombre']
+                                          ?.toString() ??
+                                      'Miembro del Directorio',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 18),
+
+                      // PASO 2: ASIGNAR CARGO / ROL EN EL DIRECTORIO
+                      const Text(
+                        '2. Cargo y Funciones en el Directorio',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.bold,
+                          color: _kVerdeOscuro,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      _buildOpcionRol(
+                        rol: 'tesorero',
+                        titulo: 'Secretario de Hacienda (Tesorero)',
+                        subtitulo:
+                            'Control económico, recaudación de cuotas, balances y caja del día.',
+                        icono: Icons.payments_rounded,
+                        color: _kVerdeOscuro,
+                        seleccionado: rolSeleccionado == 'tesorero',
+                        onTap: () =>
+                            setSheetState(() => rolSeleccionado = 'tesorero'),
+                      ),
+                      const SizedBox(height: 10),
+
+                      _buildOpcionRol(
+                        rol: 'supervisor',
+                        titulo: 'Supervisor de Control y Ruta',
+                        subtitulo:
+                            'Control de salidas, fiscalización de vueltas, asistencia y multas.',
+                        icono: Icons.verified_user_rounded,
+                        color: const Color(0xFFD97706),
+                        seleccionado: rolSeleccionado == 'supervisor',
+                        onTap: () =>
+                            setSheetState(() => rolSeleccionado = 'supervisor'),
+                      ),
+                      const SizedBox(height: 10),
+
+                      _buildOpcionRol(
+                        rol: 'admin',
+                        titulo: 'Secretario General (Administrador)',
+                        subtitulo:
+                            'Representación del sindicato, altas de choferes y administración general.',
+                        icono: Icons.shield_rounded,
+                        color: const Color(0xFF1E40AF),
+                        seleccionado: rolSeleccionado == 'admin',
+                        onTap: () =>
+                            setSheetState(() => rolSeleccionado = 'admin'),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // PASO 3: CREDENCIALES DE ACCESO
+                      Row(
+                        children: [
+                          const Text(
+                            '3. Credenciales de Acceso ',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: _kVerdeOscuro,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Opcional',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF64748B),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    elevation: 0,
-                  ),
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text(
-                    'Entendido',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // FORMULARIO: DIRECTORIO (Directiva, Administradores y Supervisores)
-  // ---------------------------------------------------------------------------
-  void _mostrarDialogoDirectorio({Map<String, dynamic>? usuarioExistente}) {
-    final esEdicion = usuarioExistente != null;
-    final idUsuario = usuarioExistente?['id_usuario']?.toString();
-
-    String rolDirectorio = usuarioExistente?['rol']?.toString() ?? 'admin';
-    final nombreCtrl = TextEditingController(text: usuarioExistente?['nombre']?.toString() ?? '');
-    final correoCtrl = TextEditingController(text: usuarioExistente?['gmail']?.toString() ?? '');
-    final passCtrl = TextEditingController();
-
-    bool estadoActivo = (usuarioExistente?['estado']?.toString() ?? 'activo') == 'activo';
-    bool obscurePass = true;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.admin_panel_settings, color: Color(0xFF1E3A8A), size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                      const SizedBox(height: 4),
                       Text(
-                        esEdicion ? 'Editar Directorio' : 'Nuevo Miembro del Directorio',
+                        conductorSeleccionado == null
+                            ? 'El conductor ya está vinculado. Podrá ingresar con su CI y su contraseña de siempre.'
+                            : '✓ ${conductorSeleccionado!['nombre']} ya puede ingresar con su CI (${conductorSeleccionado!['ci'] ?? 'S/CI'}). Solo llena esto si quieres cambiarle la contraseña o registrarle un correo.',
                         style: const TextStyle(
-                          color: Color(0xFF1E3A8A),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                          height: 1.3,
                         ),
                       ),
-                      const Text(
-                        'Directiva sindical, administradores y supervisores',
-                        style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                      const SizedBox(height: 10),
+
+                      TextField(
+                        controller: correoCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'Correo electrónico (opcional)',
+                          hintText: 'ej. directiva@continental.com',
+                          prefixIcon: const Icon(Icons.email_outlined,
+                              size: 20, color: _kVerdeOscuro),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      TextField(
+                        controller: passCtrl,
+                        obscureText: obscurePass,
+                        decoration: InputDecoration(
+                          labelText: 'Nueva contraseña (opcional)',
+                          hintText: 'Dejar en blanco para conservar su contraseña actual',
+                          prefixIcon: const Icon(Icons.lock_outline,
+                              size: 20, color: _kVerdeOscuro),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscurePass
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: const Color(0xFF64748B),
+                            ),
+                            onPressed: () => setSheetState(
+                                () => obscurePass = !obscurePass),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // BOTÓN GUARDAR DESIGNACIÓN
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _kVerdeOscuro,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(28),
+                            ),
+                          ),
+                          onPressed: () async {
+                            if (conductorSeleccionado == null) {
+                              AppSnackBar.error(context,
+                                  'Por favor selecciona primero al conductor.');
+                              return;
+                            }
+
+                            final idUsuarioFinal =
+                                conductorSeleccionado!['id_usuario']
+                                        ?.toString() ??
+                                    idUsuario;
+
+                            if (idUsuarioFinal == null ||
+                                idUsuarioFinal.isEmpty) {
+                              AppSnackBar.error(context,
+                                  'No se pudo vincular la cuenta del conductor.');
+                              return;
+                            }
+
+                            final correo = correoCtrl.text.trim();
+                            final pass = passCtrl.text.trim();
+
+                            try {
+                              await DatabaseHelper.instance
+                                  .designarConductorDirectorio(
+                                idUsuario: idUsuarioFinal,
+                                nuevoRol: rolSeleccionado,
+                                gmail: correo.isNotEmpty ? correo : null,
+                                password: pass.isNotEmpty ? pass : null,
+                              );
+
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                _cargarDatos();
+                                AppSnackBar.exito(
+                                  context,
+                                  '¡${conductorSeleccionado!['nombre']} ha sido designado como ${_etiquetaRol(rolSeleccionado)} exitosamente!',
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                AppSnackBar.error(context,
+                                    'Error al designar en el Directorio: $e');
+                              }
+                            }
+                          },
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.check_circle_outline_rounded,
+                                  size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                esEdicion
+                                    ? 'Actualizar Cargo Directivo'
+                                    : 'Designar y Otorgar Permisos',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Cargo directivo / Rol de acceso:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A8A))),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        value: rolDirectorio,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'admin',
-                            child: Text('Administrador / Mesa Directiva'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'tesorero',
-                            child: Text('Secretario de Hacienda / Tesorero'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'supervisor',
-                            child: Text('Supervisor de Control / Ruta'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'superadmin',
-                            child: Text('Super Administrador'),
-                          ),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setDialogState(() => rolDirectorio = val);
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nombreCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Nombre y Apellidos *',
-                      hintText: 'Ej. Fernando Quispe',
-                      prefixIcon: const Icon(Icons.person_outline, size: 20),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: correoCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: 'Correo electrónico de acceso *',
-                      hintText: 'directiva@continental.com',
-                      prefixIcon: const Icon(Icons.email_outlined, size: 20),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: passCtrl,
-                    obscureText: obscurePass,
-                    decoration: InputDecoration(
-                      labelText: esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña de acceso *',
-                      hintText: esEdicion ? 'Sin cambios' : 'Mínimo 4 caracteres',
-                      prefixIcon: const Icon(Icons.lock_outline, size: 20),
-                      suffixIcon: IconButton(
-                        icon: Icon(obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                        onPressed: () => setDialogState(() => obscurePass = !obscurePass),
-                      ),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSwitchEstado(estadoActivo, (val) => setDialogState(() => estadoActivo = val)),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-                onPressed: () async {
-                  final nombre = nombreCtrl.text.trim();
-                  final correo = correoCtrl.text.trim();
-                  final password = passCtrl.text.trim();
-                  final estado = estadoActivo ? 'activo' : 'inactivo';
-
-                  if (nombre.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('El nombre es obligatorio.')),
-                    );
-                    return;
-                  }
-                  if (correo.isEmpty || !correo.contains('@')) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Ingrese un correo institucional válido.')),
-                    );
-                    return;
-                  }
-                  if (!esEdicion && password.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Debe asignar una contraseña.')),
-                    );
-                    return;
-                  }
-
-                  Navigator.pop(ctx);
-                  try {
-                    if (esEdicion && idUsuario != null) {
-                      await DatabaseHelper.instance.actualizarUsuarioCompleto(
-                        idUsuario: idUsuario,
-                        nombre: nombre,
-                        gmail: correo,
-                        rol: rolDirectorio,
-                        estado: estado,
-                        newPassword: password.isEmpty ? null : password,
-                      );
-                      _cargarUsuarios();
-                      if (mounted) {
-                        _mostrarModalExito(
-                          titulo: '¡Directorio Actualizado!',
-                          nombre: nombre,
-                          rol: rolDirectorio,
-                          identificador: correo,
-                          esEdicion: true,
-                        );
-                      }
-                    } else {
-                      await DatabaseHelper.instance.crearUsuarioCompleto(
-                        rol: rolDirectorio,
-                        nombre: nombre,
-                        gmail: correo,
-                        password: password,
-                        estado: estado,
-                      );
-                      _cargarUsuarios();
-                      if (mounted) {
-                        _mostrarModalExito(
-                          titulo: '¡Miembro Registrado!',
-                          nombre: nombre,
-                          rol: rolDirectorio,
-                          identificador: correo,
-                          esEdicion: false,
-                        );
-                      }
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                      );
-                    }
-                  }
-                },
-                child: Text(
-                  esEdicion ? 'Guardar Cambios' : 'Registrar en Directorio',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildSwitchEstado(bool estadoActivo, Function(bool) onChanged) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: estadoActivo ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: estadoActivo ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(
-                estadoActivo ? Icons.check_circle_outline : Icons.block,
-                color: estadoActivo ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                estadoActivo ? 'Estado: HABILITADO' : 'Estado: INHABILITADO',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: estadoActivo ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                ),
-              ),
-            ],
-          ),
-          Switch(
-            value: estadoActivo,
-            activeColor: const Color(0xFF059669),
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _mostrarFichaDetalle(Map<String, dynamic> d) {
-    final nombre = d['nombre'] ?? 'Sin nombre';
-    final correo = d['gmail'] ?? 'Sin correo';
-    final rol = d['rol']?.toString() ?? 'admin';
-    final estado = d['estado']?.toString() ?? 'activo';
-    final esActivo = estado == 'activo';
-    final estilo = _estilosRol(rol);
-    final fechaCreacion = d['fecha_creacion']?.toString() ?? d['created_at']?.toString();
-
-    showDialog(
+  // ===========================================================================
+  // SELECTOR RÁPIDO DE CONDUCTORES DISPONIBLES
+  // ===========================================================================
+  Future<Map<String, dynamic>?> _abrirSelectorConductor() async {
+    return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: estilo['avatarBg'],
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.person, color: estilo['avatarIcon'], size: 40),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final lista = _todosConductores.where((c) {
+              if (query.isEmpty) return true;
+              final q = query.toLowerCase();
+              final nom = (c['nombre'] ?? '').toString().toLowerCase();
+              final ci = (c['ci'] ?? '').toString().toLowerCase();
+              final auto = (c['numero_interno'] ?? '').toString();
+              return nom.contains(q) || ci.contains(q) || auto.contains(q);
+            }).toList();
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.80,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
-              const SizedBox(height: 14),
-              Text(
-                nombre,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E3A8A),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: estilo['badgeBg'],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _etiquetaRol(rol),
-                  style: TextStyle(
-                    color: estilo['badgeText'],
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.email_outlined, size: 16, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        const Text('Correo: ', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-                        Expanded(
-                          child: Text(
-                            correo,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 44,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFF64748B)),
-                        const SizedBox(width: 8),
-                        const Text('Estado: ', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-                        Text(
-                          esActivo ? 'Habilitado' : 'Inhabilitado',
+                        const Text(
+                          'Elegir Conductor de la Flota',
                           style: TextStyle(
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: esActivo ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                            color: Color(0xFF0F172A),
                           ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
                     ),
-                    if (fechaCreacion != null && fechaCreacion.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF64748B)),
-                          const SizedBox(width: 8),
-                          const Text('Registrado: ', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-                          Text(
-                            fechaCreacion.length >= 10 ? fechaCreacion.substring(0, 10) : fechaCreacion,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF1E293B)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 16, color: AppColors.primaryBlue),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'En el futuro aquí podrás ver el historial completo y documentación.',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF1E3A8A)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cerrar'),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nombre, CI o número de auto...',
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            color: _kVerdeOscuro),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide:
+                              const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      onChanged: (val) => setModalState(() => query = val),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      itemCount: lista.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      itemBuilder: (context, i) {
+                        final c = lista[i];
+                        final nombre = c['nombre']?.toString() ?? 'Conductor';
+                        final ci = c['ci']?.toString() ?? '';
+                        final auto = c['numero_interno'] ?? c['placa'] ?? 'S/N';
+                        final foto = c['foto']?.toString();
+
+                        return InkWell(
+                          onTap: () => Navigator.pop(ctx, c),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                AvatarConductor(
+                                  foto: foto,
+                                  nombre: nombre,
+                                  radio: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        nombre,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      Text(
+                                        'Auto N° $auto • CI: $ci',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: _kVerdeOscuro,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
-  void _confirmarEliminar(Map<String, dynamic> usuario) {
-    final idUsuario = usuario['id_usuario'];
-    final nombre = usuario['nombre'] ?? 'este usuario';
+  // ===========================================================================
+  // RELEVAR DE DIRECTORIO (CONSERVA ÍNTEGRO AL CONDUCTOR)
+  // ===========================================================================
+  void _confirmarRelevo(Map<String, dynamic> usuario) {
+    final idUsuario = usuario['id_usuario']?.toString();
+    final nombre = usuario['nombre'] ?? 'este miembro';
+    final rolActual = usuario['rol']?.toString() ?? 'admin';
 
     if (idUsuario == null) return;
+
+    if (rolActual == 'superadmin') {
+      AppSnackBar.error(
+        context,
+        'La cuenta de Super Administrador principal no puede ser relevada.',
+      );
+      return;
+    }
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Confirmar baja'),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.sync_alt_rounded,
+                  color: Colors.amber, size: 24),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Relevo de Cargo',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
         ),
         content: Text(
-          '¿Estás seguro de que deseas eliminar a "$nombre" del Directorio?',
+          '¿Deseas relevar a "$nombre" de su cargo directivo (${_etiquetaRol(rolActual)})?\n\n'
+          'Su cuenta volverá a tener el rol de Conductor de base. '
+          'Todos sus datos de vehículo, asistencias, pagos e historial permanecerán 100% intactos.',
+          style: const TextStyle(fontSize: 13.5, color: Color(0xFF334155), height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: const Text('Cancelar',
+                style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              backgroundColor: _kVerdeOscuro,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await DatabaseHelper.instance.eliminarUsuarioCompleto(idUsuario.toString());
-                _cargarUsuarios();
+                final eraConductor = await DatabaseHelper.instance
+                    .relevarDeDirectorio(idUsuario);
+                _cargarDatos();
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Miembro "$nombre" eliminado.')),
+                  AppSnackBar.exito(
+                    context,
+                    eraConductor
+                        ? 'Se relevó a "$nombre". Continúa como conductor activo en la flota.'
+                        : 'Miembro "$nombre" retirado del Directorio.',
                   );
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-                  );
+                  AppSnackBar.error(context, 'Error al relevar miembro: $e');
                 }
               }
             },
-            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // CONSTRUCCIÓN PRINCIPAL (UI EXCLUSIVA DE DIRECTORIO)
-  // ---------------------------------------------------------------------------
-  @override
-  Widget build(BuildContext context) {
-    final cantDirectorio = _directorio.length;
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Directorio ($cantDirectorio)',
-          style: const TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF1E3A8A)),
-            tooltip: 'Recargar',
-            onPressed: _cargarUsuarios,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Image.asset(
-              'assets/images/logo.png',
-              height: 32,
-              errorBuilder: (c, e, s) => const Icon(Icons.public, color: Color(0xFF1E3A8A)),
+            child: const Text(
+              'Relevar del Directorio',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Buscador superior
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Buscar miembro por nombre o correo...',
-                    prefixIcon: const Icon(Icons.search, color: Color(0xFF3B82F6)),
-                    suffixIcon: _busqueda.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, color: Colors.grey),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _busqueda = '');
-                              _cargarUsuarios();
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                  ),
-                  onChanged: (val) {
-                    setState(() => _busqueda = val);
-                    _cargarUsuarios();
-                  },
-                ),
-              ),
+    );
+  }
 
-              // LISTA DIRECTA DEL DIRECTORIO (SIN TABS)
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildListaDirectorio(_directorio),
-              ),
-            ],
-          ),
-        ),
+  // ===========================================================================
+  // FICHA DE DETALLES Y PERMISOS DEL MIEMBRO
+  // ===========================================================================
+  void _mostrarFichaDetalle(Map<String, dynamic> u) {
+    final nombre = u['nombre'] ?? 'Sin nombre';
+    final rol = u['rol']?.toString() ?? 'admin';
+    final correo = u['gmail'] ?? 'Sin correo registrado';
+    final ci = u['ci'] ?? 'S/CI';
+    final auto = u['numero_interno'] ?? u['placa'] ?? 'Sin auto asignado';
+    final foto = u['foto']?.toString();
+    final estilo = _estilosRol(rol);
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF1E3A8A),
-        foregroundColor: Colors.white,
-        elevation: 4,
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text(
-          'Nuevo Directorio',
-          style: TextStyle(fontWeight: FontWeight.bold),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                AvatarConductor(
+                  foto: foto,
+                  nombre: nombre,
+                  radio: 26,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nombre,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: estilo['badgeBg'],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: estilo['avatarIcon']!.withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          _etiquetaRol(rol),
+                          style: TextStyle(
+                            color: estilo['badgeText'],
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            _buildFilaInfo(Icons.badge_outlined, 'Carnet de Identidad', ci),
+            _buildFilaInfo(Icons.directions_car_outlined, 'Vehículo asignado', 'Auto N° $auto'),
+            _buildFilaInfo(Icons.email_outlined, 'Correo de acceso', correo),
+            _buildFilaInfo(
+              Icons.check_circle_outline,
+              'Estado sindical',
+              u['estado'] == 'activo' ? 'Habilitado' : 'Inactivo',
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kVerdeOscuro,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cerrar Ficha',
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
         ),
-        onPressed: () => _mostrarDialogoDirectorio(),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // LISTA DIRECTORIO: TIPO CUADRADOS (GRID 2 COLUMNAS)
-  // ---------------------------------------------------------------------------
+  Widget _buildFilaInfo(IconData icon, String label, String val) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Text('$label: ',
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+          Expanded(
+            child: Text(
+              val,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // CONSTRUCCIÓN PRINCIPAL (UI EXCLUSIVA DE DIRECTORIO CORPORATIVO)
+  // ===========================================================================
+  @override
+  Widget build(BuildContext context) {
+    final cantDirectorio = _directorio.length;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Column(
+        children: [
+          // 1. ENCABEZADO CURVO VERDE CORPORATIVO ADAPTADO
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: _kVerdeOscuro,
+              borderRadius: BorderRadius.vertical(
+                bottom: Radius.circular(32),
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        tooltip: 'Volver',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.refresh_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            tooltip: 'Recargar',
+                            onPressed: _cargarDatos,
+                          ),
+                          const SizedBox(width: 8),
+                          // Usuario activo en Squircle Blanco
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Tooltip(
+                              message: SesionService.instance.nombre ??
+                                  'Usuario actual',
+                              child: const Icon(
+                                Icons.person_rounded,
+                                color: _kVerdeOscuro,
+                                size: 26,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Directorio ($cantDirectorio)',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Mesa directiva y supervisores del sindicato',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 2. BUSCADOR SUPERIOR MODERNO
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Buscar miembro por nombre o cargo...',
+                  hintStyle: const TextStyle(
+                      color: Color(0xFF94A3B8), fontSize: 13.5),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      color: _kVerdeOscuro),
+                  suffixIcon: _busqueda.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded,
+                              color: Color(0xFF64748B)),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _busqueda = '');
+                            _cargarDatos();
+                          },
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                onChanged: (val) {
+                  setState(() => _busqueda = val);
+                  _cargarDatos();
+                },
+              ),
+            ),
+          ),
+
+          // 3. LISTA DIRECTA DEL DIRECTORIO
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: _kVerdeOscuro),
+                  )
+                : _buildListaDirectorio(_directorio),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: _kVerdeOscuro,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text(
+          'Designar Conductor',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        onPressed: () => _mostrarModalDesignarConductor(),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // LISTA DIRECTORIO: GRID DE TARJETAS MODULARES
+  // ===========================================================================
   Widget _buildListaDirectorio(List<Map<String, dynamic>> lista) {
     if (lista.isEmpty) {
       return _buildVacio(
-        icon: Icons.admin_panel_settings_outlined,
+        icon: Icons.groups_rounded,
         titulo: 'No hay miembros del directorio registrados',
-        subtitulo: 'Toca "+ Nuevo Directorio" para registrar directivos, administradores o supervisores.',
+        subtitulo:
+            'Presiona "+ Designar Conductor" para elegir un chofer de la flota y asignarle un cargo directivo.',
       );
     }
 
@@ -897,13 +1214,15 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 0.82,
+        childAspectRatio: 0.74,
       ),
       itemBuilder: (context, index) {
         final d = lista[index];
         final nombre = d['nombre'] ?? 'Sin nombre';
         final correo = d['gmail'] ?? 'Sin correo';
         final rol = d['rol']?.toString() ?? 'admin';
+        final auto = d['numero_interno'] ?? d['placa'];
+        final foto = d['foto']?.toString();
         final estado = d['estado']?.toString() ?? 'activo';
         final esActivo = estado == 'activo';
         final estilo = _estilosRol(rol);
@@ -912,42 +1231,43 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Fila superior: Avatar circular + Badge de Rol
+              // Fila superior: Avatar + Badge de Rol
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: estilo['avatarBg'],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.person, color: estilo['avatarIcon'], size: 24),
+                  AvatarConductor(
+                    foto: foto,
+                    nombre: nombre,
+                    radio: 20,
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                     decoration: BoxDecoration(
                       color: estilo['badgeBg'],
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: estilo['avatarIcon']!.withOpacity(0.25),
+                      ),
                     ),
                     child: Text(
                       _etiquetaRol(rol),
                       style: TextStyle(
                         color: estilo['badgeText'],
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                         fontSize: 9,
                         letterSpacing: 0.2,
                       ),
@@ -961,24 +1281,46 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
               Text(
                 nombre,
                 style: const TextStyle(
-                  color: Color(0xFF1E3A8A),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
 
-              // Correo
+              // Si es conductor: Auto asignado
+              if (auto != null) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.directions_car_rounded,
+                        size: 13, color: _kVerdeOscuro),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Auto N° $auto',
+                      style: const TextStyle(
+                        color: _kVerdeOscuro,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+              ],
+
+              // Correo o CI
               Row(
                 children: [
-                  const Icon(Icons.email_outlined, size: 13, color: Color(0xFF64748B)),
+                  const Icon(Icons.email_outlined,
+                      size: 12, color: Color(0xFF64748B)),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       correo,
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
+                      style: const TextStyle(
+                          color: Color(0xFF64748B), fontSize: 10.5),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -987,22 +1329,26 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
               ),
               const SizedBox(height: 4),
 
-              // Estado con círculo
+              // Estado
               Row(
                 children: [
                   Container(
                     width: 7,
                     height: 7,
                     decoration: BoxDecoration(
-                      color: esActivo ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      color: esActivo
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    esActivo ? 'Estado: Habilitado' : 'Estado: Inhabilitado',
+                    esActivo ? 'Habilitado' : 'Inactivo',
                     style: TextStyle(
-                      color: esActivo ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      color: esActivo
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1012,52 +1358,53 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
               const Spacer(),
 
-              // Botones de acción: Ver información (Ojito), Editar y Eliminar
+              // Botones de acción inferiores
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.visibility_outlined, size: 16, color: Color(0xFF475569)),
-                      tooltip: 'Ver información',
-                      onPressed: () => _mostrarFichaDetalle(d),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.edit, size: 15, color: Color(0xFF3B82F6)),
-                      tooltip: 'Editar',
-                      onPressed: () => _mostrarDialogoDirectorio(usuarioExistente: d),
+                  // Ver información (ojito)
+                  InkWell(
+                    onTap: () => _mostrarFichaDetalle(d),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.visibility_outlined,
+                          size: 15, color: Color(0xFF475569)),
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
+                  // Editar cargo
+                  InkWell(
+                    onTap: () =>
+                        _mostrarModalDesignarConductor(usuarioExistente: d),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _kMintBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.edit_rounded,
+                          size: 15, color: _kVerdeOscuro),
                     ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.delete_outline, size: 15, color: Color(0xFFEF4444)),
-                      tooltip: 'Eliminar',
-                      onPressed: () => _confirmarEliminar(d),
+                  ),
+                  const SizedBox(width: 6),
+                  // Relevar del Directorio
+                  InkWell(
+                    onTap: () => _confirmarRelevo(d),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.sync_alt_rounded,
+                          size: 15, color: Color(0xFFEF4444)),
                     ),
                   ),
                 ],
@@ -1066,6 +1413,75 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildOpcionRol({
+    required String rol,
+    required String titulo,
+    required String subtitulo,
+    required IconData icono,
+    required Color color,
+    required bool seleccionado,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: seleccionado ? _kMintBg : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: seleccionado ? _kVerdeOscuro : const Color(0xFFE2E8F0),
+            width: seleccionado ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icono, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titulo,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: seleccionado ? _kVerdeOscuro : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitulo,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              seleccionado
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: seleccionado ? _kVerdeOscuro : const Color(0xFF94A3B8),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1088,7 +1504,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
+                color: Color(0xFF0F172A),
               ),
             ),
             const SizedBox(height: 8),

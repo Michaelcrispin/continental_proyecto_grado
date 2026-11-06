@@ -3,13 +3,14 @@ import '../../core/permisos.dart';
 import '../../services/economia_repo.dart';
 import '../../services/recibo_pdf_service.dart';
 import '../../services/sesion_service.dart';
-import '../../widgets/app_background.dart';
 import '../../widgets/avatar_conductor.dart';
 import 'widgets/detalle_conductor_cuotas_sheet.dart';
 import 'widgets/dialogo_informe_whatsapp.dart';
 import 'widgets/dialogo_nueva_cuota.dart';
 
-/// Pantalla de Detalle de una Cuota específica.
+const _kVerdeOscuro = Color(0xFF02634C);
+
+/// Pantalla de Detalle de una Cuota específica con diseño corporativo verde.
 /// Muestra los indicadores clave (recaudado vs falta), resumen de la cuota,
 /// opciones de informe PDF, edición y la lista de todos los choferes con su estado de pago.
 class CuotaDetalleScreen extends StatefulWidget {
@@ -194,7 +195,12 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         if (q.isNotEmpty) {
           final nombre = (c['conductor_nombre'] ?? '').toString().toLowerCase();
           final ci = (c['conductor_ci'] ?? '').toString().toLowerCase();
-          if (!nombre.contains(q) && !ci.contains(q)) return false;
+          final auto = (c['conductor_numero_interno'] ?? c['numero_interno'] ?? '')
+              .toString()
+              .toLowerCase();
+          if (!nombre.contains(q) && !ci.contains(q) && !auto.contains(q)) {
+            return false;
+          }
         }
 
         return true;
@@ -366,7 +372,6 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     return v.toStringAsFixed(2);
   }
 
-
   @override
   Widget build(BuildContext context) {
     final puedeEditar = Permisos.puedeEditar(
@@ -376,7 +381,8 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
 
     final nombre = _cuotaActual['nombre']?.toString() ?? 'Detalle de Cuota';
     final descripcion = _cuotaActual['descripcion']?.toString();
-    final montoSugerido = (_cuotaActual['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
+    final montoSugerido =
+        (_cuotaActual['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
     final categoria = _cuotaActual['categoria']?.toString().toLowerCase();
 
     int cantPagados = 0;
@@ -396,641 +402,853 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       }
     }
     final totalMeta = totalRecaudado + totalFalta;
-    final porcentaje = totalMeta > 0 ? (totalRecaudado / totalMeta).clamp(0.0, 1.0) : 0.0;
+    final porcentaje =
+        totalMeta > 0 ? (totalRecaudado / totalMeta).clamp(0.0, 1.0) : 0.0;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E3A8A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          nombre,
-          style: const TextStyle(
-            color: Color(0xFF0F2B5B),
-            fontWeight: FontWeight.bold,
-            fontSize: 17,
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: Column(
+        children: [
+          // 1. ENCABEZADO CURVO VERDE CORPORATIVO
+          _buildHeader(
+            context: context,
+            nombre: nombre,
+            montoSugerido: montoSugerido,
+            categoria: categoria,
+            puedeEditar: puedeEditar,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Color(0xFF1E3A8A)),
-            onSelected: (val) {
-              if (val == 'config_whatsapp') _configurarWhatsapp();
-              if (val == 'vista_whatsapp') {
-                _generarInformeWhatsapp(forzarVistaPrevia: true);
-              }
-              if (val == 'editar') _editarCuota();
-              if (val == 'eliminar') _eliminarCuota();
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'config_whatsapp',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      color: Color(0xFF16A34A),
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Text('Configurar Informe WhatsApp'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'vista_whatsapp',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.chat_outlined,
-                      color: Color(0xFF15803D),
-                      size: 20,
-                    ),
-                    SizedBox(width: 8),
-                    Text('Vista Previa Mensaje WhatsApp'),
-                  ],
-                ),
-              ),
-              if (puedeEditar) ...[
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'editar',
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.edit_outlined,
-                        color: Color(0xFF1E3A8A),
-                        size: 20,
-                      ),
-                      SizedBox(width: 8),
-                      Text('Editar Cuota'),
-                    ],
+
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _cargarConductores,
+              color: _kVerdeOscuro,
+              child: ListView(
+                padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  const SizedBox(height: 12),
+
+                  // 2. TARJETA DE RESUMEN FINANCIERO CON BOTONES DE PDF Y WHATSAPP
+                  _buildResumenFinanciero(
+                    descripcion: descripcion,
+                    porcentaje: porcentaje,
+                    totalRecaudado: totalRecaudado,
+                    totalFalta: totalFalta,
+                    cantPagados: cantPagados,
+                    totalConductores: _conductores.length,
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'eliminar',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Eliminar Cuota',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ],
+
+                  const SizedBox(height: 12),
+
+                  // 3. SUB-FILTROS HORIZONTALES (Todos, Al día, Deben)
+                  _buildFiltrosBar(
+                    total: _conductores.length,
+                    pagados: cantPagados,
+                    deben: cantDeben,
                   ),
-                ),
-              ],
-            ],
+
+                  const SizedBox(height: 10),
+
+                  // 4. LISTADO DE CONDUCTORES O ESTADO VACÍO
+                  if (_isLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: CircularProgressIndicator(color: _kVerdeOscuro),
+                      ),
+                    )
+                  else if (_conductoresFiltrados.isEmpty)
+                    _buildEmptyState()
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: _conductoresFiltrados.length,
+                      itemBuilder: (context, index) {
+                        final c = _conductoresFiltrados[index];
+                        return _buildConductorCard(c, index + 1);
+                      },
+                    ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      body: AppBackground(
-        child: RefreshIndicator(
-          onRefresh: _cargarConductores,
-          color: const Color(0xFF1E3A8A),
-          child: Column(
-            children: [
-              const SizedBox(height: 56), // Espacio para el AppBar transparente
+    );
+  }
 
-              // CABECERA CON RESUMEN FINANCIERO DE LA CUOTA
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
+  /// Encabezado verde curvo corporativo con título, subtítulo, logo y buscador
+  Widget _buildHeader({
+    required BuildContext context,
+    required String nombre,
+    required double montoSugerido,
+    required String? categoria,
+    required bool puedeEditar,
+  }) {
+    final padding = MediaQuery.of(context).padding;
+
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _kVerdeOscuro,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(32),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, padding.top + 8, 16, 20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFF1F5F9)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x080F2B5B),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
+                    size: 22,
                   ),
+                  tooltip: 'Volver',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Text(
+                        nombre,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  nombre,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 17,
-                                    color: Color(0xFF0F2B5B),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEFF6FF),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'Bs. ${montoSugerido.toStringAsFixed(0)} / chofer',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 11.5,
-                                          color: Color(0xFF2563EB),
-                                        ),
-                                      ),
-                                    ),
-                                    if (categoria == 'multa' ||
-                                        nombre.toLowerCase().contains('multa') ||
-                                        (descripcion ?? '')
-                                            .contains('Multas por falta'))
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFFEF2F2),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          border: Border.all(
-                                            color: const Color(0xFFFECACA),
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.gavel_rounded,
-                                              size: 12,
-                                              color: Color(0xFFDC2626),
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              'Multa por Asamblea',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFFDC2626),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (descripcion != null &&
-                                        descripcion.contains(
-                                          'Modalidad: Obligatoria',
-                                        ))
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFEFF6FF),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          border: Border.all(
-                                            color: const Color(0xFFBFDBFE),
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.verified_user_rounded,
-                                              size: 12,
-                                              color: Color(0xFF2563EB),
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              'Cuota Obligatoria',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFF2563EB),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                                    else if (descripcion != null &&
-                                        descripcion.contains(
-                                          'Modalidad: Voluntaria',
-                                        ))
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFECFDF5),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          border: Border.all(
-                                            color: const Color(0xFFA7F3D0),
-                                          ),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.volunteer_activism_rounded,
-                                              size: 12,
-                                              color: Color(0xFF059669),
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              'Aporte Voluntario',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFF059669),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                if (descripcion != null &&
-                                    descripcion.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 5),
+                          Text(
+                            'Bs. ${montoSugerido.toStringAsFixed(0)} / chofer',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (categoria == 'multa' ||
+                              nombre.toLowerCase().contains('multa'))
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.white60),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.gavel_rounded,
+                                      size: 11, color: Colors.white),
+                                  SizedBox(width: 3),
                                   Text(
-                                    descripcion.trim(),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
+                                    'Multa por Asamblea',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          // BOTONES DE INFORMES (PDF Y WHATSAPP) EN EL ESPACIO DERECHO
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              SizedBox(
-                                width: 124,
-                                height: 34,
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1E3A8A),
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 0,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  onPressed: _generarInformePdf,
-                                  icon: const Icon(
-                                    Icons.picture_as_pdf_rounded,
-                                    size: 15,
-                                    color: Colors.white,
-                                  ),
-                                  label: const Text(
-                                    'Informe PDF',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
                               ),
-                              const SizedBox(height: 7),
-                              SizedBox(
-                                width: 124,
-                                height: 34,
-                                child: ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF16A34A),
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 0,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  onPressed: () => _generarInformeWhatsapp(),
-                                  icon: const Icon(
-                                    Icons.chat_rounded,
-                                    size: 15,
-                                    color: Colors.white,
-                                  ),
-                                  label: const Text(
-                                    'WhatsApp',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Barra de progreso
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: porcentaje,
-                          minHeight: 7,
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // 3 Mini-Estadísticas
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildMiniStat(
-                              'Recaudado',
-                              'Bs. ${totalRecaudado.toStringAsFixed(0)}',
-                              const Color(0xFF059669),
                             ),
-                          ),
-                          Container(width: 1, height: 28, color: const Color(0xFFF1F5F9)),
-                          Expanded(
-                            child: _buildMiniStat(
-                              'Por cobrar',
-                              'Bs. ${totalFalta.toStringAsFixed(0)}',
-                              const Color(0xFFDC2626),
-                            ),
-                          ),
-                          Container(width: 1, height: 28, color: const Color(0xFFF1F5F9)),
-                          Expanded(
-                            child: _buildMiniStat(
-                              'Al día',
-                              '$cantPagados de ${_conductores.length}',
-                              const Color(0xFF2563EB),
-                            ),
-                          ),
                         ],
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              // BUSCADOR Y FILTROS RÁPIDOS
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    Container(
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                const SizedBox(width: 8),
+                // Logo Continental en círculo blanco
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
-                      child: TextField(
-                        controller: _searchCtrl,
-                        onChanged: _filtrar,
-                        decoration: const InputDecoration(
-                          hintText: 'Buscar conductor por nombre o CI...',
-                          hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                          prefixIcon: Icon(Icons.search, size: 20, color: Color(0xFF1E3A8A)),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 10),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.local_taxi_rounded,
+                        color: _kVerdeOscuro,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Buscador blanco y botón squircle de opciones
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1E293B),
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar conductor por nombre o CI...',
+                        hintStyle: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF94A3B8),
+                          size: 20,
+                        ),
+                        suffixIcon: _busqueda.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  _filtrar('');
+                                },
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: _filtrar,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _buildBotonOpciones(puedeEditar),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Botón de opciones en squircle blanco
+  Widget _buildBotonOpciones(bool puedeEditar) {
+    return PopupMenuButton<String>(
+      tooltip: 'Opciones de cuota',
+      offset: const Offset(0, 52),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      icon: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.tune_rounded,
+          size: 22,
+          color: _kVerdeOscuro,
+        ),
+      ),
+      onSelected: (val) {
+        if (val == 'config_whatsapp') _configurarWhatsapp();
+        if (val == 'vista_whatsapp') {
+          _generarInformeWhatsapp(forzarVistaPrevia: true);
+        }
+        if (val == 'editar') _editarCuota();
+        if (val == 'eliminar') _eliminarCuota();
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'config_whatsapp',
+          child: Row(
+            children: [
+              Icon(Icons.tune_rounded, color: Color(0xFF16A34A), size: 20),
+              SizedBox(width: 8),
+              Text('Configurar Informe WhatsApp'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'vista_whatsapp',
+          child: Row(
+            children: [
+              Icon(Icons.chat_outlined, color: Color(0xFF15803D), size: 20),
+              SizedBox(width: 8),
+              Text('Vista Previa Mensaje WhatsApp'),
+            ],
+          ),
+        ),
+        if (puedeEditar) ...[
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: 'editar',
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, color: _kVerdeOscuro, size: 20),
+                SizedBox(width: 8),
+                Text('Editar Cuota'),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'eliminar',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                SizedBox(width: 8),
+                Text('Eliminar Cuota', style: TextStyle(color: Colors.red)),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Tarjeta de Resumen Financiero con los botones de Informe PDF y WhatsApp
+  Widget _buildResumenFinanciero({
+    required String? descripcion,
+    required double porcentaje,
+    required double totalRecaudado,
+    required double totalFalta,
+    required int cantPagados,
+    required int totalConductores,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (descripcion != null && descripcion.trim().isNotEmpty)
+                  Expanded(
+                    child: Text(
+                      descripcion.trim(),
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                else
+                  const Spacer(),
+                const SizedBox(width: 10),
+                // Botones elegantes de acción: PDF y WhatsApp
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 34,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kVerdeOscuro,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: _generarInformePdf,
+                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 14),
+                        label: const Text(
+                          'Informe PDF',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-
-                    // Chips de filtro (Todos, Pagados, Deben)
-                    Row(
-                      children: [
-                        _buildFilterChip('todos', 'Todos (${_conductores.length})'),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('pagados', 'Al día ($cantPagados)'),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('deben', 'Deben ($cantDeben)'),
-                      ],
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      height: 34,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () => _generarInformeWhatsapp(),
+                        icon: const Icon(Icons.chat_rounded, size: 14),
+                        label: const Text(
+                          'WhatsApp',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Barra de progreso verde
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: porcentaje,
+                minHeight: 6,
+                backgroundColor: const Color(0xFFF1F5F9),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
               ),
-              const SizedBox(height: 10),
+            ),
+            const SizedBox(height: 12),
+            // 3 Mini-Estadísticas
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMiniStat(
+                    'Recaudado',
+                    'Bs. ${totalRecaudado.toStringAsFixed(0)}',
+                    const Color(0xFF059669),
+                  ),
+                ),
+                Container(width: 1, height: 28, color: const Color(0xFFF1F5F9)),
+                Expanded(
+                  child: _buildMiniStat(
+                    'Por cobrar',
+                    'Bs. ${totalFalta.toStringAsFixed(0)}',
+                    const Color(0xFFDC2626),
+                  ),
+                ),
+                Container(width: 1, height: 28, color: const Color(0xFFF1F5F9)),
+                Expanded(
+                  child: _buildMiniStat(
+                    'Al día',
+                    '$cantPagados de $totalConductores',
+                    _kVerdeOscuro,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // LISTA DE CONDUCTORES
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
-                    : _conductoresFiltrados.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No se encontraron conductores con el filtro actual.',
-                              style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+  /// Sub-filtros horizontales estilo FiltroConductoresBar
+  Widget _buildFiltrosBar({
+    required int total,
+    required int pagados,
+    required int deben,
+  }) {
+    return SizedBox(
+      height: 38,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _buildChip('todos', 'Todos', total),
+          _buildChip('pagados', 'Al día', pagados,
+              color: const Color(0xFF059669)),
+          _buildChip('deben', 'Deben', deben,
+              color: const Color(0xFFDC2626)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String key, String label, int count, {Color? color}) {
+    final isSelected = _filtroEstado == key;
+    final chipColor = color ?? _kVerdeOscuro;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: InkWell(
+        onTap: () => _cambiarFiltro(key),
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? chipColor : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isSelected ? chipColor : const Color(0xFFE2E8F0),
+              width: 1.2,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: chipColor.withOpacity(0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+          ),
+          child: Text(
+            '$label ($count)',
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              fontSize: 12.5,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Tarjeta de Conductor siguiendo el diseño de ConductorCard
+  Widget _buildConductorCard(Map<String, dynamic> c, int numeroLista) {
+    final nombreChofer =
+        c['conductor_nombre']?.toString() ?? 'Conductor';
+    final ciChofer = c['conductor_ci']?.toString() ?? 'S/CI';
+    final auto = c['conductor_numero_interno']?.toString() ??
+        c['numero_interno']?.toString();
+    final foto = c['conductor_foto']?.toString();
+    final pagado = (c['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+
+    final esPeriodica = (c['es_periodica'] as bool?) ?? false;
+    final esMensual = (c['es_mensual'] as bool?) ?? false;
+    final alDiaPeriodo = (c['al_dia_periodo'] as bool?) ?? false;
+    final todoPagado = (c['todo_pagado'] as bool?) ?? false;
+    final deudaPeriodo = (c['deuda_periodo'] as num?)?.toDouble() ?? 0.0;
+    final cuotasPendientesPeriodo =
+        (c['cuotas_pendientes_periodo'] as num?)?.toInt() ?? 0;
+    final proxFecha = c['proxima_fecha_pago']?.toString();
+
+    final estadoColor =
+        alDiaPeriodo ? const Color(0xFF059669) : const Color(0xFFDC2626);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+            width: 1.1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _abrirDetalleConductor(c),
+            splashColor: _kVerdeOscuro.withOpacity(0.08),
+            highlightColor: _kVerdeOscuro.withOpacity(0.04),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              child: Row(
+                children: [
+                  // 1. Avatar del conductor idéntico a ConductorCard
+                  AvatarConductor(
+                    foto: foto,
+                    nombre: nombreChofer,
+                    radio: 22,
+                    fontSize: 12,
+                  ),
+                  const SizedBox(width: 14),
+
+                  // 2. Información del conductor (Número de lista, Nombre, Auto/CI, Pagos)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Arribita de la columna: solo el número de lista ("solo número")
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1.5),
+                          margin: const EdgeInsets.only(bottom: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5EF),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _kVerdeOscuro.withOpacity(0.2),
+                              width: 0.8,
                             ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                            itemCount: _conductoresFiltrados.length,
-                            itemBuilder: (context, i) {
-                              final c = _conductoresFiltrados[i];
-                              final nombreChofer = c['conductor_nombre']?.toString() ?? 'Conductor';
-                              final ciChofer = c['conductor_ci']?.toString() ?? 'S/CI';
-                              final foto = c['conductor_foto']?.toString();
-                              final pagado = (c['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-
-                              final esPeriodica = (c['es_periodica'] as bool?) ?? false;
-                              final esMensual = (c['es_mensual'] as bool?) ?? false;
-                              final alDiaPeriodo = (c['al_dia_periodo'] as bool?) ?? false;
-                              final todoPagado = (c['todo_pagado'] as bool?) ?? false;
-                              final deudaPeriodo = (c['deuda_periodo'] as num?)?.toDouble() ?? 0.0;
-                              final cuotasPendientesPeriodo = (c['cuotas_pendientes_periodo'] as num?)?.toInt() ?? 0;
-                              final proxFecha = c['proxima_fecha_pago']?.toString();
-
-                              return Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(16),
-                                  onTap: () => _abrirDetalleConductor(c),
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: alDiaPeriodo ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
-                                      ),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          color: Color(0x060F2B5B),
-                                          blurRadius: 8,
-                                          offset: Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        AvatarConductor(
-                                          foto: foto,
-                                          nombre: nombreChofer,
-                                          radio: 20,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                nombreChofer,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: Color(0xFF0F2B5B),
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                'CI: $ciChofer',
-                                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Wrap(
-                                                crossAxisAlignment: WrapCrossAlignment.center,
-                                                spacing: 4,
-                                                children: [
-                                                  Text(
-                                                    'Pagó: Bs. ${_fmtMonto(pagado)}',
-                                                    style: const TextStyle(
-                                                      fontSize: 11.5,
-                                                      color: Color(0xFF059669),
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                  if (!alDiaPeriodo && deudaPeriodo > 0.001) ...[
-                                                    const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
-                                                    Text(
-                                                      'Falta: Bs. ${_fmtMonto(deudaPeriodo)}',
-                                                      style: const TextStyle(
-                                                        fontSize: 11.5,
-                                                        color: Color(0xFFDC2626),
-                                                        fontWeight: FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                              if (proxFecha != null && proxFecha.isNotEmpty && !todoPagado) ...[
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  'Próx. pago: ${_formatearFechaCorta(proxFecha)}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    color: Color(0xFF2563EB),
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-
-                                        // Badge de Estado: "Al día" / "Pagado esta semana" / "Pagado este mes" / "Pendiente"
-                                        if (alDiaPeriodo)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFD1FAE5),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 14),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  todoPagado
-                                                      ? 'Al día'
-                                                      : (esPeriodica
-                                                          ? (esMensual ? 'Pagado este mes' : 'Pagado esta semana')
-                                                          : 'Al día'),
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF065F46),
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        else
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFFEF3C7),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.schedule_rounded, color: Color(0xFFD97706), size: 14),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  cuotasPendientesPeriodo > 1
-                                                      ? 'Pendiente ($cuotasPendientesPeriodo)'
-                                                      : 'Pendiente',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF92400E),
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                        const SizedBox(width: 4),
-                                        const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
-                                      ],
-                                    ),
+                          ),
+                          child: Text(
+                            '$numeroLista',
+                            style: const TextStyle(
+                              color: _kVerdeOscuro,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          nombreChofer,
+                          style: const TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15.5,
+                            letterSpacing: -0.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.directions_car_rounded,
+                              size: 14,
+                              color: Color(0xFF64748B),
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                (auto != null && auto.isNotEmpty)
+                                    ? 'Auto N° $auto'
+                                    : (ciChofer.isNotEmpty
+                                        ? 'CI: $ciChofer'
+                                        : 'Sin unidad asignada'),
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 2,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: BoxDecoration(
+                                    color: estadoColor,
+                                    shape: BoxShape.circle,
                                   ),
                                 ),
-                              );
-                            },
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Pagó: Bs. ${_fmtMonto(pagado)}',
+                                  style: TextStyle(
+                                    color: alDiaPeriodo
+                                        ? const Color(0xFF059669)
+                                        : const Color(0xFF64748B),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (!alDiaPeriodo && deudaPeriodo > 0.001)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF2F2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: const Color(0xFFEF4444)
+                                        .withOpacity(0.3),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Falta: Bs. ${_fmtMonto(deudaPeriodo)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFFDC2626),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (proxFecha != null &&
+                            proxFecha.isNotEmpty &&
+                            !todoPagado) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Próx. pago: ${_formatearFechaCorta(proxFecha)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: _kVerdeOscuro,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Badge de Estado: "Al día" o "Debe"
+                  if (alDiaPeriodo)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1FAE5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFF10B981).withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle_rounded,
+                              color: Color(0xFF059669), size: 13),
+                          const SizedBox(width: 4),
+                          Text(
+                            todoPagado
+                                ? 'Al día'
+                                : (esPeriodica
+                                    ? (esMensual
+                                        ? 'Al día (mes)'
+                                        : 'Al día (sem)')
+                                    : 'Al día'),
+                            style: const TextStyle(
+                              color: Color(0xFF065F46),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFFEF4444).withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.schedule_rounded,
+                              color: Color(0xFFDC2626), size: 13),
+                          const SizedBox(width: 4),
+                          Text(
+                            cuotasPendientesPeriodo > 1
+                                ? 'Debe ($cuotasPendientesPeriodo)'
+                                : 'Debe',
+                            style: const TextStyle(
+                              color: Color(0xFF991B1B),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: Color(0xFF94A3B8), size: 20),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1040,36 +1258,50 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
   Widget _buildMiniStat(String label, String valor, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
         const SizedBox(height: 2),
         Text(
           valor,
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: color),
+          style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.bold, color: color),
         ),
       ],
     );
   }
 
-  Widget _buildFilterChip(String filtro, String texto) {
-    final activo = _filtroEstado == filtro;
-    return GestureDetector(
-      onTap: () => _cambiarFiltro(filtro),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: activo ? const Color(0xFF1E3A8A) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: activo ? const Color(0xFF1E3A8A) : const Color(0xFFE2E8F0),
-          ),
-        ),
-        child: Text(
-          texto,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: activo ? FontWeight.bold : FontWeight.normal,
-            color: activo ? Colors.white : const Color(0xFF475569),
-          ),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline_rounded,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No hay conductores encontrados',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Intenta con otro filtro o término de búsqueda.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ],
         ),
       ),
     );

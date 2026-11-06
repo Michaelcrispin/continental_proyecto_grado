@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../../core/documentos_alerta.dart';
 
-/// Tarjeta seccional para agrupar campos del formulario.
+const Color kVerdeCorporativo = Color(0xFF02634C);
+const Color kMentaSuave = Color(0xFFE8F5EF);
+const Color kBordeCampos = Color(0xFFE2E8F0);
+const Color kFondoCampos = Color(0xFFF8FAFC);
+const Color kTextoPrincipal = Color(0xFF1E293B);
+const Color kTextoSecundario = Color(0xFF64748B);
+
+/// Tarjeta seccional para agrupar campos del formulario, con diseño coincidente con el mockup.
 class FormCardSeccion extends StatelessWidget {
   final IconData icono;
   final Color colorIcono;
@@ -13,8 +20,8 @@ class FormCardSeccion extends StatelessWidget {
   const FormCardSeccion({
     super.key,
     required this.icono,
-    required this.colorIcono,
-    required this.bgIcono,
+    this.colorIcono = kVerdeCorporativo,
+    this.bgIcono = kMentaSuave,
     required this.titulo,
     required this.subtitulo,
     required this.contenido,
@@ -23,13 +30,14 @@ class FormCardSeccion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kBordeCampos, width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.025),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -41,15 +49,15 @@ class FormCardSeccion extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: bgIcono,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icono, color: colorIcono, size: 20),
+                child: Icon(icono, color: colorIcono, size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -57,17 +65,19 @@ class FormCardSeccion extends StatelessWidget {
                     Text(
                       titulo,
                       style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        color: kTextoPrincipal,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        letterSpacing: -0.2,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitulo,
                       style: const TextStyle(
-                        color: Color(0xFF64748B),
-                        fontSize: 11,
+                        color: kTextoSecundario,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
                   ],
@@ -75,9 +85,7 @@ class FormCardSeccion extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           ...contenido,
         ],
       ),
@@ -96,6 +104,7 @@ class FormTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final String? Function(String?)? validator;
+  final ValueChanged<String>? onChanged;
 
   const FormTextField({
     super.key,
@@ -108,6 +117,7 @@ class FormTextField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.validator,
+    this.onChanged,
   });
 
   @override
@@ -118,39 +128,64 @@ class FormTextField extends StatelessWidget {
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
       validator: validator,
-      style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+      onChanged: onChanged,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      style: const TextStyle(
+        fontSize: 13.5,
+        color: kTextoPrincipal,
+        fontWeight: FontWeight.w500,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+        labelStyle: const TextStyle(color: kTextoSecundario, fontSize: 12.5),
+        floatingLabelStyle: const TextStyle(
+          color: kVerdeCorporativo,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
         hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-        prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 19),
+        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+        errorMaxLines: 2,
+        errorStyle: const TextStyle(
+          color: Color(0xFFDC2626),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
+        prefixIcon: Icon(icon, color: kTextoSecundario, size: 20),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: kFondoCampos,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
-          vertical: 12,
+          vertical: 13,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kVerdeCorporativo, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.3),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
         ),
       ),
     );
   }
 }
 
-/// Selector de fecha con DatePicker estilizado.
+/// Selector de fecha con DatePicker estilizado y sufijo desplegable.
 class FormDateField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -189,9 +224,9 @@ class FormDateField extends StatelessWidget {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF10B981),
+              primary: kVerdeCorporativo,
               onPrimary: Colors.white,
-              onSurface: Color(0xFF1E293B),
+              onSurface: kTextoPrincipal,
             ),
           ),
           child: child!,
@@ -210,46 +245,53 @@ class FormDateField extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => _seleccionarFecha(context),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: IgnorePointer(
         child: TextFormField(
           controller: controller,
-          style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+          style: const TextStyle(
+            fontSize: 13.5,
+            color: kTextoPrincipal,
+            fontWeight: FontWeight.w500,
+          ),
           decoration: InputDecoration(
             labelText: label,
-            labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            labelStyle: const TextStyle(color: kTextoSecundario, fontSize: 12.5),
+            floatingLabelStyle: const TextStyle(
+              color: kVerdeCorporativo,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
             prefixIcon: const Icon(
               Icons.calendar_today_outlined,
-              color: Color(0xFF64748B),
-              size: 18,
+              color: kTextoSecundario,
+              size: 19,
             ),
             suffixIcon: const Icon(
-              Icons.arrow_drop_down,
-              color: Color(0xFF64748B),
+              Icons.arrow_drop_down_rounded,
+              color: kTextoSecundario,
+              size: 24,
             ),
             filled: true,
-            fillColor: const Color(0xFFF8FAFC),
+            fillColor: kFondoCampos,
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
-              vertical: 12,
+              vertical: 13,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: Color(0xFF10B981),
-                width: 1.5,
-              ),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: kVerdeCorporativo, width: 1.5),
             ),
           ),
         ),
@@ -280,39 +322,52 @@ class FormDropdownField<T> extends StatelessWidget {
     return DropdownButtonFormField<T>(
       value: value,
       isExpanded: true,
-      icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF64748B)),
+      icon: const Icon(
+        Icons.arrow_drop_down_rounded,
+        color: kTextoSecundario,
+        size: 24,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-        prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 19),
+        labelStyle: const TextStyle(color: kTextoSecundario, fontSize: 12.5),
+        floatingLabelStyle: const TextStyle(
+          color: kVerdeCorporativo,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        prefixIcon: Icon(icon, color: kTextoSecundario, size: 20),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: kFondoCampos,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
-          vertical: 11,
+          vertical: 12,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kBordeCampos, width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: kVerdeCorporativo, width: 1.5),
         ),
       ),
-      style: const TextStyle(fontSize: 12.5, color: Color(0xFF1E293B)),
+      style: const TextStyle(
+        fontSize: 13,
+        color: kTextoPrincipal,
+        fontWeight: FontWeight.w500,
+      ),
       items: items.map((item) {
         return DropdownMenuItem<T>(
           value: item,
           child: Text(
             item.toString(),
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5),
+            style: const TextStyle(fontSize: 13),
           ),
         );
       }).toList(),
@@ -359,7 +414,7 @@ class FormBadgeVigencia extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

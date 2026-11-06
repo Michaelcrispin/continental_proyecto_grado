@@ -21,7 +21,7 @@ class CardInformacionPersonal extends StatelessWidget {
     final gmail = conductor['gmail']?.toString();
     final extCi = (conductor['extension_ci'] ?? '').toString().trim();
     final ciConExt = extCi.isNotEmpty ? '$ci $extCi' : ci;
-    final grupo = (conductor['grupo'] ?? '101').toString();
+    final grupo = (conductor['grupo'] ?? '101-127').toString();
     final numInterno = conductor['numero_interno']?.toString();
 
     return DetalleContainerCard(

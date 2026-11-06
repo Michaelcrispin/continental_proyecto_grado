@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../core/app_colors.dart';
-import '../widgets/app_background.dart';
-import 'login_screen.dart';
-import 'home_screen.dart';
+
 import '../services/sesion_service.dart';
+import 'home_screen.dart';
+import 'login_screen.dart';
+
+// Paleta verde corporativa (coherente con Login)
+const _kVerdeOscuro = Color(0xFF02634C);
+const _kVerdeTeal = Color(0xFF0D7C66);
+const _kGrisSubtitulo = Color(0xFF64748B);
+const _kGrisBorde = Color(0xFFE2E8F0);
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -55,173 +60,212 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+
     return Scaffold(
-      body: AppBackground(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
+            // Contenido desplazable para evitar desbordes en pantallas pequeñas
             Expanded(
               child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 80),
-                    // Logo principal
-                    Center(
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        height: 180,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(Icons.public, color: AppColors.primaryDark, size: 100);
-                        },
+                physics: const ClampingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: size.height - padding.top - 28,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Spacer(flex: 3),
+
+                          // 1. Tarjeta con el Logo Oficial
+                          Container(
+                            width: 220,
+                            height: 110,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _kGrisBorde,
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(
+                                  Icons.directions_bus_rounded,
+                                  color: _kVerdeOscuro,
+                                  size: 54,
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+
+                          // 2. Título Principal
+                          Text(
+                            'CONTINENTAL',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.russoOne(
+                              fontSize: 26,
+                              color: _kVerdeOscuro,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // 3. Subtítulo: TRUFI 101 - 127
+                          const Text(
+                            'TRUFI 101 - 127',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: _kVerdeTeal,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 4. Descripción institucional
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Text(
+                              'Control y gestión del servicio de transporte del Grupo Continental',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _kGrisSubtitulo,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w400,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+
+                          const Spacer(flex: 3),
+
+                          // 5. Botón Iniciar sesión →
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: _verificando ? null : _irALogin,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _kVerdeOscuro,
+                                foregroundColor: Colors.white,
+                                elevation: 3,
+                                shadowColor: _kVerdeOscuro.withOpacity(0.25),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(28),
+                                ),
+                              ),
+                              child: _verificando
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Iniciar sesión',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Icon(
+                                          Icons.arrow_forward_rounded,
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 6. Enlace secundario: Acceder al sistema
+                          TextButton(
+                            onPressed: _verificando ? null : _irALogin,
+                            style: TextButton.styleFrom(
+                              foregroundColor: _kVerdeTeal,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 20,
+                              ),
+                            ),
+                            child: const Text(
+                              'Acceder al sistema',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+
+                          const Spacer(flex: 3),
+
+                          // 7. Ícono de minibús / trufi y ciudad
+                          const Icon(
+                            Icons.directions_bus_rounded,
+                            color: _kVerdeTeal,
+                            size: 34,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'El Alto - La Paz',
+                            style: TextStyle(
+                              color: _kGrisSubtitulo,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+
+                          const Spacer(flex: 2),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 32),
-                    
-                    // Títulos
-                    Text(
-                      'CONTINENTAL',
-                      style: GoogleFonts.russoOne(
-                        fontSize: 34,
-                        color: AppColors.primaryDark,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'TRUFI 101 - 127',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryBlue,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    Container(
-                      width: 45,
-                      height: 2,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF93C5FD),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Descripción
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 40.0),
-                      child: Text(
-                        'Control y gestión del servicio\nde transporte del Grupo Continental',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppColors.textGray,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-            
-            // Botones y pie de página
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: Column(
-                children: [
-                  // Botón Principal
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _verificando ? null : _irALogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        foregroundColor: Colors.white,
-                        elevation: 6,
-                        shadowColor: AppColors.primaryBlue.withValues(alpha: 0.4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: _verificando
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text('Iniciar sesión', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                                SizedBox(width: 8),
-                                Icon(Icons.arrow_forward, size: 22),
-                              ],
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Acceso Secundario
-                  TextButton(
-                    onPressed: _verificando ? null : _irALogin,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.primaryBlue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                    ),
-                    child: const Text(
-                      'Acceder al sistema',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Ícono de auto con líneas
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(width: 40, height: 1, color: const Color(0xFFBFDBFE)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Image.asset(
-                          'assets/images/icono_auto_al_frente.png',
-                          height: 40,
-                          color: AppColors.primaryDark,
-                        ),
-                      ),
-                      Container(width: 40, height: 1, color: const Color(0xFFBFDBFE)),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Ubicación
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.location_on, color: AppColors.primaryBlue, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        'El Alto · La Paz',
-                        style: TextStyle(
-                          color: AppColors.textGray,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
+
+            // 8. Barra inferior verde
+            Container(
+              width: double.infinity,
+              height: 28 + (padding.bottom > 0 ? padding.bottom : 6),
+              color: _kVerdeOscuro,
             ),
           ],
         ),
