@@ -85,14 +85,76 @@ class DatabaseHelper {
             'UPDATE automovil SET marca = NULL, modelo = NULL, color = NULL, capacidad = NULL WHERE marca IS NOT NULL OR modelo IS NOT NULL OR color IS NOT NULL OR capacidad IS NOT NULL',
           );
         } catch (_) {}
-        // Sincronizar coordenadas oficiales de Geo Tracker para Parada A y Parada B si siguen con el placeholder antiguo
+        // Sincronizar siempre las coordenadas de la calle en Parada A y Parada B
         try {
           await db.execute(
-            "UPDATE punto_de_control SET latitud = -16.53454833, longitud = -68.191605 WHERE (nombre LIKE '%Villadela%' OR es_punto_asistencia = 1) AND ABS(longitud - (-68.19071)) < 0.0005",
+            "UPDATE punto_de_control SET latitud = -16.57568833, longitud = -68.23764500, radio_m = 20 WHERE nombre LIKE '%Villadela%' OR es_punto_asistencia = 1 OR orden = 1",
           );
           await db.execute(
-            "UPDATE punto_de_control SET latitud = -16.51834167, longitud = -68.15143667 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND ABS(latitud - (-16.5050)) < 0.005",
+            "UPDATE punto_de_control SET latitud = -16.57617500, longitud = -68.23820333, radio_m = 20 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND es_punto_asistencia = 0",
           );
+        } catch (_) {}
+        // Eliminar cualquier dato simulado o de demostración para operar 100% real
+        try {
+          await db.delete(
+            'sancion',
+            where: "es_simulada = 1 OR origen = 'demo_castigo' OR origen = 'simulado'",
+          );
+          await db.delete(
+            'asistencia',
+            where: "es_simulada = 1 OR metodo = 'simulado'",
+          );
+          // Limpiar por única vez asistencias previas marcadas antes de ajustar el rectángulo estricto del Punto A
+          final yaLimpioRect = await db.query(
+            'configuracion',
+            where: "clave = 'limpieza_rectangulo_estricto_v2'",
+            limit: 1,
+          );
+          if (yaLimpioRect.isEmpty) {
+            final hoyStr = DateTime.now().toIso8601String().substring(0, 10);
+            await db.delete('asistencia', where: 'fecha = ?', whereArgs: [hoyStr]);
+            await db.insert(
+              'configuracion',
+              {
+                'clave': 'limpieza_rectangulo_estricto_v2',
+                'valor': '1',
+                'descripcion': 'Limpieza de asistencias previas al ajuste estricto del Punto A',
+                'created_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+                'sincronizado': 0,
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          }
+        } catch (_) {}
+        // Eliminar conductores que estaban en la semilla de 20 (dejando únicamente 10 conductores iniciales)
+        try {
+          const cisRemovidos = [
+            '6475839', '7586940', '8697051', '5908162', '9123456',
+            '6234567', '7345678', '8456789', '5567890', '9678901'
+          ];
+          for (final ci in cisRemovidos) {
+            final c = await db.query('conductor', where: 'ci = ?', whereArgs: [ci]);
+            if (c.isNotEmpty) {
+              final idCond = c.first['id_conductor']?.toString();
+              final idUsu = c.first['id_usuario']?.toString();
+              if (idCond != null) {
+                await db.delete('asistencia', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('vueltas', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('sancion', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('cuota', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('asistencia_reunion', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('participante_pasanaco', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('ronda_pasanaco', where: 'id_conductor_beneficiario = ?', whereArgs: [idCond]);
+                await db.delete('conductor_automovil', where: 'id_conductor = ?', whereArgs: [idCond]);
+                await db.delete('conductor', where: 'id_conductor = ?', whereArgs: [idCond]);
+              }
+              if (idUsu != null) {
+                await db.delete('usuario', where: 'id_usuario = ?', whereArgs: [idUsu]);
+              }
+            }
+          }
+          await _reordenarConductoresEnTxn(db);
         } catch (_) {}
       },
     );
@@ -560,7 +622,7 @@ class DatabaseHelper {
       }
     }
 
-    // Asegurar que los 20 conductores semilla estén sembrados tras crear todas las columnas
+    // Asegurar que los 10 conductores semilla estén sembrados tras crear todas las columnas
     await _seedConductores(db, _now());
   }
 
@@ -1024,11 +1086,11 @@ class DatabaseHelper {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
-    // 2. Siembra de los 20 conductores oficiales del sindicato con sus vehículos
+    // 2. Siembra de los 10 conductores oficiales del sindicato con sus vehículos
     await _seedConductores(db, now);
   }
 
-  /// Siembra o repara los 20 conductores institucionales con su usuario, licencia y vehículo asignado.
+  /// Siembra o repara los 10 conductores institucionales con su usuario, licencia y vehículo asignado.
   Future<void> _seedConductores(Database db, String now) async {
     for (int i = 0; i < conductoresSeed.length; i++) {
       try {
@@ -2502,6 +2564,8 @@ class DatabaseHelper {
   }
 
   /// Registra una nueva vuelta en SQLite para el conductor.
+  /// Si el conductor tiene una sanción pendiente (vueltas de castigo),
+  /// avanza automáticamente 1 vuelta en dicha sanción.
   Future<Map<String, dynamic>> registrarVuelta({
     required String idConductor,
     String? tipo,
@@ -2511,23 +2575,63 @@ class DatabaseHelper {
   }) async {
     final db = await database;
     final now = DateTime.now();
-    final fechaReal = fecha ?? now.toIso8601String().substring(0, 10);
+    final nowIso = now.toIso8601String();
+    final fechaReal = fecha ?? nowIso.substring(0, 10);
     final horaReal = hora ??
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final idVuelta = _uuid.v4();
-    final data = {
-      'id_vuelta': idVuelta,
-      'id_conductor': idConductor,
-      'id_asistencia': idAsistencia,
-      'fecha': fechaReal,
-      'hora': horaReal,
-      'tipo': tipo ?? 'normal',
-      'created_at': now.toIso8601String(),
-      'updated_at': now.toIso8601String(),
-      'sincronizado': 0,
-    };
-    await db.insert('vueltas', data);
-    return data;
+
+    return db.transaction((txn) async {
+      final sancionesPendientes = await txn.query(
+        'sancion',
+        where: "id_conductor = ? AND estado = 'pendiente'",
+        whereArgs: [idConductor],
+        orderBy: 'fecha ASC, created_at ASC',
+        limit: 1,
+      );
+
+      String tipoFinal = tipo ?? 'normal';
+      String? idAsistFinal = idAsistencia;
+
+      if (sancionesPendientes.isNotEmpty) {
+        final s = sancionesPendientes.first;
+        final idSancion = s['id_sancion']?.toString() ?? '';
+        final asignadas = (s['vueltas_asignadas'] as num?)?.toInt() ?? 2;
+        final cumplidas = (s['vueltas_cumplidas'] as num?)?.toInt() ?? 0;
+        final nuevas = cumplidas + 1;
+        final nuevoEstado = nuevas >= asignadas ? 'cumplida' : 'pendiente';
+
+        if (idSancion.isNotEmpty) {
+          await txn.update(
+            'sancion',
+            {
+              'vueltas_cumplidas': nuevas,
+              'estado': nuevoEstado,
+              'updated_at': nowIso,
+              'sincronizado': 0,
+            },
+            where: 'id_sancion = ?',
+            whereArgs: [idSancion],
+          );
+          tipoFinal = 'sancion';
+          idAsistFinal ??= s['id_asistencia']?.toString();
+        }
+      }
+
+      final idVuelta = _uuid.v4();
+      final data = {
+        'id_vuelta': idVuelta,
+        'id_conductor': idConductor,
+        'id_asistencia': idAsistFinal,
+        'fecha': fechaReal,
+        'hora': horaReal,
+        'tipo': tipoFinal,
+        'created_at': nowIso,
+        'updated_at': nowIso,
+        'sincronizado': 0,
+      };
+      await txn.insert('vueltas', data);
+      return data;
+    });
   }
 
   /// sanciones_screen: sanciones con nombre del conductor.
@@ -2861,11 +2965,11 @@ class DatabaseHelper {
   }
 
   /// Números personalizados para la vista de inicio del Conductor autenticado.
-  Future<Map<String, num>> resumenConductor(String idConductor) async {
+  Future<Map<String, dynamic>> resumenConductor(String idConductor) async {
     final hoy = DateTime.now().toIso8601String().substring(0, 10);
     final db = await database;
     final deuda = await db.rawQuery(
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM cuota WHERE id_conductor = ? AND estado = 'pendiente'",
+        "SELECT COALESCE(SUM(monto - COALESCE(monto_pagado, 0)), 0) AS total FROM cuota WHERE id_conductor = ? AND estado IN ('pendiente', 'parcial')",
         [idConductor]);
 
     final asistioHoy = await _contar(
@@ -2880,11 +2984,43 @@ class DatabaseHelper {
         "SELECT COUNT(*) FROM sancion WHERE id_conductor = ? AND estado = 'pendiente'",
         [idConductor]);
 
+    // Buscar sanciones del conductor (prioridad: pendientes primero, luego la más reciente)
+    final sanciones = await db.query(
+      'sancion',
+      where: 'id_conductor = ?',
+      whereArgs: [idConductor],
+      orderBy: "CASE WHEN estado = 'pendiente' THEN 0 ELSE 1 END, fecha DESC, created_at DESC",
+    );
+
+    int vueltasCastigoAsignadas = 0;
+    int vueltasCastigoCumplidas = 0;
+    String estadoSancion = 'sin_sancion'; // 'sin_sancion' | 'pendiente' | 'cumplida'
+
+    if (sanciones.isNotEmpty) {
+      final s = sanciones.first;
+      final est = s['estado']?.toString().toLowerCase() ?? '';
+      final asig = (s['vueltas_asignadas'] as num?)?.toInt() ?? 2;
+      final cump = (s['vueltas_cumplidas'] as num?)?.toInt() ?? 0;
+
+      if (est == 'pendiente' && asig > 0) {
+        estadoSancion = 'pendiente';
+        vueltasCastigoAsignadas = asig;
+        vueltasCastigoCumplidas = cump;
+      } else if (est == 'cumplida' && asig > 0) {
+        estadoSancion = 'cumplida';
+        vueltasCastigoAsignadas = asig;
+        vueltasCastigoCumplidas = cump >= asig ? asig : asig;
+      }
+    }
+
     return {
       'asistio_hoy': asistioHoy,
       'vueltas_hoy': vueltasHoy,
       'sanciones_pendientes': sancionesPendientes,
       'cuotas_pendientes_monto': (deuda.first['total'] as num?) ?? 0,
+      'estado_sancion': estadoSancion,
+      'vueltas_castigo_asignadas': vueltasCastigoAsignadas,
+      'vueltas_castigo_cumplidas': vueltasCastigoCumplidas,
     };
   }
 

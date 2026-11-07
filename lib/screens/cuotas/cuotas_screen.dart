@@ -5,9 +5,11 @@ import '../../services/sesion_service.dart';
 import '../../widgets/app_bottom_bar.dart';
 import '../asistencia/asistencia_screen.dart';
 import '../home_screen.dart';
+import '../sanciones_screen.dart';
 import '../vueltas_screen.dart';
 import 'caja_del_dia_screen.dart';
 import 'cuota_detalle_screen.dart';
+import 'dashboard_cuotas_screen.dart';
 import 'informe_economico_screen.dart';
 import 'seleccionar_categoria_screen.dart';
 import 'widgets/cuota_card.dart';
@@ -42,7 +44,9 @@ class _CuotasScreenState extends State<CuotasScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!Permisos.puedeVer(
-          SesionService.instance.rol, Permisos.moduloControlEconomico)) {
+        SesionService.instance.rol,
+        Permisos.moduloControlEconomico,
+      )) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -112,13 +116,19 @@ class _CuotasScreenState extends State<CuotasScreen> {
   Future<void> _abrirCrearCuota() async {
     final creada = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const SeleccionarCategoriaScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SeleccionarCategoriaScreen()),
     );
     if (creada == true) {
       _cargarCuotas();
     }
+  }
+
+  Future<void> _abrirDashboard() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DashboardCuotasScreen()),
+    );
+    if (mounted) _cargarCuotas();
   }
 
   Future<void> _confirmarVaciarTodo() async {
@@ -142,19 +152,24 @@ class _CuotasScreenState extends State<CuotasScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar',
-                style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Borrar Todo',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Borrar Todo',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -171,9 +186,9 @@ class _CuotasScreenState extends State<CuotasScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al borrar cuotas: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error al borrar cuotas: $e')));
         }
       }
     }
@@ -213,6 +228,11 @@ class _CuotasScreenState extends State<CuotasScreen> {
               context,
               MaterialPageRoute(builder: (_) => const VueltasScreen()),
             );
+          } else if (tab == AppBottomTab.sanciones) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SancionesScreen()),
+            );
           }
         },
       ),
@@ -222,7 +242,11 @@ class _CuotasScreenState extends State<CuotasScreen> {
               backgroundColor: _kVerdeOscuro,
               foregroundColor: Colors.white,
               elevation: 4,
-              icon: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
+              icon: const Icon(
+                Icons.add_rounded,
+                size: 22,
+                color: Colors.white,
+              ),
               label: const Text(
                 'Nueva cuota',
                 style: TextStyle(
@@ -272,6 +296,18 @@ class _CuotasScreenState extends State<CuotasScreen> {
                         ),
                         Row(
                           children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.insights_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              tooltip: 'Dashboard de recaudación',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: _abrirDashboard,
+                            ),
+                            const SizedBox(width: 10),
                             IconButton(
                               icon: Icon(
                                 _mostrarBuscador ? Icons.close : Icons.search,
@@ -324,18 +360,21 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                          builder: (_) =>
-                                              const CajaDelDiaScreen()),
+                                        builder: (_) =>
+                                            const CajaDelDiaScreen(),
+                                      ),
                                     );
                                   }
                                   if (val == 'informe_eco') {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                          builder: (_) =>
-                                              const InformeEconomicoScreen()),
+                                        builder: (_) =>
+                                            const InformeEconomicoScreen(),
+                                      ),
                                     );
                                   }
+                                  if (val == 'dashboard') _abrirDashboard();
                                   if (val == 'recargar') _cargarCuotas();
                                   if (val == 'vaciar') _confirmarVaciarTodo();
                                 },
@@ -344,8 +383,11 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                     value: 'crear',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.add_circle_outline,
-                                            color: _kVerdeOscuro, size: 20),
+                                        Icon(
+                                          Icons.add_circle_outline,
+                                          color: _kVerdeOscuro,
+                                          size: 20,
+                                        ),
                                         SizedBox(width: 8),
                                         Text('Nueva Cuota'),
                                       ],
@@ -355,8 +397,11 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                     value: 'caja_dia',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.point_of_sale_outlined,
-                                            color: _kVerdeOscuro, size: 20),
+                                        Icon(
+                                          Icons.point_of_sale_outlined,
+                                          color: _kVerdeOscuro,
+                                          size: 20,
+                                        ),
                                         SizedBox(width: 8),
                                         Text('Caja del Día (Arqueo)'),
                                       ],
@@ -366,10 +411,27 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                     value: 'informe_eco',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.analytics_outlined,
-                                            color: _kVerdeOscuro, size: 20),
+                                        Icon(
+                                          Icons.analytics_outlined,
+                                          color: _kVerdeOscuro,
+                                          size: 20,
+                                        ),
                                         SizedBox(width: 8),
                                         Text('Informe Económico General'),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'dashboard',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.insights_rounded,
+                                          color: _kVerdeOscuro,
+                                          size: 20,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text('Dashboard de Recaudación'),
                                       ],
                                     ),
                                   ),
@@ -377,8 +439,11 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                     value: 'recargar',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.refresh,
-                                            color: _kVerdeOscuro, size: 20),
+                                        Icon(
+                                          Icons.refresh,
+                                          color: _kVerdeOscuro,
+                                          size: 20,
+                                        ),
                                         SizedBox(width: 8),
                                         Text('Recargar Lista'),
                                       ],
@@ -389,12 +454,16 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                       value: 'vaciar',
                                       child: Row(
                                         children: [
-                                          Icon(Icons.delete_forever,
-                                              color: Colors.red, size: 20),
+                                          Icon(
+                                            Icons.delete_forever,
+                                            color: Colors.red,
+                                            size: 20,
+                                          ),
                                           SizedBox(width: 8),
-                                          Text('Borrar todas las cuotas',
-                                              style: TextStyle(
-                                                  color: Colors.red)),
+                                          Text(
+                                            'Borrar todas las cuotas',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -430,17 +499,27 @@ class _CuotasScreenState extends State<CuotasScreen> {
                           autofocus: true,
                           onChanged: _filtrar,
                           style: const TextStyle(
-                              fontSize: 14, color: _kVerdeOscuro),
+                            fontSize: 14,
+                            color: _kVerdeOscuro,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Buscar cuota o motivo...',
                             hintStyle: const TextStyle(
-                                fontSize: 13.5, color: Color(0xFF94A3B8)),
-                            prefixIcon: const Icon(Icons.search,
-                                color: _kVerdeOscuro, size: 20),
+                              fontSize: 13.5,
+                              color: Color(0xFF94A3B8),
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: _kVerdeOscuro,
+                              size: 20,
+                            ),
                             suffixIcon: _busqueda.isNotEmpty
                                 ? IconButton(
-                                    icon: const Icon(Icons.clear,
-                                        size: 18, color: Color(0xFF94A3B8)),
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      size: 18,
+                                      color: Color(0xFF94A3B8),
+                                    ),
                                     onPressed: () {
                                       _searchCtrl.clear();
                                       _filtrar('');
@@ -449,13 +528,91 @@ class _CuotasScreenState extends State<CuotasScreen> {
                                 : null,
                             border: InputBorder.none,
                             isDense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ],
+                ),
+              ),
+            ),
+
+            // 1.b Acceso rápido al dashboard de recaudación
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: InkWell(
+                onTap: _abrirDashboard,
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF064E3B), Color(0xFF0D9488)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _kVerdeOscuro.withValues(alpha: 0.18),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.insights_rounded,
+                          color: Colors.white,
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Dashboard de recaudación',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Recaudado, pendiente, métodos de pago y deudores',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -481,34 +638,33 @@ class _CuotasScreenState extends State<CuotasScreen> {
                       child: CircularProgressIndicator(color: _kVerdeOscuro),
                     )
                   : _cuotasFiltradas.isEmpty
-                      ? _buildEstadoVacio(puedeEditar)
-                      : ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics(),
-                          ),
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 85),
-                          itemCount: _cuotasFiltradas.length,
-                          itemBuilder: (context, index) {
-                            final cuota = _cuotasFiltradas[index];
-                            return CuotaCard(
-                              cuota: cuota,
-                              index: index,
-                              onTap: () async {
-                                final recargar =
-                                    await Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        CuotaDetalleScreen(cuota: cuota),
-                                  ),
-                                );
-                                if (recargar == true || mounted) {
-                                  _cargarCuotas();
-                                }
-                              },
+                  ? _buildEstadoVacio(puedeEditar)
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 85),
+                      itemCount: _cuotasFiltradas.length,
+                      itemBuilder: (context, index) {
+                        final cuota = _cuotasFiltradas[index];
+                        return CuotaCard(
+                          cuota: cuota,
+                          index: index,
+                          onTap: () async {
+                            final recargar = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    CuotaDetalleScreen(cuota: cuota),
+                              ),
                             );
+                            if (recargar == true || mounted) {
+                              _cargarCuotas();
+                            }
                           },
-                        ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -594,10 +750,7 @@ class _CuotasScreenState extends State<CuotasScreen> {
                   ? 'Prueba cambiando el término de búsqueda o seleccionando "Todas".'
                   : 'Crea una cuota para asignarla a todos los conductores activos del sindicato.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF64748B),
-              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
             ),
             if (!hayFiltro && puedeEditar) ...[
               const SizedBox(height: 20),
@@ -605,10 +758,13 @@ class _CuotasScreenState extends State<CuotasScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kVerdeOscuro,
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
                 onPressed: _abrirCrearCuota,
                 icon: const Icon(Icons.add, size: 20),

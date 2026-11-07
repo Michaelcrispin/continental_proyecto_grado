@@ -7,7 +7,11 @@ import '../widgets/avatar_conductor.dart';
 import '../widgets/informe_sanciones_whatsapp_dialog.dart';
 import 'cuotas/widgets/dialogo_informe_whatsapp.dart';
 
+import '../widgets/app_bottom_bar.dart';
+import 'asistencia/asistencia_screen.dart';
+import 'cuotas/cuotas_screen.dart';
 import 'home_screen.dart';
+import 'vueltas_screen.dart';
 
 // ---------- Paleta Corporativa Sindicato Continental ----------
 const _kVerdeContinental = Color(0xFF02634C);
@@ -256,6 +260,38 @@ class _SancionesScreenState extends State<SancionesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kFondo,
+      bottomNavigationBar: AppBottomBar(
+        currentTab: AppBottomTab.sanciones,
+        onTabSelected: (tab) {
+          if (tab == AppBottomTab.sanciones) {
+            _cargar();
+          } else if (tab == AppBottomTab.inicio) {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const HomeScreen()),
+              );
+            }
+          } else if (tab == AppBottomTab.asistencias) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AsistenciaScreen()),
+            );
+          } else if (tab == AppBottomTab.vueltas) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const VueltasScreen()),
+            );
+          } else if (tab == AppBottomTab.cuotas) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const CuotasScreen()),
+            );
+          }
+        },
+      ),
       body: RefreshIndicator(
         onRefresh: _cargar,
         color: _kVerdeContinental,

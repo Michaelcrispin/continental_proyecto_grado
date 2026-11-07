@@ -1,0 +1,90 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:geotracker="http://ilyabogdanovich.com/gpx/extensions/geotracker" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="Registrado con Geo Tracker para Android de Ilya Bogdanovich">
+  <metadata>
+    <name>7 nov 2026, 10:26:04</name>
+    <author>
+      <name>Registrado con Geo Tracker para Android de Ilya Bogdanovich</name>
+      <link href="https://play.google.com/store/apps/details?id=com.ilyabogdanovich.geotracker" />
+    </author>
+    <link href="https://play.google.com/store/apps/details?id=com.ilyabogdanovich.geotracker" />
+    <time>2026-11-07T14:26:04Z</time>
+  </metadata>
+  <trk>
+    <name>7 nov 2026, 10:26:04</name>
+    <src>Registrado con Geo Tracker para Android de Ilya Bogdanovich</src>
+    <link href="https://play.google.com/store/apps/details?id=com.ilyabogdanovich.geotracker" />
+    <extensions>
+      <geotracker:meta>
+        <geotracker:length>85.55</geotracker:length>
+        <geotracker:duration>104086</geotracker:duration>
+        <geotracker:creationtime>2026-11-07T14:26:04Z</geotracker:creationtime>
+        <geotracker:activity>0</geotracker:activity>
+      </geotracker:meta>
+    </extensions>
+    <trkseg>
+      <trkpt lat="-16.576175" lon="-68.23820333">
+        <ele>3976.3</ele>
+        <time>2026-11-07T14:26:12Z</time>
+        <extensions>
+          <geotracker:meta c="1.31" s="0.28" a="9.6" va="9.2" sa="0.4" ca="25" tz="-14400" src="1" su="28" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.576105" lon="-68.23813667">
+        <ele>3976.6</ele>
+        <time>2026-11-07T14:26:20Z</time>
+        <extensions>
+          <geotracker:meta c="0.87" s="0.97" a="9.9" va="9.9" sa="0.8" ca="26" tz="-14400" src="1" su="32" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.57602833" lon="-68.23807833">
+        <ele>3975.5</ele>
+        <time>2026-11-07T14:26:27Z</time>
+        <extensions>
+          <geotracker:meta c="0.82" s="1.22" a="9.2" va="12.8" sa="0.6" ca="18.3" tz="-14400" src="1" su="34" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.575965" lon="-68.23800667">
+        <ele>3974</ele>
+        <time>2026-11-07T14:26:35Z</time>
+        <extensions>
+          <geotracker:meta c="1.1" s="1.14" a="9.1" va="9.6" sa="1.8" ca="76.2" tz="-14400" src="1" su="35" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.57589833" lon="-68.23793">
+        <ele>3973.7</ele>
+        <time>2026-11-07T14:26:45Z</time>
+        <extensions>
+          <geotracker:meta c="0.81" s="0.97" a="8.8" va="9.3" sa="0.6" ca="23.2" tz="-14400" src="1" su="37" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.57583667" lon="-68.23785833">
+        <ele>3974.7</ele>
+        <time>2026-11-07T14:26:53Z</time>
+        <extensions>
+          <geotracker:meta c="0.74" s="1.08" a="9.5" va="8.8" sa="0.9" ca="33.1" tz="-14400" src="1" su="37" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.575765" lon="-68.237785">
+        <ele>3975.3</ele>
+        <time>2026-11-07T14:27:01Z</time>
+        <extensions>
+          <geotracker:meta c="0.88" s="1.24" a="9" va="8.6" sa="0.8" ca="23.8" tz="-14400" src="1" su="38" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.57570167" lon="-68.23770667">
+        <ele>3976.6</ele>
+        <time>2026-11-07T14:27:10Z</time>
+        <extensions>
+          <geotracker:meta c="0.92" s="1.08" a="9.2" va="8.6" sa="0.9" ca="31.1" tz="-14400" src="1" su="38" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+      <trkpt lat="-16.57564167" lon="-68.23762667">
+        <ele>3976.3</ele>
+        <time>2026-11-07T14:27:19Z</time>
+        <extensions>
+          <geotracker:meta c="0.79" s="1.03" a="8.9" va="9" sa="0.6" ca="24" tz="-14400" src="1" su="36" sv="47" mock="0" />
+        </extensions>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

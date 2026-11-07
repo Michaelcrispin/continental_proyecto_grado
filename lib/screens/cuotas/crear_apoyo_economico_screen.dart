@@ -44,8 +44,11 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
 
     // Fecha límite por defecto: 15 días a partir de hoy
     final now = DateTime.now();
-    _fechaLimite = DateTime(now.year, now.month, now.day)
-        .add(const Duration(days: 15));
+    _fechaLimite = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 15));
 
     _cargarConductores();
   }
@@ -155,7 +158,8 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
 
     if (_beneficiario == null) {
       _mostrarSnack(
-          'Por favor selecciona al conductor beneficiario de la ayuda.');
+        'Por favor selecciona al conductor beneficiario de la ayuda.',
+      );
       return;
     }
 
@@ -163,8 +167,8 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
     final motivo = _motivoCtrl.text.trim();
     final importe = double.tryParse(_importeCtrl.text.trim()) ?? 0.0;
 
-    if (importe <= 0) {
-      _mostrarSnack('Ingresa un importe válido mayor a 0 Bs.');
+    if (importe < 1) {
+      _mostrarSnack('El importe mínimo por conductor es Bs. 1.00.');
       return;
     }
 
@@ -258,8 +262,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                   _buildCardContainer(
                     icono: Icons.person_rounded,
                     titulo: 'Beneficiario de la Ayuda',
-                    subtitulo:
-                        'Conductor que recibirá el fondo recaudado',
+                    subtitulo: 'Conductor que recibirá el fondo recaudado',
                     child: InkWell(
                       onTap: _abrirSelectorBeneficiario,
                       borderRadius: BorderRadius.circular(14),
@@ -287,14 +290,16 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                                 ),
                               )
                             : Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
                                 child: Row(
                                   children: [
                                     AvatarConductor(
                                       foto: _beneficiario!['foto_url']
                                           ?.toString(),
-                                      nombre: _beneficiario!['nombre']
+                                      nombre:
+                                          _beneficiario!['nombre']
                                               ?.toString() ??
                                           '',
                                       radio: 18,
@@ -327,11 +332,12 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                                     ),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: _kMintBg,
-                                        borderRadius:
-                                            BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Text(
                                         'Cambiar',
@@ -404,7 +410,8 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                               controller: _importeCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                    decimal: true,
+                                  ),
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
                                 hintText: 'Ej. 20',
@@ -414,16 +421,17 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 10),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Ingresa el monto';
                                 }
                                 final n = double.tryParse(value);
-                                if (n == null || n <= 0) {
-                                  return 'Monto inválido';
+                                if (n == null || n < 1) {
+                                  return 'El mínimo es Bs. 1.00';
                                 }
                                 return null;
                               },
@@ -557,7 +565,9 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                     subtitulo:
                         'Choferes asignados para colaborar (excluye al beneficiario)',
                     child: InkWell(
-                      onTap: _cargandoConductores ? null : _abrirSelectorAportantes,
+                      onTap: _cargandoConductores
+                          ? null
+                          : _abrirSelectorAportantes,
                       borderRadius: BorderRadius.circular(14),
                       child: _buildInputContainer(
                         child: Row(
@@ -567,7 +577,9 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: _kMintBg,
                                     borderRadius: BorderRadius.circular(8),
@@ -686,9 +698,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
       width: double.infinity,
       decoration: const BoxDecoration(
         color: _kVerdeOscuro,
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(32),
-        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 20),
@@ -786,11 +796,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
             color: _kMintBg,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icono,
-            color: _kVerdeOscuro,
-            size: 28,
-          ),
+          child: Icon(icono, color: _kVerdeOscuro, size: 28),
         ),
       ],
     );
@@ -806,10 +812,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1.2,
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -831,11 +834,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                   color: _kMintBg,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icono,
-                  color: _kVerdeOscuro,
-                  size: 20,
-                ),
+                child: Icon(icono, color: _kVerdeOscuro, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -922,7 +921,9 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.bold,
-                      color: seleccionado ? _kVerdeOscuro : const Color(0xFF0F172A),
+                      color: seleccionado
+                          ? _kVerdeOscuro
+                          : const Color(0xFF0F172A),
                     ),
                   ),
                   Text(
@@ -1006,10 +1007,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
             ),
             child: const Text(
               'Cancelar',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
           ),
 
@@ -1041,7 +1039,11 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.check_rounded, size: 20, color: Colors.white),
+                        Icon(
+                          Icons.check_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                         SizedBox(width: 8),
                         Text(
                           'Guardar Cuota',

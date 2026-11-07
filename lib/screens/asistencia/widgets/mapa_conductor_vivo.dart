@@ -47,13 +47,6 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
     return RutaContinental.paradaBTeleferico;
   }
 
-  double get _radioA {
-    if (widget.puntos.isNotEmpty) {
-      return ((widget.puntos[0]['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 500.0);
-    }
-    return 100.0;
-  }
-
   @override
   void didUpdateWidget(covariant MapaConductorVivo oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -76,7 +69,7 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
   @override
   Widget build(BuildContext context) {
     final centroInicial = widget.posicionConductor ?? _coordA;
-    final zoomInicial = _radioA <= 15 ? 18.5 : 16.0;
+    final zoomInicial = 18.2;
 
     return Container(
       height: 250,

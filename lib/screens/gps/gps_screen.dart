@@ -48,8 +48,8 @@ class _GpsScreenState extends State<GpsScreen> {
   }
 
   void _centrarPunto(Map<String, dynamic> punto) {
-    final lat = (punto['latitud'] as num?)?.toDouble() ?? -16.53453;
-    final lon = (punto['longitud'] as num?)?.toDouble() ?? -68.19071;
+    final lat = (punto['latitud'] as num?)?.toDouble() ?? -16.57568833;
+    final lon = (punto['longitud'] as num?)?.toDouble() ?? -68.237645;
     final radio = (punto['radio_m'] as num?)?.toDouble() ?? 100.0;
     _mapController.move(LatLng(lat, lon), radio <= 15 ? 18.5 : 15.0);
   }
@@ -166,8 +166,8 @@ class _GpsScreenState extends State<GpsScreen> {
               // Marcadores de puntos de control
               MarkerLayer(
                 markers: _puntos.map((p) {
-                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.53453;
-                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.19071;
+                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.57568833;
+                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.237645;
                   final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
                   final color = esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
 

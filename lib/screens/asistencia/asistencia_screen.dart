@@ -36,21 +36,17 @@ class AsistenciaScreen extends StatefulWidget {
 
 class _AsistenciaScreenState extends State<AsistenciaScreen> {
   String _filtroEstado = 'todos'; // 'todos' | 'tiempo' | 'tardanza' | 'falta'
-  final EstadoGeocerca _estadoGeocercaA = EstadoGeocerca();
-  final EstadoGeocerca _estadoGeocercaB = EstadoGeocerca();
   StreamSubscription<Position>? _subGps;
 
   // Parada A: Cruce Villadela
-  double _latA = -16.53453;
-  double _lonA = -68.19071;
-  double _radioA = 100.0;
+  double _latA = -16.57568833;
+  double _lonA = -68.237645;
   double? _distanciaA;
   bool _dentroA = false;
 
   // Parada B: Teleférico Amarillo
-  double _latB = -16.5050;
-  double _lonB = -68.1635;
-  double _radioB = 100.0;
+  double _latB = -16.576175;
+  double _lonB = -68.23820333;
   double? _distanciaB;
   bool _dentroB = false;
 
@@ -99,6 +95,13 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
 
   Future<void> _inicializarMonitoreoGps() async {
     try {
+      final db = await DatabaseHelper.instance.database;
+      await db.execute(
+        "UPDATE punto_de_control SET latitud = -16.57568833, longitud = -68.23764500, radio_m = 20 WHERE nombre LIKE '%Villadela%' OR es_punto_asistencia = 1 OR orden = 1",
+      );
+      await db.execute(
+        "UPDATE punto_de_control SET latitud = -16.57617500, longitud = -68.23820333, radio_m = 20 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND es_punto_asistencia = 0",
+      );
       final puntos = await DatabaseHelper.instance.obtenerPuntosControl(soloActivos: false);
       if (puntos.isNotEmpty && mounted) {
         for (int i = 0; i < puntos.length; i++) {
@@ -106,13 +109,11 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           final nombre = p['nombre']?.toString() ?? '';
           final esA = nombre.contains('Villadela') || i == 0;
           if (esA) {
-            _latA = (p['latitud'] as num?)?.toDouble() ?? -16.53453;
-            _lonA = (p['longitud'] as num?)?.toDouble() ?? -68.19071;
-            _radioA = ((p['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 300.0);
+            _latA = (p['latitud'] as num?)?.toDouble() ?? -16.57568833;
+            _lonA = (p['longitud'] as num?)?.toDouble() ?? -68.237645;
           } else {
-            _latB = (p['latitud'] as num?)?.toDouble() ?? -16.5050;
-            _lonB = (p['longitud'] as num?)?.toDouble() ?? -68.1635;
-            _radioB = ((p['radio_m'] as num?)?.toDouble() ?? 100.0).clamp(1.0, 300.0);
+            _latB = (p['latitud'] as num?)?.toDouble() ?? -16.576175;
+            _lonB = (p['longitud'] as num?)?.toDouble() ?? -68.23820333;
           }
         }
       }
@@ -122,8 +123,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
       final ok = await GpsService.instance.verificarPermisos();
       if (!ok || !mounted) return;
 
-      await _subGps?.cancel();
-      _subGps = GpsService.instance.obtenerStreamPosicion(distanceFilterM: 0).listen((pos) {
+      void procesarPos(Position pos, {bool permitirMarcarAsistencia = true}) {
         if (!mounted) return;
         final pt = LatLng(pos.latitude, pos.longitude);
         final rectA = RutaContinental.obtenerRectanguloParadaA(LatLng(_latA, _lonA));
@@ -132,30 +132,16 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
         final dA = RutaContinental.distanciaAlRectanguloMetros(pt, rectA);
         final dB = RutaContinental.distanciaAlRectanguloMetros(pt, rectB);
 
-        final margen = (pos.accuracy * 0.4).clamp(2.0, 8.0);
         final inA = RutaContinental.estaDentroDeRectangulo(
-              pt,
-              rectA,
-              margenMetros: margen,
-            ) ||
-            _estadoGeocercaA.actualizar(
-              distancia: dA,
-              accuracy: pos.accuracy,
-              radio: _radioA,
-            );
+          pt,
+          rectA,
+          margenMetros: 0.0,
+        );
         final inB = RutaContinental.estaDentroDeRectangulo(
-              pt,
-              rectB,
-              margenMetros: margen,
-            ) ||
-            _estadoGeocercaB.actualizar(
-              distancia: dB,
-              accuracy: pos.accuracy,
-              radio: _radioB,
-            );
-
-        final pisoRecienA = inA && !_dentroA;
-        final pisoRecienB = inB && !_dentroB;
+          pt,
+          rectB,
+          margenMetros: 0.0,
+        );
 
         setState(() {
           _precisionVivoM = pos.accuracy;
@@ -165,14 +151,33 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           _dentroB = inB;
         });
 
-        if (pisoRecienA || pisoRecienB) {
+        // Solo marca asistencia cuando pisa estrictamente el rectángulo del Punto A en vivo
+        if (inA && permitirMarcarAsistencia) {
           _registrarAsistenciaAlPisarRectangulo(
-            esParadaA: pisoRecienA,
+            esParadaA: true,
             punto: pt,
             precisionM: pos.accuracy,
           );
         }
-      });
+      }
+
+      final ultima = await GpsService.instance.obtenerUltimaPosicionConocida();
+      if (ultima != null && mounted) {
+        procesarPos(ultima, permitirMarcarAsistencia: false);
+      }
+
+      GpsService.instance
+          .obtenerPosicionActual(timeout: const Duration(seconds: 6))
+          .then((pos) {
+        if (pos != null && mounted) {
+          procesarPos(pos, permitirMarcarAsistencia: true);
+        }
+      }).catchError((_) {});
+
+      await _subGps?.cancel();
+      _subGps = GpsService.instance
+          .obtenerStreamPosicion(distanceFilterM: 0, usarForeground: false)
+          .listen((pos) => procesarPos(pos, permitirMarcarAsistencia: true));
     } catch (_) {}
   }
 
@@ -234,7 +239,6 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
   Future<void> _cargarMarcaciones() async {
     setState(() => _cargandoDatos = true);
     final fechaConsulta = _fechaIsoSeleccionada;
-    await AsistenciaRepo.instance.asegurarHistorialFecha(fechaConsulta);
     final conductores = await DatabaseHelper.instance.conductoresConAuto();
     final asistenciasBd = await DatabaseHelper.instance.asistenciasDetalle(
       fecha: fechaConsulta,
@@ -1646,6 +1650,11 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
               context,
               MaterialPageRoute(builder: (_) => const CuotasScreen()),
             );
+          } else if (tab == AppBottomTab.sanciones) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SancionesScreen()),
+            );
           }
         },
       ),
@@ -1964,8 +1973,8 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                     const SizedBox(height: 2),
                     Text(
                       _precisionVivoM != null
-                          ? 'Parada A / B • GPS ±m'
-                          : 'Parada A / B',
+                          ? 'Parada A / B • GPS ±${_precisionVivoM!.toStringAsFixed(0)} m'
+                          : 'Parada A / B • Buscando señal GPS…',
                       style: const TextStyle(
                         color: Color(0xFF64748B),
                         fontSize: 12,
@@ -2042,7 +2051,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                       child: Text(
                         _distanciaA != null
                             ? GpsService.formatearDistancia(_distanciaA)
-                            : '8227.88 km',
+                            : 'Sin señal GPS',
                         style: const TextStyle(
                           color: Color(0xFF0F172A),
                           fontWeight: FontWeight.w700,
@@ -2092,7 +2101,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                         child: Text(
                           _distanciaB != null
                               ? GpsService.formatearDistancia(_distanciaB)
-                              : '8229.40 km',
+                              : 'Sin señal GPS',
                           style: const TextStyle(
                             color: Color(0xFF0F172A),
                             fontWeight: FontWeight.w700,

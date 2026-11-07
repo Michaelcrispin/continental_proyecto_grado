@@ -97,6 +97,7 @@ class _DetalleConductorCuotasSheetState
 
   Future<void> _cobrarCuota({
     double? montoEspecifico,
+    double? montoMaximo,
     String? idCuotaEspecifica,
     String? conceptoCuota,
   }) async {
@@ -106,6 +107,7 @@ class _DetalleConductorCuotasSheetState
       idTipoCuota: widget.cuota['id_tipo_cuota'].toString(),
       cuotaNombre: widget.cuota['nombre']?.toString() ?? 'Cuota',
       montoInicial: montoEspecifico,
+      montoMaximo: montoMaximo,
       idCuotaEspecifica: idCuotaEspecifica,
       conceptoCuota: conceptoCuota,
     );
@@ -282,25 +284,34 @@ class _DetalleConductorCuotasSheetState
       return true;
     }).toList();
 
-    final categoria = (widget.cuota['categoria'] ??
-            _conductorActual['categoria'])
-        ?.toString()
-        .toLowerCase();
+    final categoria =
+        (widget.cuota['categoria'] ?? _conductorActual['categoria'])
+            ?.toString()
+            .toLowerCase();
     final esCanaston = categoria == 'canaston';
-    final descCuota = (widget.cuota['descripcion'] ?? '').toString().toLowerCase();
+    final descCuota = (widget.cuota['descripcion'] ?? '')
+        .toString()
+        .toLowerCase();
     final nombreCuota = (widget.cuota['nombre'] ?? '').toString().toLowerCase();
-    final esMensual = descCuota.contains('mensual') || descCuota.contains('mes') || nombreCuota.contains('mensual');
+    final esMensual =
+        descCuota.contains('mensual') ||
+        descCuota.contains('mes') ||
+        nombreCuota.contains('mensual');
     final periodoNombre = esMensual ? 'este mes' : 'esta semana';
     final periodoMayus = esMensual ? 'ESTE MES' : 'ESTA SEMANA';
 
     // 1. Fechas únicas del cronograma
-    final fechasProgramadas = _cronograma
-        .map((it) =>
-            (it['fecha_vencimiento'] ?? it['fecha'])?.toString().trim() ?? '')
-        .where((f) => f.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final fechasProgramadas =
+        _cronograma
+            .map(
+              (it) =>
+                  (it['fecha_vencimiento'] ?? it['fecha'])?.toString().trim() ??
+                  '',
+            )
+            .where((f) => f.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
 
     // 2. Determinar la fecha de ESTA SEMANA para Canastón (sin avanzar a fechas futuras)
     final fechaSemanaActual = esCanaston
@@ -340,13 +351,13 @@ class _DetalleConductorCuotasSheetState
 
     final fechaAMostrar = esCanaston
         ? ((cuotaPendienteSemanaActual?['fecha_vencimiento'] ??
-                cuotaPendienteSemanaActual?['fecha'])
-            ?.toString())
+                  cuotaPendienteSemanaActual?['fecha'])
+              ?.toString())
         : proximaFecha;
 
     final montoAMostrar = esCanaston
         ? ((cuotaPendienteSemanaActual?['monto_falta'] as num?)?.toDouble() ??
-            proximoMonto)
+              proximoMonto)
         : proximoMonto;
 
     final idCuotaAMostrar = esCanaston
@@ -357,9 +368,8 @@ class _DetalleConductorCuotasSheetState
     final Map<String, List<Map<String, dynamic>>> gruposPorMes = {};
     if (esCanaston) {
       for (final item in listaFiltrada) {
-        final f = (item['fecha_vencimiento'] ?? item['fecha'])
-                ?.toString()
-                .trim() ??
+        final f =
+            (item['fecha_vencimiento'] ?? item['fecha'])?.toString().trim() ??
             '';
         final claveMes = f.length >= 7 ? f.substring(0, 7) : 'GENERAL';
         gruposPorMes.putIfAbsent(claveMes, () => []).add(item);
@@ -442,7 +452,10 @@ class _DetalleConductorCuotasSheetState
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+                            border: Border.all(
+                              color: const Color(0xFFE2E8F0),
+                              width: 1.1,
+                            ),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.03),
@@ -510,11 +523,11 @@ class _DetalleConductorCuotasSheetState
                                             child: Text(
                                               alDiaEstaSemana
                                                   ? (alDia
-                                                      ? 'Al día con todas las cuotas'
-                                                      : 'Al día con esta semana ($pagadasCount pagadas)')
+                                                        ? 'Al día con todas las cuotas'
+                                                        : 'Al día con esta semana ($pagadasCount pagadas)')
                                                   : (esCanaston
-                                                      ? 'Pendiente · Debe cuota de esta semana'
-                                                      : 'Pendiente · Debe Bs. ${falta.toStringAsFixed(0)}'),
+                                                        ? 'Pendiente · Debe cuota de esta semana'
+                                                        : 'Pendiente · Debe Bs. ${falta.toStringAsFixed(0)}'),
                                               style: TextStyle(
                                                 fontSize: 12.5,
                                                 fontWeight: FontWeight.bold,
@@ -573,9 +586,10 @@ class _DetalleConductorCuotasSheetState
                                           Text(
                                             esCuotaUnica
                                                 ? 'FECHA DE PAGO'
-                                                : (fechaAMostrar == fechaSemanaActual
-                                                    ? 'CUOTA DE ESTA SEMANA'
-                                                    : 'CUOTA PENDIENTE (RETRASADA)'),
+                                                : (fechaAMostrar ==
+                                                          fechaSemanaActual
+                                                      ? 'CUOTA DE ESTA SEMANA'
+                                                      : 'CUOTA PENDIENTE (RETRASADA)'),
                                             style: const TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.bold,
@@ -629,6 +643,9 @@ class _DetalleConductorCuotasSheetState
                                         ),
                                         onPressed: () => _cobrarCuota(
                                           montoEspecifico: montoAMostrar > 0
+                                              ? montoAMostrar
+                                              : null,
+                                          montoMaximo: montoAMostrar > 0
                                               ? montoAMostrar
                                               : null,
                                           idCuotaEspecifica: idCuotaAMostrar,
@@ -820,8 +837,9 @@ class _DetalleConductorCuotasSheetState
                                         ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFE8F5EF),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                           border: Border.all(
                                             color: const Color(0xFFE8F5EF),
                                           ),
@@ -836,8 +854,9 @@ class _DetalleConductorCuotasSheetState
                                             ),
                                             const SizedBox(width: 6),
                                             Text(
-                                              _nombreMesAnio(entry.key)
-                                                  .toUpperCase(),
+                                              _nombreMesAnio(
+                                                entry.key,
+                                              ).toUpperCase(),
                                               style: const TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w800,
@@ -869,18 +888,17 @@ class _DetalleConductorCuotasSheetState
                                 ),
                                 ListView.separated(
                                   shrinkWrap: true,
-                                  physics:
-                                      const NeverScrollableScrollPhysics(),
+                                  physics: const NeverScrollableScrollPhysics(),
                                   itemCount: entry.value.length,
                                   separatorBuilder: (_, _) =>
                                       const SizedBox(height: 8),
                                   itemBuilder: (context, idx) =>
                                       _buildItemCuota(
-                                    entry.value[idx],
-                                    idx,
-                                    hoyStr,
-                                    puedeEditar,
-                                  ),
+                                        entry.value[idx],
+                                        idx,
+                                        hoyStr,
+                                        puedeEditar,
+                                      ),
                                 ),
                               ],
                             ],
@@ -898,7 +916,7 @@ class _DetalleConductorCuotasSheetState
                               hoyStr,
                               puedeEditar,
                             ),
-                          )
+                          ),
                       ],
                     ),
                   ),
@@ -925,13 +943,22 @@ class _DetalleConductorCuotasSheetState
                     elevation: 0,
                   ),
                   onPressed: () => _cobrarCuota(
-                    montoEspecifico: esCanaston && cuotaPendienteSemanaActual != null
-                        ? (cuotaPendienteSemanaActual['monto_falta'] as num?)?.toDouble()
+                    montoEspecifico:
+                        esCanaston && cuotaPendienteSemanaActual != null
+                        ? (cuotaPendienteSemanaActual['monto_falta'] as num?)
+                              ?.toDouble()
                         : null,
-                    idCuotaEspecifica: esCanaston && cuotaPendienteSemanaActual != null
+                    montoMaximo:
+                        esCanaston && cuotaPendienteSemanaActual != null
+                        ? (cuotaPendienteSemanaActual['monto_falta'] as num?)
+                              ?.toDouble()
+                        : null,
+                    idCuotaEspecifica:
+                        esCanaston && cuotaPendienteSemanaActual != null
                         ? cuotaPendienteSemanaActual['id_cuota']?.toString()
                         : null,
-                    conceptoCuota: esCanaston && cuotaPendienteSemanaActual != null
+                    conceptoCuota:
+                        esCanaston && cuotaPendienteSemanaActual != null
                         ? 'Cuota · ${_formatearFechaTexto(fechaAMostrar)}'
                         : null,
                   ),
@@ -1022,10 +1049,7 @@ class _DetalleConductorCuotasSheetState
         borderRadius: BorderRadius.circular(14),
         onTap: estaPagada ? () => _verRecibo(idPago, idCuota) : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 12,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
@@ -1195,9 +1219,7 @@ class _DetalleConductorCuotasSheetState
                     decoration: BoxDecoration(
                       color: const Color(0xFFE8F5EF),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Color(0x3302634C),
-                      ),
+                      border: Border.all(color: Color(0x3302634C)),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1237,6 +1259,7 @@ class _DetalleConductorCuotasSheetState
                   ),
                   onPressed: () => _cobrarCuota(
                     montoEspecifico: saldoItem,
+                    montoMaximo: saldoItem,
                     idCuotaEspecifica: idCuota,
                     conceptoCuota: concepto,
                   ),

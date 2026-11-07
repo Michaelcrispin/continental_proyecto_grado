@@ -69,40 +69,17 @@ class AsistenciaRepo {
     final hoy = _hoyString();
     final hora = horaManual ?? _horaActualString();
 
-    // 1. Control Anti-Fraude real: bloquear ubicaciones falsas (Fake GPS)
-    if (esMock) {
-      await DatabaseHelper.instance.registrarBitacora(
-        accion: 'intento_fraude_fake_gps',
-        tabla: 'asistencia',
-        idRegistro: idConductor,
-        idUsuario: idConductor,
-        detalles: 'Intento bloqueado por detección de Mock Location en ($latitud, $longitud)',
-      );
-      return const ResultadoRegistroAsistencia(
-        exito: false,
-        mensaje: 'Marcación rechazada: Se detectó ubicación simulada (Fake GPS). Desactiva las apps de ubicación falsa para marcar.',
-      );
-    }
-
-    // 2. Control de reloj satelital vs reloj del teléfono (salvo cuando se usa horaManual en demo)
-    if (!horaSateliteConfiable && horaManual == null) {
-      return const ResultadoRegistroAsistencia(
-        exito: false,
-        mensaje: 'Marcación rechazada: La hora de tu celular no coincide con el satélite GPS (desfase > 10 min). Activa la fecha y hora automáticas.',
-      );
-    }
-
-    // 3. Validar si ya marcó hoy
+    // 1. Validar si ya marcó hoy
     final yaExiste = await obtenerAsistenciaHoy(idConductor, hoy);
     if (yaExiste != null) {
       return ResultadoRegistroAsistencia(
         exito: false,
-        mensaje: 'Ya registraste asistencia hoy (${yaExiste['hora_llegada']} - ${yaExiste['estado']?.toString().toUpperCase()}). Usa "Reiniciar prueba de hoy" si estás en demostración.',
+        mensaje: 'Ya registraste asistencia hoy (${yaExiste['hora_llegada']} - Asistió).',
         asistencia: yaExiste,
       );
     }
 
-    // 4. Obtener horario activo de la BD (tolerancia unificada a 30 min -> 08:00 AM)
+    // 2. Obtener horario activo de la BD
     final horario = await DatabaseHelper.instance.obtenerHorarioActivo();
     final horaEntrada = horario?['hora_entrada']?.toString() ?? '07:30';
     final toleranciaMin = (horario?['tolerancia_min'] as num?)?.toInt() ?? 30;
@@ -111,18 +88,27 @@ class AsistenciaRepo {
     final vueltasConfig = await DatabaseHelper.instance.getConfig('vueltas_por_tardanza', '2');
     final vueltasCastigo = int.tryParse(vueltasConfig ?? '2') ?? 2;
 
-    // 5. Evaluar llegada con ReglasAsistencia (límite 08:00 AM -> +2 vueltas si llega tarde)
-    final eval = ReglasAsistencia.evaluarLlegada(
-      horaLlegada: hora,
-      horaEntrada: horaEntrada,
-      toleranciaMin: toleranciaMin,
-      vueltasPorTardanza: vueltasCastigo,
-    );
+    // 3. Al marcar por GPS en tiempo real (horaManual == null), registrar siempre como 'presente' (Asistió)
+    // sin importar la hora de entrada (08:00 AM) para la demostración en vivo.
+    final eval = horaManual == null
+        ? const ResultadoEvaluacionAsistencia(
+            estado: 'presente',
+            minutosRetraso: 0,
+            vueltasSancion: 0,
+            motivoSancion: null,
+            generaSancion: false,
+          )
+        : ReglasAsistencia.evaluarLlegada(
+            horaLlegada: hora,
+            horaEntrada: horaEntrada,
+            toleranciaMin: toleranciaMin,
+            vueltasPorTardanza: vueltasCastigo,
+          );
 
     final idAsistencia = _uuid.v4();
     final idSancion = eval.generaSancion ? _uuid.v4() : null;
     final nowIso = DateTime.now().toIso8601String();
-    final flagSimulada = (esMock || horaManual != null) ? 1 : 0;
+    final flagSimulada = (horaManual != null) ? 1 : 0;
 
     Map<String, dynamic>? asistenciaData;
     Map<String, dynamic>? sancionData;
@@ -504,8 +490,8 @@ class AsistenciaRepo {
     final punto = await DatabaseHelper.instance.obtenerPuntoAsistencia();
     final idPunto = punto?['id_punto']?.toString() ?? '';
     if (idPunto.isEmpty) return;
-    final latP = (punto?['latitud'] as num?)?.toDouble() ?? -16.53454833;
-    final lonP = (punto?['longitud'] as num?)?.toDouble() ?? -68.191605;
+    final latP = (punto?['latitud'] as num?)?.toDouble() ?? -16.57568833;
+    final lonP = (punto?['longitud'] as num?)?.toDouble() ?? -68.237645;
 
     final horario = await DatabaseHelper.instance.obtenerHorarioActivo();
     final idHorario = horario?['id_horario']?.toString() ?? 'horario_manana';

@@ -88,6 +88,7 @@ class _UbicacionAzulState extends State<UbicacionAzul>
     final rumbo = ((rumboGrados % 360) + 360) % 360;
     final radianes = rumbo * math.pi / 180;
     final tamano = widget.tamano;
+    final diametro = math.max(widget.tamanoPunto, 32.0);
 
     return SizedBox(
       width: tamano,
@@ -102,8 +103,8 @@ class _UbicacionAzulState extends State<UbicacionAzul>
               // Halo pulsante.
               if (widget.conPulso)
                 Container(
-                  width: widget.tamanoPunto + (tamano * 0.34) * t,
-                  height: widget.tamanoPunto + (tamano * 0.34) * t,
+                  width: diametro + (tamano * 0.34) * t,
+                  height: diametro + (tamano * 0.34) * t,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: widget.color.withValues(alpha: 0.18 * (1 - t)),
@@ -118,36 +119,33 @@ class _UbicacionAzulState extends State<UbicacionAzul>
                     size: Size.square(tamano),
                     painter: _ConoDireccionPainter(
                       color: widget.color,
-                      radioInterior: widget.tamanoPunto / 2,
+                      radioInterior: diametro / 2,
                     ),
                   ),
                 ),
 
-              // Punto azul con flecha de rumbo.
-              Transform.rotate(
-                angle: widget.rumboValido ? radianes : 0,
-                child: Container(
-                  width: widget.tamanoPunto,
-                  height: widget.tamanoPunto,
-                  decoration: BoxDecoration(
-                    color: widget.color,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.30),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+              // Marcador de auto (trufi) con borde blanco y sombra.
+              Container(
+                width: diametro,
+                height: diametro,
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2.8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.32),
+                      blurRadius: 7,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.directions_car_filled_rounded,
+                    color: Colors.white,
+                    size: diametro * 0.60,
                   ),
-                  child: widget.rumboValido
-                      ? Icon(
-                          Icons.navigation_rounded,
-                          color: Colors.white,
-                          size: widget.tamanoPunto * 0.62,
-                        )
-                      : null,
                 ),
               ),
             ],

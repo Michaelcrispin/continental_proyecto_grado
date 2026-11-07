@@ -20,6 +20,7 @@ import 'asistencia/asistencia_screen.dart';
 import 'cuotas/cuotas_screen.dart';
 import 'gps/ruta_oficial_screen.dart';
 import 'home_screen.dart';
+import 'sanciones_screen.dart';
 
 class VueltasScreen extends StatefulWidget {
   const VueltasScreen({super.key});
@@ -46,12 +47,13 @@ class _VueltasScreenState extends State<VueltasScreen> {
     try {
       final hoy = DateTime.now().toIso8601String().substring(0, 10);
       final helper = DatabaseHelper.instance;
-      try {
-        await helper.sembrarVueltasCastigoDemo();
-      } catch (e) {
-        debugPrint('No se pudieron crear los datos de demostración: $e');
-      }
       final db = await helper.database;
+      try {
+        await db.delete(
+          'sancion',
+          where: "es_simulada = 1 OR origen = 'demo_castigo' OR origen = 'simulado'",
+        );
+      } catch (_) {}
       final horaInicio = await helper.getConfig('hora_inicio_castigo', '21:00') ?? '21:00';
       final conductores = await helper.conductoresConAuto();
       final sanciones = await helper.sancionesDetalle();
@@ -251,6 +253,11 @@ class _VueltasScreenState extends State<VueltasScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const CuotasScreen()),
+            );
+          } else if (tab == AppBottomTab.sanciones) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SancionesScreen()),
             );
           }
         },

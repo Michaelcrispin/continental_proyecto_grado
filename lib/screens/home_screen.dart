@@ -52,7 +52,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedModuloIndex = 0;
   bool _isLoading = true;
-  Map<String, num> _resumen = {
+  Map<String, dynamic> _resumen = {
     'conductores_activos': 0,
     'asistencias_hoy': 0,
     'sanciones_pendientes': 0,
@@ -166,12 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 18),
 
-            // 2. Carrusel Horizontal de Íconos (Idéntico a Imagen 1)
-            _buildCarouselModulos(context, rol, esConductor),
-
-            const SizedBox(height: 8),
-
-            // 3. Contenido Principal (Estadísticas y Resumen)
+            // 2. Contenido Principal (Resumen del día primero)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
               child: Column(
@@ -238,51 +233,86 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     )
                   else if (esConductor) ...[
-                    // Par de tarjetas destacadas superiores (Asistencia y Vueltas - estilo Washer Service)
-                    _buildHeroPairCards(
-                      title1: 'Mi Asistencia',
-                      value1: _resumen['asistio_hoy'] == 1
-                          ? 'Presente'
-                          : 'Pendiente',
-                      subtitle1: 'Marcación de hoy',
-                      icon1: Icons.how_to_reg_rounded,
-                      color1: _resumen['asistio_hoy'] == 1
-                          ? AppColors.success
-                          : const Color(0xFFF59E0B),
-                      onTap1: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AsistenciaScreen(),
-                          ),
-                        ).then((_) => _cargarDatos());
-                      },
-                      title2: 'Mis Vueltas',
-                      value2: '${_resumen['vueltas_hoy'] ?? 0}',
-                      subtitle2: 'Completadas hoy',
-                      icon2: Icons.route_rounded,
-                      color2: const Color(0xFF3B82F6),
-                      onTap2: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const VueltasScreen(),
-                          ),
-                        ).then((_) => _cargarDatos());
+                    // Par de tarjetas destacadas superiores (Asistencia y Sanciones / Vueltas de castigo)
+                    Builder(
+                      builder: (context) {
+                        final estadoSancion = _resumen['estado_sancion']?.toString() ?? 'sin_sancion';
+                        final asig = (_resumen['vueltas_castigo_asignadas'] as num?)?.toInt() ?? 0;
+                        final cump = (_resumen['vueltas_castigo_cumplidas'] as num?)?.toInt() ?? 0;
+
+                        final String valorSancion;
+                        final String subtituloSancion;
+                        final Color colorSancion;
+                        final IconData iconoSancion;
+
+                        if (estadoSancion == 'pendiente' && asig > 0) {
+                          valorSancion = '$cump/$asig';
+                          subtituloSancion = 'Vueltas por cumplir';
+                          colorSancion = cump > 0 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
+                          iconoSancion = Icons.warning_amber_rounded;
+                        } else if (estadoSancion == 'cumplida' && asig > 0) {
+                          valorSancion = '$cump/$asig';
+                          subtituloSancion = 'Vueltas cumplidas';
+                          colorSancion = const Color(0xFF10B981);
+                          iconoSancion = Icons.verified_rounded;
+                        } else {
+                          valorSancion = '0';
+                          subtituloSancion = 'Sin vueltas por cumplir';
+                          colorSancion = const Color(0xFF02634C);
+                          iconoSancion = Icons.check_circle_outline_rounded;
+                        }
+
+                        final asistioHoy =
+                            ((_resumen['asistio_hoy'] as num?)?.toInt() ?? 0) >= 1;
+
+                        return _buildHeroPairCards(
+                          title1: 'Mi Asistencia',
+                          value1: asistioHoy
+                              ? 'Asistió'
+                              : 'Pendiente',
+                          subtitle1: asistioHoy
+                              ? 'Asistencia registrada hoy'
+                              : 'Marcación de hoy',
+                          icon1: Icons.how_to_reg_rounded,
+                          color1: asistioHoy
+                              ? AppColors.success
+                              : const Color(0xFFF59E0B),
+                          onTap1: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const GpsEnVivoScreen(),
+                              ),
+                            ).then((_) => _cargarDatos());
+                          },
+                          title2: 'Mis Sanciones',
+                          value2: valorSancion,
+                          subtitle2: subtituloSancion,
+                          icon2: iconoSancion,
+                          color2: colorSancion,
+                          onTap2: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SancionesScreen(),
+                              ),
+                            ).then((_) => _cargarDatos());
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: 12),
                     _buildStatCard(
-                      Icons.warning_amber_rounded,
-                      const Color(0xFFEF4444),
-                      'Mis Sanciones',
-                      '${_resumen['sanciones_pendientes'] ?? 0}',
-                      'Sanciones pendientes de descargo',
+                      Icons.route_rounded,
+                      const Color(0xFF3B82F6),
+                      'Mis Vueltas',
+                      '${_resumen['vueltas_hoy'] ?? 0}',
+                      'Vueltas completadas hoy',
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const SancionesScreen(),
+                            builder: (_) => const VueltasScreen(),
                           ),
                         ).then((_) => _cargarDatos());
                       },
@@ -433,6 +463,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+
+            const SizedBox(height: 10),
+
+            // Título de la sección de accesos directos
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Accesos directos',
+                style: TextStyle(
+                  color: Color(0xFF1E293B),
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // 3. Cuadrícula de módulos (3 botones por fila)
+            _buildGridModulos(context, rol, esConductor),
+
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -455,6 +508,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const CuotasScreen()),
+            ).then((_) => _cargarDatos());
+          } else if (tab == AppBottomTab.sanciones) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SancionesScreen()),
             ).then((_) => _cargarDatos());
           }
         },
@@ -551,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.w400,
                         ),
                       ),
-                      if (rol != null) ...[
+                      if (rol != null && !SesionService.instance.esConductor) ...[
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -655,22 +713,27 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Carrusel horizontal estilo moderno (módulo activo resaltado, los demás en gris limpio tipo referencia)
-  Widget _buildCarouselModulos(
+  /// Cuadrícula de módulos: 3 botones por fila, sin carrusel ni scroll horizontal.
+  Widget _buildGridModulos(
     BuildContext context,
     String? rol,
     bool esConductor,
   ) {
     final modulos = _obtenerModulos(rol, esConductor);
 
-    return SizedBox(
-      height: 106,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
         itemCount: modulos.length,
-        separatorBuilder: (_, index) => const SizedBox(width: 12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.86,
+        ),
         itemBuilder: (context, index) {
           final m = modulos[index];
           final esSeleccionado = index == _selectedModuloIndex;
@@ -685,8 +748,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
-              width: 90,
-              height: 104,
               decoration: BoxDecoration(
                 color: esSeleccionado ? _kVerdeOscuro : const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(22),
@@ -1117,13 +1178,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1E293B),
-                        letterSpacing: -0.5,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF1E293B),
+                          letterSpacing: -0.5,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1207,31 +1272,33 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Pill de rol con borde sutil translúcido
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.55),
-                            width: 1.0,
+                      // Pill de rol con borde sutil translúcido (solo para roles administrativos/supervisión)
+                      if (!SesionService.instance.esConductor) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 2.5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.55),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Text(
+                            etiquetaRol,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
                           ),
                         ),
-                        child: Text(
-                          etiquetaRol,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 5),
+                        const SizedBox(height: 5),
+                      ],
 
                       // Nombre del usuario en negrita
                       Text(
@@ -1294,78 +1361,12 @@ class _HomeScreenState extends State<HomeScreen> {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                _buildDrawerSectionHeader('NAVEGACIÓN'),
-                _buildDrawerItem(
-                  icon: Icons.home_rounded,
-                  title: 'Inicio',
-                  isSelected: true,
-                  onTap: () => Navigator.pop(context),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.groups_rounded,
-                  title: 'Asistencias',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const AsistenciaScreen()),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.alt_route_rounded,
-                  title: 'Vueltas y Recorridos',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const VueltasScreen()),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.map_rounded,
-                  title: 'Ruta',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const RutaOficialScreen()),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'Cuotas y Finanzas',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const CuotasScreen()),
-                ),
-
-                const Divider(
-                  height: 20,
-                  thickness: 1,
-                  color: Color(0xFFF1F5F9),
-                  indent: 16,
-                  endIndent: 16,
-                ),
-                _buildDrawerSectionHeader('OPERACIONES'),
-                _buildDrawerItem(
-                  icon: Icons.groups_rounded,
-                  title: 'Reuniones y Asambleas',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const ReunionesScreen()),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.warning_amber_rounded,
-                  title: 'Sanciones',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const SancionesScreen()),
-                ),
-                _buildDrawerItem(
-                  icon: Icons.my_location_rounded,
-                  title: 'Monitoreo GPS en Vivo',
-                  onTap: () =>
-                      _navegarDesdeDrawer(context, const GpsEnVivoScreen()),
-                ),
-
-                // Sección Administración según permisos
+                // Sección Administración según permisos (arriba de Operaciones).
                 // DESACTIVADO: el Panel Técnico ya no cuenta para mostrar la sección.
                 if (Permisos.puedeVer(rol, Permisos.moduloUsuarios) ||
                     Permisos.puedeVer(rol, Permisos.moduloConductores) ||
                     Permisos.puedeVer(rol, Permisos.moduloInformes) ||
                     Permisos.puedeVer(rol, Permisos.moduloPuntosParada)) ...[
-                  const Divider(
-                    height: 20,
-                    thickness: 1,
-                    color: Color(0xFFF1F5F9),
-                    indent: 16,
-                    endIndent: 16,
-                  ),
                   _buildDrawerSectionHeader('ADMINISTRACIÓN'),
                   if (Permisos.puedeVer(rol, Permisos.moduloUsuarios))
                     _buildDrawerItem(
@@ -1409,7 +1410,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   //       const PanelTecnicoScreen(),
                   //     ),
                   //   ),
+                  const Divider(
+                    height: 20,
+                    thickness: 1,
+                    color: Color(0xFFF1F5F9),
+                    indent: 16,
+                    endIndent: 16,
+                  ),
                 ],
+
+                _buildDrawerSectionHeader('OPERACIONES'),
+                _buildDrawerItem(
+                  icon: Icons.groups_rounded,
+                  title: 'Reuniones y Asambleas',
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const ReunionesScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.warning_amber_rounded,
+                  title: 'Sanciones',
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const SancionesScreen()),
+                ),
+                _buildDrawerItem(
+                  icon: Icons.my_location_rounded,
+                  title: 'Monitoreo GPS en Vivo',
+                  onTap: () =>
+                      _navegarDesdeDrawer(context, const GpsEnVivoScreen()),
+                ),
 
                 const Divider(
                   height: 20,

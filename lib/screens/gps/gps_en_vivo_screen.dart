@@ -1,12 +1,9 @@
 // lib/screens/gps/gps_en_vivo_screen.dart
 //
-// Pantalla de monitoreo GPS en tiempo real para Superadmin y Operaciones:
-//  - Monitoreo individual y enfocado: muestra exclusivamente al conductor seleccionado para máxima fluidez y cero lentitud.
-//  - Trazado oficial del circuito de 14.69 km (Ida Cruce Villadela -> Teleférico y Vuelta).
-//  - Diseño Corporativo Sindicato Continental: Verde institucional (#02634C), fondos claros y tarjetas limpias.
-//  - Selector horizontal de conductores: cambia instantáneamente a cualquier móvil (#1, #2, #5, etc.).
-//  - Telemetría en vivo: velocidad (km/h), vueltas cumplidas, rumbo real, estado de asistencia y distancias a paradas A y B.
-//  - Modos satelital y calles con geocercas calibradas en Parada A y Parada B.
+// Pantalla de monitoreo GPS en tiempo real (100% GPS real y datos reales de SQLite, sin simulaciones):
+//  - Lee conductores, asistencias, vueltas y sanciones reales desde SQLite.
+//  - Usa exclusivamente el chip GPS físico del dispositivo (Geolocator) para posición, velocidad, precisión y distancias.
+//  - Geocercas rectangulares en Parada A y Parada B sobre la calle configurada en RutaContinental.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -30,7 +27,6 @@ import '../asistencia/puntos_control_screen.dart';
 // ---------- Paleta Corporativa Sindicato Continental ----------
 const _kVerdeContinental = Color(0xFF02634C);
 const _kVerdeOscuro = Color(0xFF064E3B);
-const _kVerdeClaro = Color(0xFFE6F4F0);
 const _kVerdeBorde = Color(0xFFA7F3D0);
 const _kVerdeActivo = Color(0xFF10B981);
 const _kParadaA = Color(0xFF02634C);
@@ -39,11 +35,10 @@ const _kTextoOscuro = Color(0xFF0F172A);
 const _kTextoMuted = Color(0xFF64748B);
 const _kUsuario = Color(0xFF2563EB);
 const _kDentro = Color(0xFF10B981);
-const _kFuera = Color(0xFFEF4444);
 
 enum _Estilo { satelite, calles }
 
-/// Modelo que representa a un vehículo/conductor de la flota monitoreado en tiempo real.
+/// Modelo que representa el estado real en SQLite de un conductor del sindicato.
 class _VehiculoFlota {
   final String idConductor;
   final String nombre;
@@ -52,17 +47,10 @@ class _VehiculoFlota {
   final String foto;
   String estadoAsistencia; // 'tiempo' | 'tardanza' | 'falta'
   String horaMarcacion;
-  final bool activoEnRuta;
-
-  LatLng posicion;
-  double velocidadKmh;
-  double rumboGrados;
-  int vueltas;
-  int metaVueltas;
-  int indiceRuta;
-  bool enIda;
-  double distanciaRecorridaM = 0.0;
-  final List<LatLng> rastro;
+  LatLng? posicionRegistrada;
+  int vueltasHoy;
+  int vueltasCastigoCumplidas;
+  int metaVueltasCastigo;
 
   _VehiculoFlota({
     required this.idConductor,
@@ -72,18 +60,11 @@ class _VehiculoFlota {
     this.foto = '',
     required this.estadoAsistencia,
     required this.horaMarcacion,
-    required this.activoEnRuta,
-    required this.posicion,
-    required this.velocidadKmh,
-    required this.rumboGrados,
-    required this.vueltas,
-    this.metaVueltas = 2,
-    required this.indiceRuta,
-    required this.enIda,
-    double? distanciaRecorridaM,
-    List<LatLng>? rastro,
-  })  : distanciaRecorridaM = distanciaRecorridaM ?? 0.0,
-        rastro = rastro ?? [];
+    this.posicionRegistrada,
+    this.vueltasHoy = 0,
+    this.vueltasCastigoCumplidas = 0,
+    this.metaVueltasCastigo = 0,
+  });
 
   String get primerNombre {
     final partes = nombre.trim().split(RegExp(r'\s+'));
@@ -109,42 +90,16 @@ class _Parada {
   });
 }
 
-/// Estado Dentro/Fuera con histéresis y confirmación por tiempo para el GPS del dispositivo.
+/// Estado Dentro/Fuera estricto respecto al rectángulo del punto de control.
 class _Geocerca {
   bool dentro = false;
-  bool? _candidato;
-  DateTime? _candidatoDesde;
-
-  static const Duration confirmacion = Duration(milliseconds: 2400);
 
   void actualizar({
     required double distancia,
     required double accuracy,
     required double radio,
   }) {
-    final margen = (accuracy * 0.4).clamp(2.0, 8.0);
-    final limite = dentro ? (margen + 6.0) : margen;
-    final lecturaDentro = distancia <= limite;
-
-    if (lecturaDentro == dentro) {
-      _candidato = null;
-      _candidatoDesde = null;
-      return;
-    }
-
-    final ahora = DateTime.now();
-    if (_candidato != lecturaDentro) {
-      _candidato = lecturaDentro;
-      _candidatoDesde = ahora;
-      return;
-    }
-
-    if (_candidatoDesde != null &&
-        ahora.difference(_candidatoDesde!) >= confirmacion) {
-      dentro = lecturaDentro;
-      _candidato = null;
-      _candidatoDesde = null;
-    }
+    dentro = distancia <= 0.5;
   }
 }
 
@@ -162,7 +117,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   late final AnimationController _pulso;
   StreamSubscription<Position>? _subGps;
   StreamSubscription<CompassEvent>? _subBrujula;
-  Timer? _timerSimFlota;
+  Timer? _timerRefrescoGps;
 
   // Rumbo del visor (brújula)
   double _rumboGrados = 0;
@@ -170,26 +125,48 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   bool _rumboValido = false;
   bool _brujulaDisponible = false;
 
-  // Paradas y Geocercas
-  List<_Parada> _paradas = [];
-  final Map<String, _Geocerca> _estados = {};
+  // Paradas y Geocercas inicializadas con las coordenadas oficiales de la ruta
+  List<_Parada> _paradas = const [
+    _Parada(
+      id: 'parada_a_villadela',
+      nombre: 'Cruce Villadela',
+      etiqueta: 'A',
+      punto: RutaContinental.paradaAVilladela,
+      radio: 20,
+      color: _kParadaA,
+    ),
+    _Parada(
+      id: 'parada_b_teleferico',
+      nombre: 'Teleférico Amarillo - Mirador',
+      etiqueta: 'B',
+      punto: RutaContinental.paradaBTeleferico,
+      radio: 20,
+      color: _kParadaB,
+    ),
+  ];
+  final Map<String, _Geocerca> _estados = {
+    'parada_a_villadela': _Geocerca(),
+    'parada_b_teleferico': _Geocerca(),
+  };
 
-  // GPS propio del dispositivo
+  // GPS físico real del dispositivo
   final List<LatLng> _rastroUsuario = [];
   Position? _posUsuario;
   LatLng? _posFiltrada;
+  double _velocidadRealKmh = 0.0;
+  double _distanciaRealM = 0.0;
+  bool _marcandoAsistencia = false;
 
-  // Lista de conductores disponibles y vehículo actualmente enfocado
+  // Conductores reales de SQLite
   List<_VehiculoFlota> _vehiculos = [];
   _VehiculoFlota? _vehiculoSeleccionado;
 
-  bool _seguir = true;
+  bool _seguir = false;
   bool _mapaListo = false;
   String? _errorGps;
-  String? _advertenciaParadas;
   _Estilo _estilo = _Estilo.satelite;
 
-  // Conteo de vueltas
+  // Conteo de vueltas por GPS real
   String? _ladoBase;
   String? _ladoActual;
   int _vueltasUsuario = 0;
@@ -211,7 +188,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
 
   @override
   void dispose() {
-    _timerSimFlota?.cancel();
+    _timerRefrescoGps?.cancel();
     _subGps?.cancel();
     _subBrujula?.cancel();
     _rumboNotifier.dispose();
@@ -219,12 +196,16 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     super.dispose();
   }
 
-  // ---------- Carga de Flota de Conductores ----------
+  // ---------- Carga 100% Real desde SQLite ----------
   Future<void> _cargarFlotaConductores() async {
     try {
       final hoy = DateTime.now().toIso8601String().substring(0, 10);
       final conductoresBd = await DatabaseHelper.instance.conductoresConAuto();
-      final asistenciasBd = await DatabaseHelper.instance.asistenciasDetalle(fecha: hoy);
+      final asistenciasBd =
+          await DatabaseHelper.instance.asistenciasDetalle(fecha: hoy);
+      final vueltasHoyBd =
+          await DatabaseHelper.instance.vueltasDetalle(fecha: hoy);
+      final sancionesBd = await DatabaseHelper.instance.sancionesDetalle();
 
       final asistenciasPorConductor = <String, Map<String, dynamic>>{};
       for (final a in asistenciasBd) {
@@ -234,25 +215,41 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         }
       }
 
-      final circuito = RutaContinental.circuitoCompleto;
-      final totalPuntos = circuito.isNotEmpty ? circuito.length : 1;
+      final vueltasPorConductor = <String, int>{};
+      for (final v in vueltasHoyBd) {
+        final idC = v['id_conductor']?.toString() ?? '';
+        if (idC.isNotEmpty) {
+          vueltasPorConductor[idC] = (vueltasPorConductor[idC] ?? 0) + 1;
+        }
+      }
+
+      final sancionActivaPorConductor = <String, Map<String, dynamic>>{};
+      for (final s in sancionesBd) {
+        final idC = s['id_conductor']?.toString() ?? '';
+        if (idC.isEmpty) continue;
+        final est = s['estado']?.toString() ?? '';
+        final cerradaHoy = est == 'cumplida' &&
+            (s['updated_at']?.toString() ?? '').startsWith(hoy);
+        if (est == 'pendiente' || cerradaHoy) {
+          sancionActivaPorConductor.putIfAbsent(idC, () => s);
+        }
+      }
+
       final List<_VehiculoFlota> flota = [];
 
-      final listaRaw = conductoresBd.isNotEmpty
-          ? conductoresBd
-          : _generarPlantillaFlota();
-
-      for (int i = 0; i < listaRaw.length; i++) {
-        final c = listaRaw[i];
-        final id = c['id_conductor']?.toString() ?? 'cond_${i + 1}';
+      for (int i = 0; i < conductoresBd.length; i++) {
+        final c = conductoresBd[i];
+        final id = c['id_conductor']?.toString() ?? '';
         final nombre = c['nombre']?.toString() ?? 'Conductor #${i + 1}';
         final unidad = c['numero_interno']?.toString() ?? '${i + 1}';
-        final placa = c['placa']?.toString() ?? '101-CNT';
+        final placa = c['placa']?.toString() ?? 'S/P';
         final foto = c['foto']?.toString() ?? '';
         final asist = asistenciasPorConductor[id];
+        final sancion = sancionActivaPorConductor[id];
 
         String estado;
         String hora;
+        LatLng? posReg;
 
         if (asist != null) {
           final st = asist['estado']?.toString().toLowerCase() ?? 'presente';
@@ -263,77 +260,22 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           } else {
             estado = 'tiempo';
           }
-          hora = asist['hora_llegada']?.toString() ?? '07:35 AM';
-        } else {
-          final uNum = int.tryParse(unidad) ?? (i + 1);
-          if (uNum % 10 == 9 || uNum % 10 == 0) {
-            estado = 'falta';
-            hora = '--:--';
-          } else if (uNum % 7 == 0) {
-            estado = 'tardanza';
-            hora = '08:15 AM';
-          } else {
-            estado = 'tiempo';
-            hora = '07:${(30 + (uNum * 2).clamp(1, 28)).toString().padLeft(2, '0')} AM';
+          hora = asist['hora_llegada']?.toString() ?? '--:--';
+          final lat = (asist['latitud'] as num?)?.toDouble();
+          final lon = (asist['longitud'] as num?)?.toDouble();
+          if (lat != null && lon != null) {
+            posReg = LatLng(lat, lon);
           }
-        }
-
-        final uNum = int.tryParse(unidad) ?? (i + 1);
-        // Vueltas de castigo (sanción por tardanza, se cumplen de noche) del conductor monitoreado
-        final cm = widget.conductorMonitoreado;
-        final bool esMonitoreado = cm != null &&
-            ((cm['id_conductor']?.toString() == id) ||
-                (cm['id_conductor'] == null && cm['unidad']?.toString() == unidad));
-        final int? hechasCastigo =
-            esMonitoreado ? (cm['vueltas_hechas'] as num?)?.toInt() : null;
-        final int metaCastigo =
-            esMonitoreado ? ((cm['vueltas_meta'] as num?)?.toInt() ?? 2) : 2;
-        final bool activo = hechasCastigo != null
-            ? (hechasCastigo > 0 && hechasCastigo < metaCastigo)
-            : (estado == 'tiempo' || estado == 'tardanza');
-
-        LatLng pos;
-        double vel;
-        double rumbo;
-        int vueltas;
-        int idxRuta;
-        bool enIda;
-
-        if (activo && circuito.isNotEmpty) {
-          final paso = (totalPuntos / math.max(1, listaRaw.length)).floor();
-          idxRuta = (esMonitoreado && hechasCastigo != null)
-              ? (totalPuntos * 0.55).floor()
-              : (i * paso + (uNum * 3)) % totalPuntos;
-          pos = circuito[idxRuta];
-
-          final nextIdx = (idxRuta + 1) % totalPuntos;
-          final nextPt = circuito[nextIdx];
-          final dy = nextPt.latitude - pos.latitude;
-          final dx = nextPt.longitude - pos.longitude;
-          rumbo = (math.atan2(dx, dy) * 180 / math.pi + 360) % 360;
-
-          vel = 28.0 + (uNum % 7) * 2.0;
-          vueltas = 0;
-          enIda = idxRuta < RutaContinental.puntosIda.length;
         } else {
-          idxRuta = 0;
-          enIda = true;
-          final offLat = -0.0016 - (uNum % 4) * 0.00035;
-          final offLon = -0.0015 + ((uNum * 3) % 5) * 0.00035;
-          pos = LatLng(
-            RutaContinental.paradaAVilladela.latitude + offLat,
-            RutaContinental.paradaAVilladela.longitude + offLon,
-          );
-          vel = 0.0;
-          rumbo = 0.0;
-          vueltas = 0;
+          estado = 'falta';
+          hora = 'Sin marcar';
         }
 
-        if (hechasCastigo != null) vueltas = hechasCastigo;
-        final double distRecorrida = hechasCastigo != null
-            ? (hechasCastigo * 14690.0) +
-                (activo ? (idxRuta / math.max(1, totalPuntos)) * 14690.0 : 0.0)
-            : 0.0;
+        final vueltasHoy = vueltasPorConductor[id] ?? 0;
+        final hechasCastigo =
+            (sancion?['vueltas_cumplidas'] as num?)?.toInt() ?? 0;
+        final metaCastigo =
+            (sancion?['vueltas_asignadas'] as num?)?.toInt() ?? 0;
 
         flota.add(
           _VehiculoFlota(
@@ -344,161 +286,63 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             foto: foto,
             estadoAsistencia: estado,
             horaMarcacion: hora,
-            activoEnRuta: activo,
-            posicion: pos,
-            velocidadKmh: vel,
-            rumboGrados: rumbo,
-            vueltas: vueltas,
-            metaVueltas: metaCastigo,
-            indiceRuta: idxRuta,
-            enIda: enIda,
-            distanciaRecorridaM: distRecorrida,
-            rastro: [pos],
+            posicionRegistrada: posReg,
+            vueltasHoy: vueltasHoy,
+            vueltasCastigoCumplidas: hechasCastigo,
+            metaVueltasCastigo: metaCastigo,
           ),
         );
       }
 
       if (!mounted) return;
       setState(() {
-        _vehiculos = flota;
+        final miIdConductor = SesionService.instance.idConductor;
+        if (SesionService.instance.esConductor &&
+            miIdConductor != null &&
+            miIdConductor.isNotEmpty) {
+          _vehiculos =
+              flota.where((v) => v.idConductor == miIdConductor).toList();
+          if (_vehiculos.isEmpty && flota.isNotEmpty) {
+            _vehiculos = [flota.first];
+          }
+        } else {
+          _vehiculos = flota;
+        }
 
-        // Si se especificó un chofer por parámetro se enfoca en él, sino por defecto el primero
-        if (widget.conductorMonitoreado != null) {
-          final idBuscado = widget.conductorMonitoreado!['id_conductor']?.toString();
-          final unidadBuscada = widget.conductorMonitoreado!['unidad']?.toString();
+        final idSelPrevio = _vehiculoSeleccionado?.idConductor;
+        if (idSelPrevio != null && _vehiculos.isNotEmpty) {
+          _vehiculoSeleccionado = _vehiculos.firstWhere(
+            (v) => v.idConductor == idSelPrevio,
+            orElse: () => _vehiculos.first,
+          );
+        } else if (widget.conductorMonitoreado != null &&
+            _vehiculos.isNotEmpty) {
+          final idBuscado =
+              widget.conductorMonitoreado!['id_conductor']?.toString();
+          final unidadBuscada =
+              widget.conductorMonitoreado!['unidad']?.toString();
           _vehiculoSeleccionado = _vehiculos.firstWhere(
             (v) =>
                 (idBuscado != null && v.idConductor == idBuscado) ||
                 (unidadBuscada != null && v.unidad == unidadBuscada),
             orElse: () => _vehiculos.first,
           );
+        } else if (miIdConductor != null && _vehiculos.isNotEmpty) {
+          _vehiculoSeleccionado = _vehiculos.firstWhere(
+            (v) => v.idConductor == miIdConductor,
+            orElse: () => _vehiculos.first,
+          );
         } else if (_vehiculos.isNotEmpty) {
           _vehiculoSeleccionado = _vehiculos.first;
         }
-        _seguir = true;
       });
 
-      _iniciarAnimacionFlota();
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_mapaListo) return;
-        if (_vehiculoSeleccionado != null) {
-          _map.move(_vehiculoSeleccionado!.posicion, 17.0);
-        } else {
-          _verRutaCompleta();
-        }
-      });
+      if (_posUsuario != null) {
+        _alRecibirPosicion(_posUsuario!);
+      }
     } catch (e) {
       debugPrint('Error cargando flota GPS: $e');
     }
-  }
-
-  List<Map<String, dynamic>> _generarPlantillaFlota() {
-    return [
-      {'id_conductor': '1', 'nombre': 'Jorge Aliaga', 'numero_interno': '1', 'placa': '4821-XRT'},
-      {'id_conductor': '2', 'nombre': 'Pedro Apaza Cruz', 'numero_interno': '2', 'placa': '3192-KBC'},
-      {'id_conductor': '3', 'nombre': 'David Guarachi', 'numero_interno': '8', 'placa': '2411-LMN'},
-      {'id_conductor': '4', 'nombre': 'Alberto Limachi', 'numero_interno': '9', 'placa': '5012-PQR'},
-      {'id_conductor': '5', 'nombre': 'Eugenio Tarqui', 'numero_interno': '11', 'placa': '1984-ZXC'},
-      {'id_conductor': '6', 'nombre': 'Felix Poma', 'numero_interno': '14', 'placa': '3847-ASD'},
-      {'id_conductor': '7', 'nombre': 'German Calle', 'numero_interno': '15', 'placa': '2910-YTR'},
-      {'id_conductor': '8', 'nombre': 'Ivan Silva', 'numero_interno': '18', 'placa': '4091-BVC'},
-      {'id_conductor': '9', 'nombre': 'Juan Quispe', 'numero_interno': '20', 'placa': '1823-QWE'},
-      {'id_conductor': '10', 'nombre': 'Mario Flores', 'numero_interno': '22', 'placa': '3456-RTY'},
-      {'id_conductor': '11', 'nombre': 'Carlos Nina Huanca', 'numero_interno': '25', 'placa': '5678-UIO'},
-      {'id_conductor': '12', 'nombre': 'Ramiro Condori', 'numero_interno': '28', 'placa': '2345-PAS'},
-      {'id_conductor': '13', 'nombre': 'Freddy Mamani', 'numero_interno': '31', 'placa': '6789-DFG'},
-      {'id_conductor': '14', 'nombre': 'Vicente Choque', 'numero_interno': '33', 'placa': '8901-HJK'},
-      {'id_conductor': '15', 'nombre': 'Gonzalo Morales', 'numero_interno': '35', 'placa': '1234-LZX'},
-      {'id_conductor': '16', 'nombre': 'Marcos Ticona', 'numero_interno': '38', 'placa': '4567-CVB'},
-      {'id_conductor': '17', 'nombre': 'Oscar Apaza', 'numero_interno': '40', 'placa': '7890-BNM'},
-      {'id_conductor': '18', 'nombre': 'Jaime Huanca', 'numero_interno': '42', 'placa': '2341-QAZ'},
-      {'id_conductor': '19', 'nombre': 'Roberto Gutierrez', 'numero_interno': '45', 'placa': '6782-WSX'},
-      {'id_conductor': '20', 'nombre': 'Daniel Mendoza', 'numero_interno': '50', 'placa': '9013-EDC'},
-    ];
-  }
-
-  /// Anima ÚNICAMENTE al vehículo enfocado para máxima ligereza, 60fps y cero lag
-  void _iniciarAnimacionFlota() {
-    _timerSimFlota?.cancel();
-    final circuito = RutaContinental.circuitoCompleto;
-    if (circuito.isEmpty) return;
-
-    _timerSimFlota = Timer.periodic(const Duration(milliseconds: 1800), (_) {
-      if (!mounted) return;
-      final v = _vehiculoSeleccionado;
-      if (v == null || !v.activoEnRuta) return;
-
-      final prev = v.posicion;
-      final nuevoIdx = (v.indiceRuta + 1) % circuito.length;
-      final next = circuito[nuevoIdx];
-
-      final d = ReglasAsistencia.calcularDistanciaMetros(
-        lat1: prev.latitude,
-        lon1: prev.longitude,
-        lat2: next.latitude,
-        lon2: next.longitude,
-      );
-
-      final dy = next.latitude - prev.latitude;
-      final dx = next.longitude - prev.longitude;
-      final ang = (math.atan2(dx, dy) * 180 / math.pi + 360) % 360;
-
-      v.indiceRuta = nuevoIdx;
-      v.posicion = next;
-      v.rumboGrados = ang;
-      v.enIda = nuevoIdx < RutaContinental.puntosIda.length;
-      v.distanciaRecorridaM += d;
-      v.rastro.add(next);
-      if (v.rastro.length > 30) {
-        v.rastro.removeAt(0);
-      }
-
-      if (nuevoIdx == 0) {
-        v.vueltas++;
-      }
-
-      final pisoA = !RutaContinental.estaDentroDeRectangulo(
-            prev,
-            RutaContinental.rectanguloParadaA,
-            margenMetros: 6.0,
-          ) &&
-          RutaContinental.estaDentroDeRectangulo(
-            next,
-            RutaContinental.rectanguloParadaA,
-            margenMetros: 6.0,
-          );
-      final pisoB = !RutaContinental.estaDentroDeRectangulo(
-            prev,
-            RutaContinental.rectanguloParadaB,
-            margenMetros: 6.0,
-          ) &&
-          RutaContinental.estaDentroDeRectangulo(
-            next,
-            RutaContinental.rectanguloParadaB,
-            margenMetros: 6.0,
-          );
-
-      if (pisoA || pisoB) {
-        final pa = _paradaPorEtiqueta(pisoA ? 'A' : 'B');
-        if (pa != null) {
-          _registrarAsistenciaAlPisarRectangulo(
-            parada: pa,
-            punto: next,
-            precisionM: 4.5,
-          );
-        }
-      }
-
-      final deltaVel = (math.Random().nextDouble() * 2.0) - 1.0;
-      v.velocidadKmh = (v.velocidadKmh + deltaVel).clamp(24.0, 48.0);
-
-      setState(() {});
-
-      if (_seguir && _mapaListo) {
-        _map.move(v.posicion, math.max(_map.camera.zoom, 16.8));
-      }
-    });
   }
 
   // ---------- Brújula y Sensores ----------
@@ -538,6 +382,8 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   Future<void> _cargarParadas() async {
     final db = await DatabaseHelper.instance.database;
     final filas = await db.query('punto_de_control');
+    if (filas.isEmpty) return;
+
     final lista = <_Parada>[];
 
     String? idA;
@@ -552,65 +398,121 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     idA ??= filas.isNotEmpty ? filas.first['id_punto']?.toString() : null;
 
     for (final f in filas) {
-      final lat = (f['latitud'] as num?)?.toDouble();
-      final lon = (f['longitud'] as num?)?.toDouble();
-      if (lat == null || lon == null) continue;
       final nombre = f['nombre']?.toString() ?? 'Parada';
       final id = f['id_punto']?.toString() ?? nombre;
       final esA = id == idA;
+      final puntoOficial = esA
+          ? RutaContinental.paradaAVilladela
+          : RutaContinental.paradaBTeleferico;
       lista.add(
         _Parada(
           id: id,
           nombre: nombre,
           etiqueta: esA ? 'A' : 'B',
-          punto: LatLng(lat, lon),
-          radio: (f['radio_m'] as num?)?.toDouble() ?? 100,
+          punto: puntoOficial,
+          radio: (f['radio_m'] as num?)?.toDouble() ?? 20,
           color: esA ? _kParadaA : _kParadaB,
         ),
       );
     }
     lista.sort((a, b) => a.etiqueta.compareTo(b.etiqueta));
 
-    String? advertencia;
-
     if (!mounted) return;
     setState(() {
       _paradas = lista;
-      _advertenciaParadas = advertencia;
       for (final p in lista) {
         _estados.putIfAbsent(p.id, () => _Geocerca());
       }
     });
+
+    if (_posUsuario != null) {
+      _alRecibirPosicion(_posUsuario!);
+    }
   }
 
-  // ---------- GPS Propio del Dispositivo ----------
+  // ---------- GPS Físico Real del Dispositivo ----------
   Future<void> _iniciarGps() async {
     final err = await GpsService.instance.asegurarPermisos();
     if (err != null) {
       if (mounted) setState(() => _errorGps = err);
       return;
     }
+
+    // 1. Obtener la última posición conocida solo para mostrar distancia inicial (sin marcar asistencia con caché antigua)
+    final ultima = await GpsService.instance.obtenerUltimaPosicionConocida();
+    if (ultima != null && mounted) {
+      _alRecibirPosicion(ultima, permitirMarcarAsistencia: false);
+    }
+
+    // 2. Solicitar lectura fresca inmediata en vivo
+    GpsService.instance
+        .obtenerPosicionActual(timeout: const Duration(seconds: 6))
+        .then((pos) {
+      if (pos != null && mounted) {
+        _alRecibirPosicion(pos, permitirMarcarAsistencia: true);
+      }
+    }).catchError((_) {});
+
+    // 3. Suscribirse al stream continuo del GPS (distanceFilter: 0, sin conflicto de ForegroundService)
     _subGps?.cancel();
-    _subGps = GpsService.instance.obtenerStreamPosicion().listen(
-      _alRecibirPosicion,
+    _subGps = GpsService.instance
+        .obtenerStreamPosicion(distanceFilterM: 0, usarForeground: false)
+        .listen(
+      (pos) => _alRecibirPosicion(pos, permitirMarcarAsistencia: true),
       onError: (e) {
         if (mounted) setState(() => _errorGps = 'Error de GPS: $e');
       },
     );
+
+    // 4. Refresco periódico de respaldo cada 3 segundos usando el mismo proveedor GPS para evitar saltos entre sensores
+    _timerRefrescoGps?.cancel();
+    _timerRefrescoGps = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted) return;
+      try {
+        final pos = await GpsService.instance.obtenerPosicionActual(
+          timeout: const Duration(seconds: 4),
+        );
+        if (pos != null && mounted) {
+          _alRecibirPosicion(pos, permitirMarcarAsistencia: true);
+        }
+      } catch (_) {}
+    });
   }
 
-  void _alRecibirPosicion(Position p) {
+  void _alRecibirPosicion(Position p, {bool permitirMarcarAsistencia = true}) {
     if (!mounted) return;
 
     final cruda = LatLng(p.latitude, p.longitude);
+    final previa = _posFiltrada;
     final filtrada = _filtrarPosicion(p, cruda);
-    final confiable = p.accuracy <= 50;
+    final desplazamientoFiltradoM = previa == null
+        ? 0.0
+        : ReglasAsistencia.calcularDistanciaMetros(
+            lat1: previa.latitude,
+            lon1: previa.longitude,
+            lat2: filtrada.latitude,
+            lon2: filtrada.longitude,
+          );
     var vueltaCompletada = false;
+    _Parada? paradaDetectadaParaAsistencia;
 
     setState(() {
       _posUsuario = p;
       _posFiltrada = filtrada;
       _errorGps = null;
+      // Si el usuario está quieto (sin desplazamiento real o velocidad < 0.85 m/s ≈ 3 km/h), mostrar 0.0 km/h
+      _velocidadRealKmh = (p.speed >= 0.85 && desplazamientoFiltradoM >= 1.5)
+          ? (p.speed * 3.6)
+          : 0.0;
+
+      // Solo sumar recorrido cuando hay desplazamiento real fuera del rebote de señal (multipath)
+      final umbralMovimientoReal = math.max(3.5, (p.accuracy * 0.40).clamp(3.5, 8.0));
+      if (previa != null &&
+          p.accuracy <= 50 &&
+          desplazamientoFiltradoM >= umbralMovimientoReal &&
+          desplazamientoFiltradoM <= 150.0) {
+        _distanciaRealM += desplazamientoFiltradoM;
+      }
 
       if (!_brujulaDisponible && p.speed > 1.2 && p.heading >= 0) {
         final delta = ((p.heading - _rumboGrados + 540) % 360) - 180;
@@ -619,34 +521,34 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         _rumboValido = true;
       }
 
-      if (confiable) {
-        for (final pa in _paradas) {
-          final poligono = pa.etiqueta == 'A'
-              ? RutaContinental.obtenerRectanguloParadaA(pa.punto)
-              : RutaContinental.obtenerRectanguloParadaB(pa.punto);
-          final d = RutaContinental.distanciaAlRectanguloMetros(
-            filtrada,
-            poligono,
-          );
-          final estabaDentro = _estados[pa.id]?.dentro ?? false;
-          _estados[pa.id]?.actualizar(
-            distancia: d,
-            accuracy: p.accuracy,
-            radio: pa.radio,
-          );
-          final ahoraDentro = _estados[pa.id]?.dentro ?? false;
-          if (!estabaDentro && ahoraDentro) {
-            _registrarAsistenciaAlPisarRectangulo(
-              parada: pa,
-              punto: filtrada,
-              precisionM: p.accuracy,
-            );
-          }
+      for (final pa in _paradas) {
+        final poligono = pa.etiqueta == 'A'
+            ? RutaContinental.rectanguloParadaA
+            : RutaContinental.rectanguloParadaB;
+        final d = RutaContinental.distanciaAlRectanguloMetros(
+          filtrada,
+          poligono,
+        );
+        _estados.putIfAbsent(pa.id, () => _Geocerca());
+        _estados[pa.id]!.actualizar(
+          distancia: d,
+          accuracy: p.accuracy,
+          radio: pa.radio,
+        );
+        final ahoraDentro = RutaContinental.estaDentroDeRectangulo(
+          filtrada,
+          poligono,
+          margenMetros: 0.0,
+        );
+        _estados[pa.id]!.dentro = ahoraDentro;
+        // La asistencia SOLO se marca cuando el usuario pisa estrictamente el rectángulo del Punto A
+        if (ahoraDentro && pa.etiqueta == 'A' && permitirMarcarAsistencia) {
+          paradaDetectadaParaAsistencia = pa;
         }
-        vueltaCompletada = _procesarTransicion();
       }
+      vueltaCompletada = _procesarTransicion();
 
-      if (p.accuracy <= 60) {
+      if (p.accuracy <= 45) {
         if (_rastroUsuario.isEmpty) {
           _rastroUsuario.add(filtrada);
         } else {
@@ -656,13 +558,26 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             lat2: filtrada.latitude,
             lon2: filtrada.longitude,
           );
-          if (d >= 3) {
+          final umbralRastro = math.max(5.0, (p.accuracy * 0.55).clamp(5.0, 10.0));
+          if (d >= umbralRastro) {
             _rastroUsuario.add(filtrada);
             if (_rastroUsuario.length > 500) _rastroUsuario.removeAt(0);
           }
         }
       }
     });
+
+    if (paradaDetectadaParaAsistencia != null && !_marcandoAsistencia) {
+      _registrarAsistenciaAlPisarRectangulo(
+        parada: paradaDetectadaParaAsistencia!,
+        punto: filtrada,
+        precisionM: p.accuracy,
+      );
+    }
+
+    if (_seguir && _mapaListo) {
+      _map.move(filtrada, math.max(_map.camera.zoom, 18.0));
+    }
 
     if (vueltaCompletada) _alCompletarVuelta();
   }
@@ -671,6 +586,19 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     final previa = _posFiltrada;
     if (previa == null) return cruda;
 
+    // Si el usuario acaba de pisar el Punto A o Punto B, actualizar de inmediato sin retener posición previa
+    final enPuntoControl = RutaContinental.estaDentroDeRectangulo(
+          cruda,
+          RutaContinental.rectanguloParadaA,
+          margenMetros: 0.0,
+        ) ||
+        RutaContinental.estaDentroDeRectangulo(
+          cruda,
+          RutaContinental.rectanguloParadaB,
+          margenMetros: 0.0,
+        );
+    if (enPuntoControl) return cruda;
+
     final d = ReglasAsistencia.calcularDistanciaMetros(
       lat1: previa.latitude,
       lon1: previa.longitude,
@@ -678,11 +606,15 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       lon2: cruda.longitude,
     );
 
-    final quieto = p.speed >= 0 && p.speed < 0.6;
-    final umbral = quieto ? 6.0 : 2.5;
-    if (d < umbral) return previa;
+    // En reposo (velocidad < 1.0 m/s ≈ 3.6 km/h), el GPS bajo techo rebota dentro de su radio de error (±accuracy).
+    // Ignoramos esos saltos fantasma menores al margen de ruido para que el auto no se mueva solo estando quieto.
+    final quieto = p.speed < 1.0;
+    final radioRuido = quieto
+        ? math.max(6.5, (p.accuracy * 0.70).clamp(6.5, 14.0))
+        : 2.5;
+    if (d < radioRuido) return previa;
 
-    final alpha = d > 15 ? 0.85 : (d > 6 ? 0.6 : 0.35);
+    final alpha = d > 18 ? 0.85 : (d > 8 ? 0.65 : 0.45);
     return LatLng(
       previa.latitude + (cruda.latitude - previa.latitude) * alpha,
       previa.longitude + (cruda.longitude - previa.longitude) * alpha,
@@ -719,7 +651,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
 
     final ahora = DateTime.now();
     if (_ultimaVuelta != null &&
-        ahora.difference(_ultimaVuelta!) < const Duration(seconds: 20)) {
+        ahora.difference(_ultimaVuelta!) < const Duration(seconds: 15)) {
       return false;
     }
     _ultimaVuelta = ahora;
@@ -727,21 +659,32 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     return true;
   }
 
-  Future<void> _alCompletarVuelta({bool manual = false}) async {
+  Future<void> _alCompletarVuelta() async {
     HapticFeedback.mediumImpact();
     SystemSound.play(SystemSoundType.click);
 
+    final idConductor = SesionService.instance.idConductor ??
+        _vehiculoSeleccionado?.idConductor;
+    if (idConductor != null && idConductor.isNotEmpty) {
+      try {
+        await DatabaseHelper.instance.registrarVuelta(
+          idConductor: idConductor,
+          tipo: 'normal',
+        );
+        await _cargarFlotaConductores();
+      } catch (_) {}
+    }
+
     if (mounted) {
-      final detalle = manual || _ladoBase == null
-          ? 'Vuelta $_vueltasUsuario registrada manualmente.'
-          : '¡Vuelta $_vueltasUsuario completada! $_ladoBase → ${_ladoBase == 'A' ? 'B' : 'A'} → $_ladoBase';
+      final detalle =
+          '¡Vuelta completada por GPS! $_ladoBase → ${_ladoBase == 'A' ? 'B' : 'A'} → $_ladoBase';
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
             backgroundColor: _kVerdeContinental,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
             content: Text(
               detalle,
               style: const TextStyle(
@@ -752,23 +695,13 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           ),
         );
     }
-
-    final idConductor = SesionService.instance.idConductor;
-    if (idConductor == null || idConductor.isEmpty) return;
-    try {
-      await DatabaseHelper.instance.registrarVuelta(
-        idConductor: idConductor,
-        tipo: 'normal',
-      );
-    } catch (_) {}
   }
 
   // ---------- Control de Cámara y Selección ----------
   void _verRutaCompleta() {
     final pts = <LatLng>[
+      ...RutaContinental.circuitoCompleto,
       ..._paradas.map((p) => p.punto),
-      if (_vehiculoSeleccionado != null) _vehiculoSeleccionado!.posicion,
-      ?_posFiltrada,
     ];
     if (pts.length < 2 || !_mapaListo) return;
     setState(() {
@@ -777,28 +710,15 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     _map.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds.fromPoints(pts),
-        padding: const EdgeInsets.fromLTRB(40, 160, 40, 270),
+        padding: const EdgeInsets.fromLTRB(40, 180, 40, 260),
       ),
     );
   }
 
-  void _seleccionarVehiculo(_VehiculoFlota v) {
-    setState(() {
-      _vehiculoSeleccionado = v;
-      _seguir = true;
-    });
-    if (_mapaListo) {
-      _map.move(v.posicion, 17.0);
-    }
-  }
-
   void _centrarOpcion() {
-    if (_vehiculoSeleccionado != null) {
+    if (_posFiltrada != null && _mapaListo) {
       setState(() => _seguir = true);
-      _map.move(_vehiculoSeleccionado!.posicion, 17.2);
-    } else if (_posFiltrada != null) {
-      setState(() => _seguir = true);
-      _map.move(_posFiltrada!, 17.0);
+      _map.move(_posFiltrada!, 18.2);
     } else {
       _verRutaCompleta();
     }
@@ -807,7 +727,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   void _irAParada(_Parada p) {
     if (!_mapaListo) return;
     setState(() => _seguir = false);
-    _map.move(p.punto, 18);
+    _map.move(p.punto, 18.5);
   }
 
   Future<void> _registrarAsistenciaAlPisarRectangulo({
@@ -815,18 +735,34 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     required LatLng punto,
     required double precisionM,
   }) async {
-    final idCond = _vehiculoSeleccionado?.idConductor ??
-        SesionService.instance.idConductor;
+    if (_marcandoAsistencia) return;
+    final idCond = SesionService.instance.idConductor ??
+        _vehiculoSeleccionado?.idConductor;
     if (idCond == null || idCond.isEmpty) return;
 
+    _marcandoAsistencia = true;
     try {
       final hoy = DateTime.now().toIso8601String().substring(0, 10);
       final asistHoy =
           await AsistenciaRepo.instance.obtenerAsistenciaHoy(idCond, hoy);
       if (asistHoy == null) {
+        final puntosBd = await DatabaseHelper.instance.obtenerPuntosControl(
+          soloActivos: false,
+        );
+        String idPuntoReal = parada.id;
+        if (puntosBd.isNotEmpty) {
+          final pObj = puntosBd.firstWhere(
+            (p) => parada.etiqueta == 'A'
+                ? p['nombre'].toString().toLowerCase().contains('villadela')
+                : !p['nombre'].toString().toLowerCase().contains('villadela'),
+            orElse: () => puntosBd.first,
+          );
+          idPuntoReal = pObj['id_punto']?.toString() ?? parada.id;
+        }
+
         final res = await AsistenciaRepo.instance.registrarAsistenciaGps(
           idConductor: idCond,
-          idPunto: parada.id,
+          idPunto: idPuntoReal,
           latitud: punto.latitude,
           longitud: punto.longitude,
           precisionM: precisionM,
@@ -835,17 +771,9 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           horaSateliteConfiable: true,
         );
         if (res.exito && mounted) {
-          final est =
-              res.asistencia?['estado']?.toString().toLowerCase() ?? 'presente';
-          final hora = res.asistencia?['hora_llegada']?.toString() ?? '--:--';
-          setState(() {
-            if (_vehiculoSeleccionado != null &&
-                _vehiculoSeleccionado!.idConductor == idCond) {
-              _vehiculoSeleccionado!.estadoAsistencia =
-                  est == 'tardanza' ? 'tardanza' : 'tiempo';
-              _vehiculoSeleccionado!.horaMarcacion = hora;
-            }
-          });
+          HapticFeedback.heavyImpact();
+          await _cargarFlotaConductores();
+          if (!mounted) return;
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
             ..showSnackBar(
@@ -853,7 +781,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
                 behavior: SnackBarBehavior.floating,
                 backgroundColor: _kVerdeContinental,
                 content: Text(
-                  '¡Asistencia registrada y parada confirmada en ${parada.nombre}!',
+                  '¡Estás en el punto de control (${parada.nombre})! Asistencia marcada: Asistió.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -863,14 +791,18 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             );
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _marcandoAsistencia = false;
+    }
   }
 
-  double? _distanciaVehiculoAParada(LatLng pos, _Parada p) {
+  double? _distanciaDispositivoAParada(_Parada p) {
+    if (_posFiltrada == null) return null;
     final poligono = p.etiqueta == 'A'
-        ? RutaContinental.obtenerRectanguloParadaA(p.punto)
-        : RutaContinental.obtenerRectanguloParadaB(p.punto);
-    return RutaContinental.distanciaAlRectanguloMetros(pos, poligono);
+        ? RutaContinental.rectanguloParadaA
+        : RutaContinental.rectanguloParadaB;
+    return RutaContinental.distanciaAlRectanguloMetros(_posFiltrada!, poligono);
   }
 
   String _fmt(double m) => m < 1000
@@ -880,24 +812,19 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   // ---------- Capas del Mapa ----------
   Widget _construirMapa() {
     final esSat = _estilo == _Estilo.satelite;
-    final centroInicial = _vehiculoSeleccionado?.posicion ??
-        (_paradas.isNotEmpty ? _paradas.first.punto : RutaContinental.paradaAVilladela);
+    final centroInicial = RutaContinental.paradaAVilladela;
 
     return FlutterMap(
       mapController: _map,
       options: MapOptions(
         initialCenter: centroInicial,
-        initialZoom: 16.5,
+        initialZoom: 18.0,
         maxZoom: 21,
         onMapReady: () {
           _mapaListo = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (_vehiculoSeleccionado != null) {
-              _map.move(_vehiculoSeleccionado!.posicion, 17.0);
-            } else {
-              _verRutaCompleta();
-            }
+            _verRutaCompleta();
           });
         },
         onPositionChanged: (camera, hasGesture) {
@@ -915,7 +842,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           maxZoom: 21,
         ),
 
-        // Trazado oficial del circuito (Ida y Vuelta)
+        // Trazado oficial del circuito (Ida y Vuelta) y rastro GPS real del teléfono
         PolylineLayer(
           polylines: [
             Polyline(
@@ -932,46 +859,37 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
               borderStrokeWidth: 1.5,
               borderColor: Colors.white,
             ),
-            // Rastro exclusivo del conductor enfocado
-            if (_vehiculoSeleccionado != null && _vehiculoSeleccionado!.rastro.length >= 2)
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: List<LatLng>.from(_vehiculoSeleccionado!.rastro),
-                    strokeWidth: 5.5,
-                    color: _kVerdeActivo,
-                    gradientColors: const [_kVerdeActivo, _kVerdeContinental],
-                    borderStrokeWidth: 2,
-                    borderColor: Colors.white,
-                  ),
-                ],
-              ).polylines.first,
+            if (_rastroUsuario.length >= 2)
+              Polyline(
+                points: List<LatLng>.from(_rastroUsuario),
+                strokeWidth: 5.5,
+                color: _kUsuario,
+                borderStrokeWidth: 2,
+                borderColor: Colors.white,
+              ),
           ],
         ),
 
-        // Geocercas Rectangulares Oficiales orientadas sobre la calzada (Parada A y Parada B)
+        // Geocercas Rectangulares Oficiales orientadas sobre la calle (Parada A y Parada B)
         PolygonLayer(
           polygons: [
             Polygon(
               points: RutaContinental.rectanguloParadaA,
-              color: (_vehiculoODispositivoEnParada('A')
+              color: (_dispositivoEnParada('A')
                       ? _kVerdeActivo
                       : const Color(0xFF2563EB))
                   .withValues(alpha: 0.28),
-              borderColor: _vehiculoODispositivoEnParada('A')
+              borderColor: _dispositivoEnParada('A')
                   ? _kVerdeActivo
                   : const Color(0xFF2563EB),
               borderStrokeWidth: 3.2,
             ),
             Polygon(
               points: RutaContinental.rectanguloParadaB,
-              color: (_vehiculoODispositivoEnParada('B')
-                      ? _kVerdeActivo
-                      : _kParadaB)
+              color: (_dispositivoEnParada('B') ? _kVerdeActivo : _kParadaB)
                   .withValues(alpha: 0.26),
-              borderColor: _vehiculoODispositivoEnParada('B')
-                  ? _kVerdeActivo
-                  : _kParadaB,
+              borderColor:
+                  _dispositivoEnParada('B') ? _kVerdeActivo : _kParadaB,
               borderStrokeWidth: 3.0,
             ),
           ],
@@ -982,7 +900,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             circles: [
               CircleMarker(
                 point: _posFiltrada!,
-                radius: _posUsuario?.accuracy ?? 10,
+                radius: (_posUsuario?.accuracy ?? 10).clamp(3.0, 40.0),
                 useRadiusInMeter: true,
                 color: _kUsuario.withValues(alpha: 0.15),
                 borderColor: _kUsuario.withValues(alpha: 0.8),
@@ -991,11 +909,10 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             ],
           ),
 
-        // Marcadores: Paradas + ÚNICO Conductor Seleccionado + Usuario
+        // Marcadores reales: Paradas A y B + GPS del dispositivo
         MarkerLayer(
           markers: [
             for (final p in _paradas) _marcadorParada(p),
-            if (_vehiculoSeleccionado != null) _marcadorVehiculo(_vehiculoSeleccionado!),
             if (_posFiltrada != null) _marcadorUsuario(_posFiltrada!),
           ],
         ),
@@ -1003,33 +920,22 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     );
   }
 
-  bool _vehiculoODispositivoEnParada(String etiqueta) {
+  bool _dispositivoEnParada(String etiqueta) {
     final poligono = etiqueta == 'A'
         ? RutaContinental.rectanguloParadaA
         : RutaContinental.rectanguloParadaB;
-    final posV = _vehiculoSeleccionado?.posicion;
-    if (posV != null &&
-        RutaContinental.estaDentroDeRectangulo(
-          posV,
-          poligono,
-          margenMetros: 6.0,
-        )) {
-      return true;
+    if (_posFiltrada != null) {
+      return RutaContinental.estaDentroDeRectangulo(
+        _posFiltrada!,
+        poligono,
+        margenMetros: 0.0,
+      );
     }
-    if (_posFiltrada != null &&
-        RutaContinental.estaDentroDeRectangulo(
-          _posFiltrada!,
-          poligono,
-          margenMetros: 6.0,
-        )) {
-      return true;
-    }
-    final p = _paradaPorEtiqueta(etiqueta);
-    return p != null && (_estados[p.id]?.dentro ?? false);
+    return false;
   }
 
   Marker _marcadorParada(_Parada p) {
-    final dentro = _vehiculoODispositivoEnParada(p.etiqueta);
+    final dentro = _dispositivoEnParada(p.etiqueta);
     final esA = p.etiqueta == 'A';
     final colorParada = esA ? _kVerdeContinental : _kParadaB;
 
@@ -1071,11 +977,13 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             Positioned(
               top: 40,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                  border:
+                      Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.black26,
@@ -1097,131 +1005,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Marker _marcadorVehiculo(_VehiculoFlota v) {
-    final colorEstado = v.estadoAsistencia == 'tiempo'
-        ? const Color(0xFF00E676)
-        : (v.estadoAsistencia == 'tardanza'
-            ? const Color(0xFFFF9100)
-            : const Color(0xFFFF5252));
-
-    return Marker(
-      point: v.posicion,
-      width: 86,
-      height: 80,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          // Anillo pulsante verde del conductor enfocado
-          AnimatedBuilder(
-            animation: _pulso,
-            builder: (context, _) => Container(
-              width: 58 + 14 * _pulso.value,
-              height: 58 + 14 * _pulso.value,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _kVerdeContinental.withValues(
-                  alpha: 0.35 * (1.0 - _pulso.value),
-                ),
-              ),
-            ),
-          ),
-
-          // Icono central con rotación según rumbo real
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _kVerdeContinental,
-                width: 2.8,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Transform.rotate(
-                angle: v.activoEnRuta ? (v.rumboGrados * math.pi / 180) : 0,
-                child: Icon(
-                  v.activoEnRuta
-                      ? Icons.navigation_rounded
-                      : Icons.directions_car_filled_rounded,
-                  color: colorEstado,
-                  size: 21,
-                ),
-              ),
-            ),
-          ),
-
-          // Etiqueta superior con el número interno del móvil (#X)
-          Positioned(
-            top: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: _kVerdeContinental,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white, width: 1.2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black38,
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Text(
-                '#${v.unidad}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          ),
-
-          // Etiqueta inferior con velocidad
-          Positioned(
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: colorEstado.withValues(alpha: 0.8),
-                  width: 0.8,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 3,
-                  ),
-                ],
-              ),
-              child: Text(
-                v.activoEnRuta ? '${v.velocidadKmh.toStringAsFixed(0)} km/h' : '0 km/h',
-                style: TextStyle(
-                  color: colorEstado,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 9,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1250,7 +1033,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         children: [
           Positioned.fill(child: _construirMapa()),
 
-          // Panel Superior con Header, Carrusel de Selección y Tarjeta Telemetría
+          // Panel Superior con Header y Alerta de Punto de Control
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -1258,17 +1041,14 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _barraSuperior(),
-                  _carruselFlota(),
-                  if (_errorGps != null && _vehiculos.isEmpty) _bannerError(_errorGps!),
-                  _tarjetaVuelta(),
-                  if (_vehiculoSeleccionado != null) _bannerAuditoriaGps(_vehiculoSeleccionado!),
-                  if (_advertenciaParadas != null) _bannerAvisoParadas(),
+                  if (_errorGps != null) _bannerError(_errorGps!),
+                  _tarjetaEstadoReal(),
                 ],
               ),
             ),
           ),
 
-          // Controles flotantes a la derecha y Panel de Telemetría inferior
+          // Controles flotantes a la derecha y Panel de Telemetría Real inferior
           Align(
             alignment: Alignment.bottomCenter,
             child: Column(
@@ -1287,13 +1067,19 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
 
   Widget _barraSuperior() {
     final v = _vehiculoSeleccionado;
+    final esConductor = SesionService.instance.esConductor;
     final titulo = v != null
-        ? 'Móvil #${v.unidad} • ${v.nombre}'
+        ? (esConductor ? v.nombre : 'Móvil #${v.unidad} • ${v.nombre}')
         : 'Monitoreo GPS en Vivo';
 
+    final precisionTxt = _posUsuario != null
+        ? '±${_posUsuario!.accuracy.toStringAsFixed(0)} m'
+        : 'Buscando señal GPS…';
+
+    final yaAsistio = v != null && v.estadoAsistencia != 'falta';
     final subtitulo = v != null
-        ? '${v.velocidadKmh.toStringAsFixed(0)} km/h · ±5 m'
-        : 'Circuito Oficial 14.69 km';
+        ? 'Asistencia: ${yaAsistio ? "Asistió (${v.horaMarcacion})" : "Sin marcar"} • GPS $precisionTxt'
+        : 'GPS $precisionTxt';
 
     return Row(
       children: [
@@ -1323,17 +1109,14 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             ),
             child: Row(
               children: [
-                AnimatedBuilder(
-                  animation: _pulso,
-                  builder: (context, _) => Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _kVerdeActivo.withValues(
-                        alpha: 0.35 + 0.65 * _pulso.value,
-                      ),
-                    ),
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _posFiltrada != null
+                        ? _kVerdeActivo
+                        : const Color(0xFFF59E0B),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1369,21 +1152,25 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        _botonRedondo(
-          Icons.tune,
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PuntosControlScreen()),
-            ).then((_) => _cargarParadas());
-          },
-          fondo: Colors.white,
-          colorIcono: _kVerdeContinental,
-        ),
+        if (!esConductor) ...[
+          const SizedBox(width: 8),
+          _botonRedondo(
+            Icons.tune,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PuntosControlScreen()),
+              ).then((_) => _cargarParadas());
+            },
+            fondo: Colors.white,
+            colorIcono: _kVerdeContinental,
+          ),
+        ],
         const SizedBox(width: 6),
         _botonRedondo(
-          _estilo == _Estilo.satelite ? Icons.map_outlined : Icons.satellite_alt_rounded,
+          _estilo == _Estilo.satelite
+              ? Icons.map_outlined
+              : Icons.satellite_alt_rounded,
           () => setState(
             () => _estilo = _estilo == _Estilo.satelite
                 ? _Estilo.calles
@@ -1393,78 +1180,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           colorIcono: _kVerdeContinental,
         ),
       ],
-    );
-  }
-
-  /// Carrusel horizontal para cambiar rápida y fluidamente entre conductores
-  Widget _carruselFlota() {
-    if (_vehiculos.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      height: 38,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: _vehiculos.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 6),
-        itemBuilder: (context, index) {
-          final v = _vehiculos[index];
-          final esSel = _vehiculoSeleccionado?.idConductor == v.idConductor;
-          final colorDot = v.estadoAsistencia == 'tiempo'
-              ? _kDentro
-              : (v.estadoAsistencia == 'tardanza'
-                  ? const Color(0xFFF59E0B)
-                  : _kFuera);
-
-          return GestureDetector(
-            onTap: () => _seleccionarVehiculo(v),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: esSel ? _kVerdeContinental : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: esSel ? _kVerdeContinental : const Color(0xFFE2E8F0),
-                  width: esSel ? 1.6 : 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: esSel
-                        ? _kVerdeContinental.withValues(alpha: 0.35)
-                        : Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: colorDot,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Text(
-                    'Móvil #${v.unidad} • ${v.primerNombre}',
-                    style: TextStyle(
-                      color: esSel ? Colors.white : _kTextoOscuro,
-                      fontSize: 11.5,
-                      fontWeight: esSel ? FontWeight.w800 : FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 
@@ -1490,56 +1205,55 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     );
   }
 
-  Widget _tarjetaVuelta() {
+  Widget _tarjetaEstadoReal() {
     final v = _vehiculoSeleccionado;
-    if (v == null) return const SizedBox.shrink();
+    final enA = _dispositivoEnParada('A');
+    final enPuntoControl = enA;
 
-    final int meta = v.metaVueltas;
-    final bool cumplio = v.vueltas >= meta;
-    final bool enCurso = !cumplio && v.vueltas > 0;
+    final dA = _paradas.isNotEmpty
+        ? _distanciaDispositivoAParada(_paradas.first)
+        : null;
 
-    final Color colorBadge = cumplio
-        ? const Color(0xFF02634C)
-        : (enCurso ? const Color(0xFF1D4ED8) : const Color(0xFFDC2626));
-    final Color bgBadge = cumplio
-        ? const Color(0xFFE6F4F0)
-        : (enCurso ? const Color(0xFFEFF6FF) : const Color(0xFFFEE2E2));
+    final yaAsistio = v != null && v.estadoAsistencia != 'falta';
 
-    final String badgeTexto = cumplio
-        ? 'Castigo cumplido'
-        : (enCurso ? 'En curso' : 'Pendiente');
+    final Color bgCard =
+        enPuntoControl ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
+    final Color borderCard =
+        enPuntoControl ? const Color(0xFF10B981) : const Color(0xFFFCA5A5);
+    final Color iconBg =
+        enPuntoControl ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final Color titleColor =
+        enPuntoControl ? const Color(0xFF065F46) : const Color(0xFF991B1B);
 
-    final String titulo = cumplio
-        ? '${v.vueltas}/$meta vueltas de castigo'
-        : (enCurso
-            ? 'Vuelta #${v.vueltas + 1} de castigo'
-            : 'Vuelta de castigo pendiente');
+    final String tituloAlerta = enPuntoControl
+        ? '¡Estás en el punto de control!'
+        : 'No estás en el punto de control';
 
-    final String dondeTexto = cumplio
-        ? 'Dónde está: En Parada A (Cruce Villadela)'
-        : (enCurso
-            ? 'Dónde está: ${v.enIda ? "Ida (Villadela → Teleférico)" : "Retorno (Teleférico → Villadela)"}'
-            : 'Dónde está: Sin salir de Parada A');
+    final String subtituloPrincipal = enPuntoControl
+        ? 'Punto A • Cruce Villadela'
+        : (dA != null
+            ? 'Estás a ${_fmt(dA)} del Punto A (Cruce Villadela)'
+            : 'Obteniendo ubicación GPS del dispositivo…');
 
-    final String queHaceTexto = cumplio
-        ? 'Qué hace: Terminó ${v.vueltas} vueltas • ${(v.distanciaRecorridaM / 1000).toStringAsFixed(1)} km por GPS'
-        : (enCurso
-            ? 'Qué hace: Cumpliendo castigo • ${v.velocidadKmh.toStringAsFixed(0)} km/h • ${v.vueltas}/$meta hechas'
-            : 'Qué hace: Aún no inicia (castigo desde las 21:00)');
+    final String subtituloAsistencia = enPuntoControl
+        ? 'Asistencia marcada: Asistió${yaAsistio ? " (${v.horaMarcacion})" : ""}'
+        : (yaAsistio
+            ? 'Asistencia de hoy: Asistió (${v.horaMarcacion})'
+            : 'Pisa el Punto A para marcar tu asistencia');
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: bgCard,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: cumplio ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
-          width: cumplio ? 1.5 : 1.0,
+          color: borderCard,
+          width: 1.8,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -1548,63 +1262,38 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: bgBadge,
+              color: iconBg,
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
-              cumplio
-                  ? Icons.verified_rounded
-                  : (enCurso
-                      ? Icons.directions_car_filled_rounded
-                      : Icons.schedule_rounded),
-              color: colorBadge,
-              size: 22,
+              enPuntoControl
+                  ? Icons.check_circle_rounded
+                  : Icons.warning_amber_rounded,
+              color: Colors.white,
+              size: 24,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        titulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _kTextoOscuro,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: bgBadge,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: colorBadge.withValues(alpha: 0.4)),
-                      ),
-                      child: Text(
-                        badgeTexto,
-                        style: TextStyle(
-                          color: colorBadge,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  tituloAlerta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: titleColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  dondeTexto,
+                  subtituloPrincipal,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1614,30 +1303,28 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
                   ),
                 ),
                 Text(
-                  queHaceTexto,
+                  subtituloAsistencia,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _kTextoMuted,
+                  style: TextStyle(
+                    color: (enPuntoControl || yaAsistio)
+                        ? const Color(0xFF047857)
+                        : const Color(0xFFB91C1C),
                     fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 6),
           InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              setState(() => _seguir = !_seguir);
-              if (_seguir) {
-                _map.move(v.posicion, 17.0);
-              }
-            },
+            onTap: _centrarOpcion,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
-                color: _seguir ? _kVerdeContinental : _kVerdeClaro,
+                color: _seguir ? _kVerdeContinental : Colors.white,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: _kVerdeBorde),
               ),
@@ -1645,13 +1332,15 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    _seguir ? Icons.my_location_rounded : Icons.location_searching_rounded,
+                    _seguir
+                        ? Icons.my_location_rounded
+                        : Icons.location_searching_rounded,
                     color: _seguir ? Colors.white : _kVerdeContinental,
                     size: 14,
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _seguir ? 'Siguiendo' : 'Centrar',
+                    _seguir ? 'Siguiendo' : 'Mi GPS',
                     style: TextStyle(
                       color: _seguir ? Colors.white : _kVerdeContinental,
                       fontSize: 10.5,
@@ -1659,79 +1348,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bannerAuditoriaGps(_VehiculoFlota v) {
-    final int meta = v.metaVueltas;
-    final bool cumplio = v.vueltas >= meta;
-    final bool enCurso = !cumplio && v.vueltas > 0;
-
-    final Color fondo = cumplio
-        ? const Color(0xFF02634C)
-        : (enCurso ? const Color(0xFF1E3A8A) : const Color(0xFF334155));
-
-    final String textoAuditoria = cumplio
-        ? 'CASTIGO GPS: $meta vueltas cumplidas (${(meta * 14.69).toStringAsFixed(1)} km)'
-        : (enCurso
-            ? 'CASTIGO GPS: ${v.vueltas} de $meta hechas • en curso (${_fmt(v.distanciaRecorridaM)})'
-            : 'CASTIGO GPS: 0 de $meta • sin salida en Parada A');
-
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(
-            cumplio
-                ? Icons.verified_rounded
-                : (enCurso ? Icons.satellite_alt_rounded : Icons.sensors_off_rounded),
-            color: cumplio
-                ? const Color(0xFF6EE7B7)
-                : (enCurso ? const Color(0xFF93C5FD) : const Color(0xFFCBD5E1)),
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              textoAuditoria,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${v.vueltas}/$meta V.',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 10.5,
               ),
             ),
           ),
@@ -1760,37 +1376,8 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           ),
           TextButton(
             onPressed: _iniciarGps,
-            child: const Text('Reintentar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bannerAvisoParadas() {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF59E0B)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _advertenciaParadas!,
-              style: const TextStyle(
-                color: Color(0xFF92400E),
-                fontSize: 10.5,
-                height: 1.3,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child:
+                const Text('Reintentar', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1810,7 +1397,9 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           ),
           const SizedBox(height: 8),
           _botonRedondo(
-            _seguir ? Icons.my_location_rounded : Icons.location_searching_rounded,
+            _seguir
+                ? Icons.my_location_rounded
+                : Icons.location_searching_rounded,
             _centrarOpcion,
             fondo: _seguir ? _kVerdeContinental : Colors.white,
             colorIcono: _seguir ? Colors.white : _kVerdeContinental,
@@ -1821,8 +1410,11 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   }
 
   Widget _panelDatos() {
-    final v = _vehiculoSeleccionado ?? (_vehiculos.isNotEmpty ? _vehiculos.first : null);
-    if (v == null) return const SizedBox.shrink();
+    final v = _vehiculoSeleccionado;
+    final precisionStr = _posUsuario != null
+        ? '±${_posUsuario!.accuracy.toStringAsFixed(0)} m'
+        : 'Sin GPS';
+    final vueltasMostradas = v?.vueltasHoy ?? _vueltasUsuario;
 
     return Container(
       width: double.infinity,
@@ -1848,7 +1440,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
           Container(
             width: 42,
             height: 4,
@@ -1861,21 +1452,21 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
 
           Row(
             children: [
-              _dato(Icons.gps_fixed_rounded, '±5 m', 'Precisión'),
+              _dato(Icons.gps_fixed_rounded, precisionStr, 'Precisión GPS'),
               _dato(
                 Icons.speed_rounded,
-                '${v.velocidadKmh.toStringAsFixed(0)} km/h',
+                '${_velocidadRealKmh.toStringAsFixed(1)} km/h',
                 'Velocidad',
               ),
               _dato(
                 Icons.repeat_rounded,
-                '${v.vueltas} v.',
+                '$vueltasMostradas v.',
                 'Vueltas hoy',
               ),
               _dato(
                 Icons.route_rounded,
-                _fmt(v.distanciaRecorridaM),
-                'Recorrido',
+                _fmt(_distanciaRealM),
+                'Recorrido GPS',
               ),
             ],
           ),
@@ -1883,12 +1474,12 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           if (_paradas.length >= 2) ...[
             _filaParadaDistancia(
               _paradas.first,
-              _distanciaVehiculoAParada(v.posicion, _paradas.first),
+              _distanciaDispositivoAParada(_paradas.first),
             ),
             const SizedBox(height: 6),
             _filaParadaDistancia(
               _paradas.last,
-              _distanciaVehiculoAParada(v.posicion, _paradas.last),
+              _distanciaDispositivoAParada(_paradas.last),
             ),
           ],
         ],
@@ -1928,7 +1519,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   }
 
   Widget _filaParadaDistancia(_Parada p, double? d) {
-    final dentro = (d != null && d <= 5.0) || _vehiculoODispositivoEnParada(p.etiqueta);
+    final dentro = _dispositivoEnParada(p.etiqueta);
     final esA = p.etiqueta == 'A';
     final colorParada = esA ? _kVerdeContinental : _kParadaB;
     final colorEstado = dentro ? _kDentro : _kTextoMuted;
@@ -1964,7 +1555,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         ),
         Text(
           d == null
-              ? 'Calculando…'
+              ? 'Esperando GPS…'
               : (dentro ? 'En parada • 0 m' : _fmt(d)),
           style: TextStyle(
             color: colorEstado,

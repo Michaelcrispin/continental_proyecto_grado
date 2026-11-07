@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/permisos.dart';
 import '../../models/usuario_model.dart';
 import '../../services/database_helper.dart';
@@ -18,11 +19,7 @@ class CobrarScreen extends StatefulWidget {
   final String? idConductorInicial;
   final String? idCuotaInicial;
 
-  const CobrarScreen({
-    super.key,
-    this.idConductorInicial,
-    this.idCuotaInicial,
-  });
+  const CobrarScreen({super.key, this.idConductorInicial, this.idCuotaInicial});
 
   @override
   State<CobrarScreen> createState() => _CobrarScreenState();
@@ -41,13 +38,16 @@ class _CobrarScreenState extends State<CobrarScreen> {
   String _metodoPago = 'efectivo';
   bool _isLoading = true;
   bool _isCobrando = false;
+  String? _errorMonto;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!Permisos.puedeEditar(
-          SesionService.instance.rol, Permisos.moduloControlEconomico)) {
+        SesionService.instance.rol,
+        Permisos.moduloControlEconomico,
+      )) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -138,10 +138,41 @@ class _CobrarScreenState extends State<CobrarScreen> {
   void _seleccionarCuota(Map<String, dynamic> deuda) {
     setState(() {
       _cuotaSeleccionada = deuda;
-      final saldo = (deuda['saldo'] as num?)?.toDouble() ??
+      _errorMonto = null;
+      final saldo =
+          (deuda['saldo'] as num?)?.toDouble() ??
           (deuda['monto'] as num).toDouble();
       _montoCtrl.text = saldo.toStringAsFixed(2);
     });
+  }
+
+  double get _saldoSeleccionado {
+    final cuota = _cuotaSeleccionada;
+    if (cuota == null) return 0.0;
+    return (cuota['saldo'] as num?)?.toDouble() ??
+        (cuota['monto'] as num?)?.toDouble() ??
+        0.0;
+  }
+
+  void _validarMonto(String texto) {
+    final limpio = texto.trim();
+    final monto = double.tryParse(limpio);
+    final saldo = _saldoSeleccionado;
+    String? error;
+
+    if (limpio.isNotEmpty) {
+      if (monto == null) {
+        error = 'Ingresa un monto válido.';
+      } else if (monto < 1) {
+        error = 'El monto mínimo es Bs. 1.00.';
+      } else if (monto > (saldo + 0.01)) {
+        error = 'El máximo para esta deuda es Bs. ${saldo.toStringAsFixed(2)}.';
+      }
+    }
+
+    if (error != _errorMonto) {
+      setState(() => _errorMonto = error);
+    }
   }
 
   Future<void> _procesarCobro() async {
@@ -155,8 +186,8 @@ class _CobrarScreenState extends State<CobrarScreen> {
     }
 
     final monto = double.tryParse(_montoCtrl.text.trim()) ?? 0.0;
-    if (monto <= 0) {
-      _mostrarAlerta('El monto a cobrar debe ser mayor a 0 Bs.');
+    if (monto < 1) {
+      _mostrarAlerta('El monto mínimo para cobrar es Bs. 1.00.');
       return;
     }
 
@@ -168,7 +199,8 @@ class _CobrarScreenState extends State<CobrarScreen> {
       return;
     }
 
-    final idUsuario = SesionService.instance.idUsuario ??
+    final idUsuario =
+        SesionService.instance.idUsuario ??
         Usuario.currentUser?.id ??
         'superadmin';
 
@@ -201,11 +233,17 @@ class _CobrarScreenState extends State<CobrarScreen> {
               ),
               child: Row(
                 children: [
-                  const Text('Método: ',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  Text(_metodoPago.toUpperCase(),
-                      style: const TextStyle(
-                          color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Método: ',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Text(
+                    _metodoPago.toUpperCase(),
+                    style: const TextStyle(
+                      color: Color(0xFF1E3A8A),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -214,13 +252,18 @@ class _CobrarScreenState extends State<CobrarScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Confirmar y Emitir Recibo'),
@@ -391,7 +434,9 @@ class _CobrarScreenState extends State<CobrarScreen> {
                   final n = (c['nombre'] ?? '').toString().toLowerCase();
                   final ci = (c['ci'] ?? '').toString().toLowerCase();
                   final placa = (c['placa'] ?? '').toString().toLowerCase();
-                  return n.contains(query) || ci.contains(query) || placa.contains(query);
+                  return n.contains(query) ||
+                      ci.contains(query) ||
+                      placa.contains(query);
                 });
               },
               displayStringForOption: (c) =>
@@ -403,11 +448,16 @@ class _CobrarScreenState extends State<CobrarScreen> {
                   focusNode: focusNode,
                   decoration: InputDecoration(
                     hintText: 'Buscar chofer por nombre, CI o placa...',
-                    prefixIcon: const Icon(Icons.search, color: Color(0xFF3B82F6)),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Color(0xFF3B82F6),
+                    ),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -422,7 +472,10 @@ class _CobrarScreenState extends State<CobrarScreen> {
                     elevation: 6,
                     borderRadius: BorderRadius.circular(16),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 250, maxWidth: 350),
+                      constraints: const BoxConstraints(
+                        maxHeight: 250,
+                        maxWidth: 350,
+                      ),
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         shrinkWrap: true,
@@ -439,10 +492,15 @@ class _CobrarScreenState extends State<CobrarScreen> {
                             ),
                             title: Text(
                               c['nombre']?.toString() ?? '',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
-                            subtitle: Text('CI: ${c['ci'] ?? 'S/CI'} • ${c['placa'] ?? 'Sin auto'}',
-                                style: const TextStyle(fontSize: 11)),
+                            subtitle: Text(
+                              'CI: ${c['ci'] ?? 'S/CI'} • ${c['placa'] ?? 'Sin auto'}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
                             onTap: () => onSelected(c),
                           );
                         },
@@ -484,12 +542,19 @@ class _CobrarScreenState extends State<CobrarScreen> {
                         ),
                         Text(
                           'CI: ${_conductorSeleccionado!['ci'] ?? 'S/CI'} • Placa: ${_conductorSeleccionado!['placa'] ?? 'Sin auto'}',
-                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569)),
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF475569),
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.check_circle, color: Color(0xFF2563EB), size: 22),
+                  const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF2563EB),
+                    size: 22,
+                  ),
                 ],
               ),
             ),
@@ -567,12 +632,20 @@ class _CobrarScreenState extends State<CobrarScreen> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 24),
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Color(0xFF059669),
+                    size: 24,
+                  ),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       '¡Excelente! Este conductor no tiene ninguna deuda pendiente registrada.',
-                      style: TextStyle(color: Color(0xFF065F46), fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Color(0xFF065F46),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -600,10 +673,14 @@ class _CobrarScreenState extends State<CobrarScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: esSeleccionada ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                      color: esSeleccionada
+                          ? const Color(0xFFEFF6FF)
+                          : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: esSeleccionada ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                        color: esSeleccionada
+                            ? const Color(0xFF2563EB)
+                            : const Color(0xFFE2E8F0),
                         width: esSeleccionada ? 1.5 : 1.0,
                       ),
                     ),
@@ -633,13 +710,19 @@ class _CobrarScreenState extends State<CobrarScreen> {
                               ),
                               Text(
                                 concepto,
-                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF64748B),
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 'Fecha: $fecha',
-                                style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  color: Color(0xFF94A3B8),
+                                ),
                               ),
                             ],
                           ),
@@ -657,7 +740,10 @@ class _CobrarScreenState extends State<CobrarScreen> {
                             ),
                             Text(
                               'de Bs. ${montoTotal.toStringAsFixed(2)}',
-                              style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                color: Color(0xFF94A3B8),
+                              ),
                             ),
                           ],
                         ),
@@ -735,12 +821,32 @@ class _CobrarScreenState extends State<CobrarScreen> {
               Expanded(
                 child: TextField(
                   controller: _montoCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      if (newValue.text.isEmpty) return newValue;
+                      final valido = RegExp(
+                        r'^\d{0,9}([.]\d{0,2})?$',
+                      ).hasMatch(newValue.text);
+                      return valido ? newValue : oldValue;
+                    }),
+                  ],
+                  onChanged: _validarMonto,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Monto a Cobrar (Bs.) *',
                     prefixText: 'Bs. ',
-                    prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    prefixStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    errorText: _errorMonto,
+                    errorStyle: const TextStyle(fontSize: 11),
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
                     border: OutlineInputBorder(
@@ -756,15 +862,23 @@ class _CobrarScreenState extends State<CobrarScreen> {
                   backgroundColor: const Color(0xFFEFF6FF),
                   foregroundColor: const Color(0xFF2563EB),
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 15,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onPressed: () {
                   setState(() {
                     _montoCtrl.text = saldo.toStringAsFixed(2);
                   });
                 },
-                child: const Text('Todo el saldo', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Todo el saldo',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -772,8 +886,14 @@ class _CobrarScreenState extends State<CobrarScreen> {
           const SizedBox(height: 14),
 
           // Selector de Método de Pago
-          const Text('Método de Pago:',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: Color(0xFF475569))),
+          const Text(
+            'Método de Pago:',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12.5,
+              color: Color(0xFF475569),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -781,7 +901,11 @@ class _CobrarScreenState extends State<CobrarScreen> {
               const SizedBox(width: 8),
               _buildBotonMetodo('qr', 'QR Simple', Icons.qr_code_2),
               const SizedBox(width: 8),
-              _buildBotonMetodo('transferencia', 'Transf.', Icons.account_balance),
+              _buildBotonMetodo(
+                'transferencia',
+                'Transf.',
+                Icons.account_balance,
+              ),
             ],
           ),
 
@@ -796,7 +920,10 @@ class _CobrarScreenState extends State<CobrarScreen> {
               prefixIcon: const Icon(Icons.note_alt_outlined, size: 20),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -814,21 +941,33 @@ class _CobrarScreenState extends State<CobrarScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 elevation: 4,
               ),
               icon: _isCobrando
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
                     )
                   : const Icon(Icons.check_circle, size: 22),
               label: Text(
-                _isCobrando ? 'Registrando cobro...' : 'Confirmar Cobro y Emitir Recibo',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                _isCobrando
+                    ? 'Registrando cobro...'
+                    : 'Confirmar Cobro y Emitir Recibo',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
               ),
-              onPressed: _isCobrando ? null : _procesarCobro,
+              onPressed: _isCobrando || _errorMonto != null || saldo < 1
+                  ? null
+                  : _procesarCobro,
             ),
           ),
         ],
@@ -848,12 +987,18 @@ class _CobrarScreenState extends State<CobrarScreen> {
             color: esActivo ? const Color(0xFF10B981) : const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: esActivo ? const Color(0xFF059669) : const Color(0xFFE2E8F0),
+              color: esActivo
+                  ? const Color(0xFF059669)
+                  : const Color(0xFFE2E8F0),
             ),
           ),
           child: Column(
             children: [
-              Icon(icono, size: 20, color: esActivo ? Colors.white : const Color(0xFF64748B)),
+              Icon(
+                icono,
+                size: 20,
+                color: esActivo ? Colors.white : const Color(0xFF64748B),
+              ),
               const SizedBox(height: 4),
               Text(
                 label,

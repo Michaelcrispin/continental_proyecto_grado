@@ -293,17 +293,6 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
     }
   }
 
-  /// Permite probar en vivo qué ocurre cuando el trufi pisa el rectángulo de Cruce Villadela
-  Future<void> _simularPisarRectanguloVilladela() async {
-    setState(() => _dentroRectanguloA = false);
-    _mapController.move(RutaContinental.paradaAVilladela, 18.2);
-    await _evaluarPosicionEnRectangulos(
-      RutaContinental.paradaAVilladela,
-      precisionM: 3.5,
-      esSimulacion: true,
-    );
-  }
-
   void _encuadrarRuta({_ModoTramo? modo}) {
     if (!_mapaListo) return;
     final m = modo ?? _modoTramo;
@@ -601,9 +590,9 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Text(
-                              'Ida A → B (7.15 km)',
-                              style: TextStyle(
+                            Text(
+                              'Ida A → B (${RutaContinental.distanciaIdaKm} km)',
+                              style: const TextStyle(
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF0F172A),
@@ -624,9 +613,9 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Text(
-                              'Vuelta B → A (7.54 km)',
-                              style: TextStyle(
+                            Text(
+                              'Vuelta B → A (${RutaContinental.distanciaVueltaKm} km)',
+                              style: const TextStyle(
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF0F172A),
@@ -908,27 +897,6 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: _simularPisarRectanguloVilladela,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _kVerdeOscuro,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'Pisar A',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -943,8 +911,8 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                   titulo: 'Cruce Villadela',
                   subtitulo: _dentroRectanguloA
                       ? '¡DENTRO DEL RECTÁNGULO!'
-                      : 'Rectángulo 75×28 m',
-                  coordenadas: '-16.53455, -68.19161',
+                      : 'Rectángulo 26×17 m',
+                  coordenadas: '-16.57569, -68.23765',
                   distanciaActual: distA,
                   color: _dentroRectanguloA ? _kVerdeActivo : _kAzulRect,
                   bgColor: _kMintBg,
@@ -959,8 +927,8 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                   titulo: 'Teleférico',
                   subtitulo: _dentroRectanguloB
                       ? '¡DENTRO DEL RECTÁNGULO!'
-                      : 'Rectángulo 85×28 m',
-                  coordenadas: '-16.51834, -68.15144',
+                      : 'Rectángulo 26×17 m',
+                  coordenadas: '-16.57618, -68.23820',
                   distanciaActual: distB,
                   color: _kAmbar,
                   bgColor: _kAmbarBg,

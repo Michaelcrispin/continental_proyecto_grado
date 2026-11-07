@@ -44,8 +44,8 @@ class _SimulacionAsistenciaDialogState extends State<SimulacionAsistenciaDialog>
     setState(() => _procesando = true);
 
     final idPunto = _puntoAsistencia!['id_punto']?.toString() ?? '';
-    final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.53453;
-    final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.19071;
+    final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
+    final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
 
     final res = await AsistenciaRepo.instance.simularLlegada(
       idConductor: _conductorSeleccionado!,

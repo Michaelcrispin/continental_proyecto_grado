@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../services/economia_repo.dart';
 import '../../../services/sesion_service.dart';
 import '../../../widgets/app_snackbar.dart';
@@ -14,6 +15,10 @@ class DialogoCobro extends StatefulWidget {
   final String? idCuotaEspecifica;
   final String? conceptoCuota;
 
+  /// Tope máximo permitido para el cobro. Si se cobra una cuota específica,
+  /// debe ser el saldo de esa cuota (no el total de toda la serie).
+  final double? montoMaximo;
+
   const DialogoCobro({
     super.key,
     required this.conductor,
@@ -22,6 +27,7 @@ class DialogoCobro extends StatefulWidget {
     this.montoInicial,
     this.idCuotaEspecifica,
     this.conceptoCuota,
+    this.montoMaximo,
   });
 
   static Future<bool?> mostrar(
@@ -32,6 +38,7 @@ class DialogoCobro extends StatefulWidget {
     double? montoInicial,
     String? idCuotaEspecifica,
     String? conceptoCuota,
+    double? montoMaximo,
   }) async {
     final resultado = await showDialog<dynamic>(
       context: context,
@@ -43,6 +50,7 @@ class DialogoCobro extends StatefulWidget {
         montoInicial: montoInicial,
         idCuotaEspecifica: idCuotaEspecifica,
         conceptoCuota: conceptoCuota,
+        montoMaximo: montoMaximo,
       ),
     );
 
@@ -326,30 +334,51 @@ class _DialogoCobroState extends State<DialogoCobro> {
   late final TextEditingController _montoCtrl;
   String _metodo = 'efectivo';
   bool _procesando = false;
+  String? _errorMonto;
 
   late double _total;
   late double _falta;
+  late double _maximo;
 
   @override
   void initState() {
     super.initState();
     _total = (widget.conductor['monto_total'] as num?)?.toDouble() ?? 0.0;
-    final pagado = (widget.conductor['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-    _falta = (widget.conductor['monto_falta'] as num?)?.toDouble() ?? (_total - pagado);
+    final pagado =
+        (widget.conductor['monto_pagado'] as num?)?.toDouble() ?? 0.0;
+    _falta =
+        (widget.conductor['monto_falta'] as num?)?.toDouble() ??
+        (_total - pagado);
     if (_falta < 0) _falta = 0.0;
 
-    double montoDefecto = _falta;
+    // Tope del cobro: si es una cuota específica, solo el saldo de esa cuota.
+    // Si no, el total pendiente del conductor en esta cuota.
+    double maximo = _falta;
+    final tope = widget.montoMaximo;
+    if (tope != null && tope > 0) {
+      maximo = tope < maximo ? tope : maximo;
+    } else if (widget.idCuotaEspecifica != null &&
+        widget.montoInicial != null &&
+        widget.montoInicial! > 0) {
+      maximo = widget.montoInicial! < maximo ? widget.montoInicial! : maximo;
+    }
+    _maximo = maximo;
+
+    double montoDefecto = _maximo;
     if (widget.montoInicial != null && widget.montoInicial! > 0) {
       montoDefecto = widget.montoInicial!;
     } else {
-      final proxMonto = (widget.conductor['proximo_monto_pago'] as num?)?.toDouble();
-      if (proxMonto != null && proxMonto > 0 && proxMonto <= _falta) {
+      final proxMonto = (widget.conductor['proximo_monto_pago'] as num?)
+          ?.toDouble();
+      if (proxMonto != null && proxMonto > 0 && proxMonto <= _maximo) {
         montoDefecto = proxMonto;
       }
     }
-    if (montoDefecto > _falta) montoDefecto = _falta;
+    if (montoDefecto > _maximo) montoDefecto = _maximo;
 
-    _montoCtrl = TextEditingController(text: montoDefecto > 0 ? montoDefecto.toStringAsFixed(2) : '');
+    _montoCtrl = TextEditingController(
+      text: montoDefecto > 0 ? montoDefecto.toStringAsFixed(2) : '',
+    );
   }
 
   @override
@@ -360,12 +389,14 @@ class _DialogoCobroState extends State<DialogoCobro> {
 
   Future<void> _confirmarCobro() async {
     final monto = double.tryParse(_montoCtrl.text.trim()) ?? 0.0;
-    if (monto <= 0) {
-      _mostrarSnack('Ingresa un monto válido mayor a 0 Bs.');
+    if (monto < 1) {
+      _mostrarSnack('El monto mínimo para cobrar es Bs. 1.00.');
       return;
     }
-    if (monto > (_falta + 0.01)) {
-      _mostrarSnack('El monto no puede superar lo que falta pagar (Bs. ${_falta.toStringAsFixed(2)}).');
+    if (monto > (_maximo + 0.01)) {
+      _mostrarSnack(
+        'El monto no puede superar Bs. ${_maximo.toStringAsFixed(2)} para esta cuota.',
+      );
       return;
     }
 
@@ -392,6 +423,27 @@ class _DialogoCobroState extends State<DialogoCobro> {
     }
   }
 
+  void _validarMonto(String texto) {
+    final limpio = texto.trim();
+    final monto = double.tryParse(limpio);
+    String? error;
+
+    if (limpio.isNotEmpty) {
+      if (monto == null) {
+        error = 'Ingresa un monto válido.';
+      } else if (monto < 1) {
+        error = 'El monto mínimo es Bs. 1.00.';
+      } else if (monto > (_maximo + 0.01)) {
+        error =
+            'El máximo para esta cuota es Bs. ${_maximo.toStringAsFixed(2)}.';
+      }
+    }
+
+    if (error != _errorMonto) {
+      setState(() => _errorMonto = error);
+    }
+  }
+
   void _mostrarSnack(String mensaje) {
     AppSnackBar.error(context, mensaje);
   }
@@ -408,284 +460,312 @@ class _DialogoCobroState extends State<DialogoCobro> {
       canPop: !_procesando,
       child: Dialog(
         backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Cabecera elegante
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1FAE5),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.payments_rounded,
-                        color: Color(0xFF059669),
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Registrar Cobro',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 18,
-                              color: Color(0xFF0F2B5B),
-                              letterSpacing: -0.2,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.cuotaNombre,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Color(0xFF94A3B8),
-                        size: 22,
-                      ),
-                      splashRadius: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-
-                // Tarjeta del conductor
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Cabecera elegante
+                  Row(
                     children: [
-                      AvatarConductor(
-                        foto: foto,
-                        nombre: nombre,
-                        radio: 22,
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD1FAE5),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.payments_rounded,
+                          color: Color(0xFF059669),
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              nombre,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                            const Text(
+                              'Registrar Cobro',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
                                 color: Color(0xFF0F2B5B),
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.cuotaNombre,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'CI: $ci${telefono != null && telefono.isNotEmpty ? '  •  Cel: $telefono' : ''}',
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                color: Color(0xFF64748B),
-                              ),
-                            ),
                           ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF94A3B8),
+                          size: 22,
+                        ),
+                        splashRadius: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Tarjeta del conductor
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        AvatarConductor(foto: foto, nombre: nombre, radio: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                nombre,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF0F2B5B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'CI: $ci${telefono != null && telefono.isNotEmpty ? '  •  Cel: $telefono' : ''}',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Campo de monto
+                  const Text(
+                    'Monto a Cobrar (Bs.) *',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _montoCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      TextInputFormatter.withFunction((oldValue, newValue) {
+                        if (newValue.text.isEmpty) return newValue;
+                        final valido = RegExp(
+                          r'^\d{0,9}([.]\d{0,2})?$',
+                        ).hasMatch(newValue.text);
+                        return valido ? newValue : oldValue;
+                      }),
+                    ],
+                    onChanged: _validarMonto,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      color: Color(0xFF0F2B5B),
+                    ),
+                    decoration: InputDecoration(
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.only(left: 14, right: 6),
+                        child: Text(
+                          'Bs.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
+                      ),
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 0,
+                        minHeight: 0,
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: _errorMonto != null
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFFCBD5E1),
+                          width: 1.2,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(
+                          color: _errorMonto != null
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFF00B074),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_errorMonto != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _errorMonto!,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Color(0xFFDC2626),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+
+                  // Selector moderno de Método de Pago
+                  const Text(
+                    'Método de Pago',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetodoOption(
+                          id: 'efectivo',
+                          label: 'Efectivo',
+                          icono: Icons.payments_outlined,
+                          colorActivo: const Color(0xFF00B074),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildMetodoOption(
+                          id: 'qr',
+                          label: 'Pago con QR',
+                          icono: Icons.qr_code_2_rounded,
+                          colorActivo: const Color(0xFF2563EB),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 18),
+                  const SizedBox(height: 24),
 
-                // Campo de monto
-                const Text(
-                  'Monto a Cobrar (Bs.) *',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _montoCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 17,
-                    color: Color(0xFF0F2B5B),
-                  ),
-                  decoration: InputDecoration(
-                    prefixIcon: const Padding(
-                      padding: EdgeInsets.only(left: 14, right: 6),
-                      child: Text(
-                        'Bs.',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                    ),
-                    prefixIconConstraints:
-                        const BoxConstraints(minWidth: 0, minHeight: 0),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: Color(0xFFCBD5E1),
-                        width: 1.2,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: Color(0xFF00B074),
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Selector moderno de Método de Pago
-                const Text(
-                  'Método de Pago',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildMetodoOption(
-                        id: 'efectivo',
-                        label: 'Efectivo',
-                        icono: Icons.payments_outlined,
-                        colorActivo: const Color(0xFF00B074),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildMetodoOption(
-                        id: 'qr',
-                        label: 'Pago con QR',
-                        icono: Icons.qr_code_2_rounded,
-                        colorActivo: const Color(0xFF2563EB),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Botones de acción alineados y modernos
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          side: const BorderSide(
-                            color: Color(0xFFCBD5E1),
-                            width: 1.2,
+                  // Botones de acción alineados y modernos
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            side: const BorderSide(
+                              color: Color(0xFFCBD5E1),
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        onPressed: _procesando
-                            ? null
-                            : () => Navigator.pop(context),
-                        child: const Text(
-                          'Cancelar',
-                          style: TextStyle(
-                            color: Color(0xFF475569),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                          onPressed: _procesando
+                              ? null
+                              : () => Navigator.pop(context),
+                          child: const Text(
+                            'Cancelar',
+                            style: TextStyle(
+                              color: Color(0xFF475569),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00B074),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00B074),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
-                        ),
-                        onPressed: _procesando ? null : _confirmarCobro,
-                        child: _procesando
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
+                          onPressed:
+                              _procesando || _errorMonto != null || _maximo < 1
+                              ? null
+                              : _confirmarCobro,
+                          child: _procesando
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Confirmar Cobro',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14.5,
+                                  ),
                                 ),
-                              )
-                            : const Text(
-                                'Confirmar Cobro',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14.5,
-                                ),
-                              ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 
   Widget _buildMetodoOption({
@@ -725,8 +805,7 @@ class _DialogoCobroState extends State<DialogoCobro> {
                 label,
                 style: TextStyle(
                   fontSize: 13,
-                  fontWeight:
-                      seleccionado ? FontWeight.bold : FontWeight.w500,
+                  fontWeight: seleccionado ? FontWeight.bold : FontWeight.w500,
                   color: seleccionado ? colorActivo : const Color(0xFF475569),
                 ),
                 maxLines: 1,

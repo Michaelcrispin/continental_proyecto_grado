@@ -72,8 +72,8 @@ class _MarcarLlegadaCardState extends State<MarcarLlegadaCard> {
     _subPosicion = GpsService.instance.obtenerStreamPosicion(distanceFilterM: 0).listen(
       (pos) {
         if (!mounted || _puntoAsistencia == null) return;
-        final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.53453;
-        final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.19071;
+        final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
+        final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
         final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? 100.0;
 
         final dist = ReglasAsistencia.calcularDistanciaMetros(
@@ -109,8 +109,8 @@ class _MarcarLlegadaCardState extends State<MarcarLlegadaCard> {
       final pos = await GpsService.instance.obtenerPosicionActual();
       if (pos == null || _puntoAsistencia == null) return;
 
-      final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.53453;
-      final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.19071;
+      final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
+      final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
       final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? 100.0;
 
       final dist = ReglasAsistencia.calcularDistanciaMetros(

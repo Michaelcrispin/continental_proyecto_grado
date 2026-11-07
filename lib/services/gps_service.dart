@@ -126,11 +126,22 @@ class GpsService {
     );
   }
 
+  /// Obtiene de inmediato la última posición conocida en caché del sistema (si existe).
+  Future<Position?> obtenerUltimaPosicionConocida() async {
+    try {
+      final ok = await verificarPermisos();
+      if (!ok) return null;
+      return await Geolocator.getLastKnownPosition();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Retorna un stream continuo en tiempo real (distanceFilter = 0m, bestForNavigation).
   Stream<Position> obtenerStreamPosicion({
     int distanceFilterM = 0,
     LocationAccuracy accuracy = LocationAccuracy.bestForNavigation,
-    bool usarForeground = true,
+    bool usarForeground = false,
   }) {
     return Geolocator.getPositionStream(
       locationSettings: _construirAjustesGps(

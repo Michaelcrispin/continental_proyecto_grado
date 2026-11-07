@@ -7,6 +7,7 @@ import '../../widgets/avatar_conductor.dart';
 import 'widgets/detalle_conductor_cuotas_sheet.dart';
 import 'widgets/dialogo_informe_whatsapp.dart';
 import 'widgets/dialogo_nueva_cuota.dart';
+import 'dashboard_cuota_screen.dart';
 
 const _kVerdeOscuro = Color(0xFF02634C);
 
@@ -49,7 +50,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     setState(() => _isLoading = true);
     try {
       final idTipo = _cuotaActual['id_tipo_cuota'].toString();
-      final lista = await EconomiaRepo.instance.estadoConductoresPorCuota(idTipo);
+      final lista = await EconomiaRepo.instance.estadoConductoresPorCuota(
+        idTipo,
+      );
 
       // Actualizar también los datos actuales de la cuota desde la BD
       final tipos = await EconomiaRepo.instance.listarCuotasConResumen();
@@ -58,7 +61,8 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         orElse: () => _cuotaActual,
       );
 
-      final matriz = await EconomiaRepo.instance.obtenerMatrizCronogramaPorCuota(idTipo);
+      final matriz = await EconomiaRepo.instance
+          .obtenerMatrizCronogramaPorCuota(idTipo);
 
       // Fechas únicas ordenadas del cronograma
       final fechasSet = <String>{};
@@ -72,7 +76,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       // Detectar periodicidad: mensual vs semanal
       final desc = (actualizada['descripcion'] ?? '').toString().toLowerCase();
       final nombreC = (actualizada['nombre'] ?? '').toString().toLowerCase();
-      bool esMensual = desc.contains('mensual') || desc.contains('mes') || nombreC.contains('mensual');
+      bool esMensual =
+          desc.contains('mensual') ||
+          desc.contains('mes') ||
+          nombreC.contains('mensual');
       if (!esMensual && fechasOrdenadas.length >= 2) {
         try {
           final d1 = DateTime.parse(fechasOrdenadas[0]);
@@ -88,9 +95,11 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       if (esPeriodica) {
         if (esMensual) {
           final ahora = DateTime.now();
-          final limiteMes = DateTime(ahora.year, ahora.month + 1, 0)
-              .toIso8601String()
-              .substring(0, 10);
+          final limiteMes = DateTime(
+            ahora.year,
+            ahora.month + 1,
+            0,
+          ).toIso8601String().substring(0, 10);
           fechaPeriodoActual = fechasOrdenadas.first;
           for (final f in fechasOrdenadas) {
             if (f.compareTo(limiteMes) <= 0) {
@@ -100,7 +109,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
             }
           }
         } else {
-          fechaPeriodoActual = DialogoInformeWhatsapp.determinarFechaSemanaActual(fechasOrdenadas);
+          fechaPeriodoActual =
+              DialogoInformeWhatsapp.determinarFechaSemanaActual(
+                fechasOrdenadas,
+              );
         }
       }
 
@@ -195,9 +207,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         if (q.isNotEmpty) {
           final nombre = (c['conductor_nombre'] ?? '').toString().toLowerCase();
           final ci = (c['conductor_ci'] ?? '').toString().toLowerCase();
-          final auto = (c['conductor_numero_interno'] ?? c['numero_interno'] ?? '')
-              .toString()
-              .toLowerCase();
+          final auto =
+              (c['conductor_numero_interno'] ?? c['numero_interno'] ?? '')
+                  .toString()
+                  .toLowerCase();
           if (!nombre.contains(q) && !ci.contains(q) && !auto.contains(q)) {
             return false;
           }
@@ -232,7 +245,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.red),
             SizedBox(width: 8),
-            Text('Eliminar Cuota', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text(
+              'Eliminar Cuota',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
           ],
         ),
         content: Text(
@@ -248,10 +264,15 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Eliminar',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -259,7 +280,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
 
     if (confirm == true) {
       try {
-        await EconomiaRepo.instance.eliminarTipoCuota(_cuotaActual['id_tipo_cuota'].toString());
+        await EconomiaRepo.instance.eliminarTipoCuota(
+          _cuotaActual['id_tipo_cuota'].toString(),
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Cuota eliminada correctamente.')),
@@ -279,13 +302,16 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
   void _generarInformePdf() {
     if (_conductores.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay datos suficientes para generar el informe.')),
+        const SnackBar(
+          content: Text('No hay datos suficientes para generar el informe.'),
+        ),
       );
       return;
     }
 
     final nombreCuota = _cuotaActual['nombre']?.toString() ?? 'Cuota General';
-    final montoSugerido = (_cuotaActual['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
+    final montoSugerido =
+        (_cuotaActual['monto_sugerido'] as num?)?.toDouble() ?? 0.0;
 
     int cantPagados = 0;
     int cantDeben = 0;
@@ -354,11 +380,34 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     );
   }
 
+  Future<void> _abrirDashboard() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DashboardCuotaScreen(cuota: _cuotaActual),
+      ),
+    );
+    if (mounted) _cargarConductores();
+  }
+
   String _formatearFechaCorta(dynamic fecha) {
     if (fecha == null || fecha.toString().trim().isEmpty) return '';
     try {
       final f = DateTime.parse(fecha.toString().trim());
-      const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      const meses = [
+        'Ene',
+        'Feb',
+        'Mar',
+        'Abr',
+        'May',
+        'Jun',
+        'Jul',
+        'Ago',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dic',
+      ];
       return '${f.day.toString().padLeft(2, '0')} ${meses[f.month - 1]} ${f.year}';
     } catch (_) {
       return fecha.toString();
@@ -402,8 +451,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       }
     }
     final totalMeta = totalRecaudado + totalFalta;
-    final porcentaje =
-        totalMeta > 0 ? (totalRecaudado / totalMeta).clamp(0.0, 1.0) : 0.0;
+    final porcentaje = totalMeta > 0
+        ? (totalRecaudado / totalMeta).clamp(0.0, 1.0)
+        : 0.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -493,9 +543,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
       width: double.infinity,
       decoration: const BoxDecoration(
         color: _kVerdeOscuro,
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(32),
-        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, padding.top + 8, 16, 20),
@@ -548,7 +596,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                               nombre.toLowerCase().contains('multa'))
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
@@ -557,8 +607,11 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.gavel_rounded,
-                                      size: 11, color: Colors.white),
+                                  Icon(
+                                    Icons.gavel_rounded,
+                                    size: 11,
+                                    color: Colors.white,
+                                  ),
                                   SizedBox(width: 3),
                                   Text(
                                     'Multa por Asamblea',
@@ -575,6 +628,18 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _abrirDashboard,
+                  icon: const Icon(
+                    Icons.insights_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                  tooltip: 'Dashboard de esta cuota',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
                 const SizedBox(width: 8),
                 // Logo Continental en círculo blanco
@@ -680,9 +745,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
     return PopupMenuButton<String>(
       tooltip: 'Opciones de cuota',
       offset: const Offset(0, 52),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       icon: Container(
         width: 48,
         height: 48,
@@ -698,13 +761,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
             ),
           ],
         ),
-        child: const Icon(
-          Icons.tune_rounded,
-          size: 22,
-          color: _kVerdeOscuro,
-        ),
+        child: const Icon(Icons.tune_rounded, size: 22, color: _kVerdeOscuro),
       ),
       onSelected: (val) {
+        if (val == 'dashboard') _abrirDashboard();
         if (val == 'config_whatsapp') _configurarWhatsapp();
         if (val == 'vista_whatsapp') {
           _generarInformeWhatsapp(forzarVistaPrevia: true);
@@ -713,6 +773,17 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         if (val == 'eliminar') _eliminarCuota();
       },
       itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'dashboard',
+          child: Row(
+            children: [
+              Icon(Icons.insights_rounded, color: _kVerdeOscuro, size: 20),
+              SizedBox(width: 8),
+              Text('Dashboard de esta cuota'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'config_whatsapp',
           child: Row(
@@ -823,7 +894,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                           ),
                         ),
                         onPressed: _generarInformePdf,
-                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 14),
+                        icon: const Icon(
+                          Icons.picture_as_pdf_rounded,
+                          size: 14,
+                        ),
                         label: const Text(
                           'Informe PDF',
                           style: TextStyle(
@@ -869,8 +943,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                 value: porcentaje,
                 minHeight: 6,
                 backgroundColor: const Color(0xFFF1F5F9),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Color(0xFF10B981),
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -922,10 +997,13 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
           _buildChip('todos', 'Todos', total),
-          _buildChip('pagados', 'Al día', pagados,
-              color: const Color(0xFF059669)),
-          _buildChip('deben', 'Deben', deben,
-              color: const Color(0xFFDC2626)),
+          _buildChip(
+            'pagados',
+            'Al día',
+            pagados,
+            color: const Color(0xFF059669),
+          ),
+          _buildChip('deben', 'Deben', deben, color: const Color(0xFFDC2626)),
         ],
       ),
     );
@@ -980,10 +1058,10 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
 
   /// Tarjeta de Conductor siguiendo el diseño de ConductorCard
   Widget _buildConductorCard(Map<String, dynamic> c, int numeroLista) {
-    final nombreChofer =
-        c['conductor_nombre']?.toString() ?? 'Conductor';
+    final nombreChofer = c['conductor_nombre']?.toString() ?? 'Conductor';
     final ciChofer = c['conductor_ci']?.toString() ?? 'S/CI';
-    final auto = c['conductor_numero_interno']?.toString() ??
+    final auto =
+        c['conductor_numero_interno']?.toString() ??
         c['numero_interno']?.toString();
     final foto = c['conductor_foto']?.toString();
     final pagado = (c['monto_pagado'] as num?)?.toDouble() ?? 0.0;
@@ -997,8 +1075,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         (c['cuotas_pendientes_periodo'] as num?)?.toInt() ?? 0;
     final proxFecha = c['proxima_fecha_pago']?.toString();
 
-    final estadoColor =
-        alDiaPeriodo ? const Color(0xFF059669) : const Color(0xFFDC2626);
+    final estadoColor = alDiaPeriodo
+        ? const Color(0xFF059669)
+        : const Color(0xFFDC2626);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1006,10 +1085,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFFE2E8F0),
-            width: 1.1,
-          ),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
@@ -1027,8 +1103,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
             splashColor: _kVerdeOscuro.withOpacity(0.08),
             highlightColor: _kVerdeOscuro.withOpacity(0.04),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               child: Row(
                 children: [
                   // 1. Avatar del conductor idéntico a ConductorCard
@@ -1048,7 +1123,9 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                         // Arribita de la columna: solo el número de lista ("solo número")
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1.5),
+                            horizontal: 6,
+                            vertical: 1.5,
+                          ),
                           margin: const EdgeInsets.only(bottom: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE8F5EF),
@@ -1092,8 +1169,8 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                                 (auto != null && auto.isNotEmpty)
                                     ? 'Auto N° $auto'
                                     : (ciChofer.isNotEmpty
-                                        ? 'CI: $ciChofer'
-                                        : 'Sin unidad asignada'),
+                                          ? 'CI: $ciChofer'
+                                          : 'Sin unidad asignada'),
                                 style: const TextStyle(
                                   color: Color(0xFF64748B),
                                   fontSize: 12.5,
@@ -1138,13 +1215,16 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                             if (!alDiaPeriodo && deudaPeriodo > 0.001)
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1.5),
+                                  horizontal: 6,
+                                  vertical: 1.5,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFEF2F2),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: const Color(0xFFEF4444)
-                                        .withOpacity(0.3),
+                                    color: const Color(
+                                      0xFFEF4444,
+                                    ).withOpacity(0.3),
                                     width: 0.8,
                                   ),
                                 ),
@@ -1183,27 +1263,33 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                   if (alDiaPeriodo)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 5),
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFD1FAE5),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                            color: const Color(0xFF10B981).withOpacity(0.3)),
+                          color: const Color(0xFF10B981).withOpacity(0.3),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.check_circle_rounded,
-                              color: Color(0xFF059669), size: 13),
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: Color(0xFF059669),
+                            size: 13,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             todoPagado
                                 ? 'Al día'
                                 : (esPeriodica
-                                    ? (esMensual
-                                        ? 'Al día (mes)'
-                                        : 'Al día (sem)')
-                                    : 'Al día'),
+                                      ? (esMensual
+                                            ? 'Al día (mes)'
+                                            : 'Al día (sem)')
+                                      : 'Al día'),
                             style: const TextStyle(
                               color: Color(0xFF065F46),
                               fontWeight: FontWeight.bold,
@@ -1216,18 +1302,24 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                   else
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 5),
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFEF2F2),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                            color: const Color(0xFFEF4444).withOpacity(0.3)),
+                          color: const Color(0xFFEF4444).withOpacity(0.3),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.schedule_rounded,
-                              color: Color(0xFFDC2626), size: 13),
+                          const Icon(
+                            Icons.schedule_rounded,
+                            color: Color(0xFFDC2626),
+                            size: 13,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             cuotasPendientesPeriodo > 1
@@ -1244,8 +1336,11 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                     ),
 
                   const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right_rounded,
-                      color: Color(0xFF94A3B8), size: 20),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF94A3B8),
+                    size: 20,
+                  ),
                 ],
               ),
             ),
@@ -1258,13 +1353,18 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
   Widget _buildMiniStat(String label, String valor, Color color) {
     return Column(
       children: [
-        Text(label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+        ),
         const SizedBox(height: 2),
         Text(
           valor,
           style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.bold, color: color),
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
         ),
       ],
     );
@@ -1296,10 +1396,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
             const Text(
               'Intenta con otro filtro o término de búsqueda.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF64748B),
-              ),
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
             ),
           ],
         ),

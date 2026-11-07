@@ -9,7 +9,10 @@ class DialogoNuevaCuota extends StatefulWidget {
 
   const DialogoNuevaCuota({super.key, this.cuotaAEditar});
 
-  static Future<bool?> mostrar(BuildContext context, {Map<String, dynamic>? cuotaAEditar}) {
+  static Future<bool?> mostrar(
+    BuildContext context, {
+    Map<String, dynamic>? cuotaAEditar,
+  }) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -33,10 +36,15 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
   void initState() {
     super.initState();
     final cuota = widget.cuotaAEditar;
-    _nombreCtrl = TextEditingController(text: cuota?['nombre']?.toString() ?? '');
-    _motivoCtrl = TextEditingController(text: cuota?['descripcion']?.toString() ?? '');
+    _nombreCtrl = TextEditingController(
+      text: cuota?['nombre']?.toString() ?? '',
+    );
+    _motivoCtrl = TextEditingController(
+      text: cuota?['descripcion']?.toString() ?? '',
+    );
 
-    final montoSugerido = (cuota?['monto_sugerido'] as num?)?.toDouble() ?? 50.0;
+    final montoSugerido =
+        (cuota?['monto_sugerido'] as num?)?.toDouble() ?? 50.0;
     _montoCtrl = TextEditingController(
       text: cuota != null ? montoSugerido.toStringAsFixed(2) : '50.00',
     );
@@ -59,8 +67,8 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
       _mostrarSnack('Ingresa el título de la cuota (ej: Apoyo económico).');
       return;
     }
-    if (monto <= 0) {
-      _mostrarSnack('Ingresa un monto válido mayor a 0 Bs.');
+    if (monto < 1) {
+      _mostrarSnack('El monto mínimo por chofer es Bs. 1.00.');
       return;
     }
 
@@ -98,7 +106,10 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
 
   void _mostrarSnack(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje), backgroundColor: const Color(0xFFDC2626)),
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: const Color(0xFFDC2626),
+      ),
     );
   }
 
@@ -153,7 +164,10 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
               decoration: InputDecoration(
                 labelText: 'Título de la Cuota *',
                 hintText: 'Ej: Apoyo económico, Mantenimiento',
-                prefixIcon: const Icon(Icons.bookmark_outline, color: Color(0xFF1E3A8A)),
+                prefixIcon: const Icon(
+                  Icons.bookmark_outline,
+                  color: Color(0xFF1E3A8A),
+                ),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
@@ -175,8 +189,12 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
                 labelText: 'Motivo / Descripción de la Cuota',
-                hintText: 'Ej: Apoyo para el compañero David, reparación de unidad...',
-                prefixIcon: const Icon(Icons.description_outlined, color: Color(0xFF1E3A8A)),
+                hintText:
+                    'Ej: Apoyo para el compañero David, reparación de unidad...',
+                prefixIcon: const Icon(
+                  Icons.description_outlined,
+                  color: Color(0xFF1E3A8A),
+                ),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
@@ -194,11 +212,16 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
             // Monto por chofer
             TextField(
               controller: _montoCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: 'Monto por chofer (Bs.) *',
                 prefixText: 'Bs. ',
-                prefixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F2B5B)),
+                prefixStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F2B5B),
+                ),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
@@ -217,13 +240,18 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
       actions: [
         TextButton(
           onPressed: _guardando ? null : () => Navigator.pop(context, false),
-          child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
+          child: const Text(
+            'Cancelar',
+            style: TextStyle(color: Color(0xFF64748B)),
+          ),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0F2B5B),
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           ),
           onPressed: _guardando ? null : _guardar,
@@ -231,7 +259,10 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
               ? const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
                 )
               : Text(
                   _esEdicion ? 'Guardar Cambios' : 'Crear Cuota',

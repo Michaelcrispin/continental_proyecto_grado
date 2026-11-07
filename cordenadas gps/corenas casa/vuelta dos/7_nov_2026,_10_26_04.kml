@@ -1,0 +1,231 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <open>1</open>
+    <visibility>1</visibility>
+    <name>7 nov 2026, 10:26:04</name>
+    <atom:author>
+      <atom:name>Registrado con Geo Tracker para Android de Ilya Bogdanovich</atom:name>
+    </atom:author>
+    <atom:link href="https://play.google.com/store/apps/details?id=com.ilyabogdanovich.geotracker" />
+    <TimeStamp>
+      <when>2026-11-07T14:26:04.521Z</when>
+    </TimeStamp>
+    <Style id="track">
+      <LineStyle>
+        <color>ffff9509</color>
+        <width>4</width>
+      </LineStyle>
+    </Style>
+    <Schema id="geotrackerTrackSchema">
+      <gx:SimpleArrayField name="speed" type="float">
+        <displayName>Speed, meters per second</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="course" type="float">
+        <displayName>Course, radians</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="accuracy" type="float">
+        <displayName>Horizontal accuracy, meters</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="verticalAccuracy" type="float">
+        <displayName>Vertical accuracy, meters</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="speedAccuracy" type="float">
+        <displayName>Speed accuracy, meters per second</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="courseAccuracy" type="float">
+        <displayName>Course accuracy, degrees</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="tzOffset" type="int">
+        <displayName>Time zone offset, seconds</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="source" type="int">
+        <displayName>Location source: 1 device, 2 network, 3 Bluetooth, 4 accessory</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="satellitesUsed" type="int">
+        <displayName>Satellites used</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="satellitesVisible" type="int">
+        <displayName>Satellites visible</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="hdop" type="float">
+        <displayName>Horizontal dilution of precision</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="fixQuality" type="int">
+        <displayName>NMEA fix quality</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="mock" type="bool">
+        <displayName>Mock location</displayName>
+      </gx:SimpleArrayField>
+      <gx:SimpleArrayField name="sourceDevice" type="string">
+        <displayName>Source device</displayName>
+      </gx:SimpleArrayField>
+    </Schema>
+    <Placemark id="tour">
+      <name>7 nov 2026, 10:26:04</name>
+      <atom:author>
+        <atom:name>Registrado con Geo Tracker para Android de Ilya Bogdanovich</atom:name>
+      </atom:author>
+      <atom:link href="https://play.google.com/store/apps/details?id=com.ilyabogdanovich.geotracker" />
+      <ExtendedData>
+        <Data name="activity">
+          <value>0</value>
+        </Data>
+      </ExtendedData>
+      <TimeSpan>
+        <begin>2026-11-07T14:26:04.521Z</begin>
+        <end>2026-11-07T14:27:48.607Z</end>
+      </TimeSpan>
+      <styleUrl>#track</styleUrl>
+      <gx:MultiTrack>
+        <altitudeMode>absolute</altitudeMode>
+        <gx:interpolate>0</gx:interpolate>
+        <gx:Track>
+          <when>2026-11-07T14:26:12Z</when>
+          <when>2026-11-07T14:26:20Z</when>
+          <when>2026-11-07T14:26:27Z</when>
+          <when>2026-11-07T14:26:35Z</when>
+          <when>2026-11-07T14:26:45Z</when>
+          <when>2026-11-07T14:26:53Z</when>
+          <when>2026-11-07T14:27:01Z</when>
+          <when>2026-11-07T14:27:10Z</when>
+          <when>2026-11-07T14:27:19Z</when>
+          <gx:coord>-68.23820333 -16.576175 3976.3</gx:coord>
+          <gx:coord>-68.23813667 -16.576105 3976.6</gx:coord>
+          <gx:coord>-68.23807833 -16.57602833 3975.5</gx:coord>
+          <gx:coord>-68.23800667 -16.575965 3974</gx:coord>
+          <gx:coord>-68.23793 -16.57589833 3973.7</gx:coord>
+          <gx:coord>-68.23785833 -16.57583667 3974.7</gx:coord>
+          <gx:coord>-68.237785 -16.575765 3975.3</gx:coord>
+          <gx:coord>-68.23770667 -16.57570167 3976.6</gx:coord>
+          <gx:coord>-68.23762667 -16.57564167 3976.3</gx:coord>
+          <ExtendedData>
+            <SchemaData schemaUrl="#geotrackerTrackSchema">
+              <gx:SimpleArrayData name="speed">
+                <gx:value>0.28</gx:value>
+                <gx:value>0.97</gx:value>
+                <gx:value>1.22</gx:value>
+                <gx:value>1.14</gx:value>
+                <gx:value>0.97</gx:value>
+                <gx:value>1.08</gx:value>
+                <gx:value>1.24</gx:value>
+                <gx:value>1.08</gx:value>
+                <gx:value>1.03</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="course">
+                <gx:value>1.31</gx:value>
+                <gx:value>0.87</gx:value>
+                <gx:value>0.82</gx:value>
+                <gx:value>1.1</gx:value>
+                <gx:value>0.81</gx:value>
+                <gx:value>0.74</gx:value>
+                <gx:value>0.88</gx:value>
+                <gx:value>0.92</gx:value>
+                <gx:value>0.79</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="accuracy">
+                <gx:value>9.6</gx:value>
+                <gx:value>9.9</gx:value>
+                <gx:value>9.2</gx:value>
+                <gx:value>9.1</gx:value>
+                <gx:value>8.8</gx:value>
+                <gx:value>9.5</gx:value>
+                <gx:value>9</gx:value>
+                <gx:value>9.2</gx:value>
+                <gx:value>8.9</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="verticalAccuracy">
+                <gx:value>9.2</gx:value>
+                <gx:value>9.9</gx:value>
+                <gx:value>12.8</gx:value>
+                <gx:value>9.6</gx:value>
+                <gx:value>9.3</gx:value>
+                <gx:value>8.8</gx:value>
+                <gx:value>8.6</gx:value>
+                <gx:value>8.6</gx:value>
+                <gx:value>9</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="speedAccuracy">
+                <gx:value>0.4</gx:value>
+                <gx:value>0.8</gx:value>
+                <gx:value>0.6</gx:value>
+                <gx:value>1.8</gx:value>
+                <gx:value>0.6</gx:value>
+                <gx:value>0.9</gx:value>
+                <gx:value>0.8</gx:value>
+                <gx:value>0.9</gx:value>
+                <gx:value>0.6</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="courseAccuracy">
+                <gx:value>25</gx:value>
+                <gx:value>26</gx:value>
+                <gx:value>18.3</gx:value>
+                <gx:value>76.2</gx:value>
+                <gx:value>23.2</gx:value>
+                <gx:value>33.1</gx:value>
+                <gx:value>23.8</gx:value>
+                <gx:value>31.1</gx:value>
+                <gx:value>24</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="tzOffset">
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+                <gx:value>-14400</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="source">
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+                <gx:value>1</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="satellitesUsed">
+                <gx:value>28</gx:value>
+                <gx:value>32</gx:value>
+                <gx:value>34</gx:value>
+                <gx:value>35</gx:value>
+                <gx:value>37</gx:value>
+                <gx:value>37</gx:value>
+                <gx:value>38</gx:value>
+                <gx:value>38</gx:value>
+                <gx:value>36</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="satellitesVisible">
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+                <gx:value>47</gx:value>
+              </gx:SimpleArrayData>
+              <gx:SimpleArrayData name="mock">
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+                <gx:value>0</gx:value>
+              </gx:SimpleArrayData>
+            </SchemaData>
+          </ExtendedData>
+        </gx:Track>
+      </gx:MultiTrack>
+    </Placemark>
+  </Document>
+</kml>

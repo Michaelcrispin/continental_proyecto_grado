@@ -47,7 +47,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
     'Jueves',
     'Viernes',
     'Sábado',
-    'Domingo'
+    'Domingo',
   ];
 
   @override
@@ -176,8 +176,8 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
     final nombre = _nombreCtrl.text.trim();
     final importe = double.tryParse(_importeCtrl.text.trim()) ?? 0.0;
 
-    if (importe <= 0) {
-      _mostrarSnack('Ingresa un importe válido mayor a 0 Bs.');
+    if (importe < 1) {
+      _mostrarSnack('El importe mínimo por cuota es Bs. 1.00.');
       return;
     }
 
@@ -188,7 +188,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
 
     final cronograma = _calcularCronogramaActual();
     if (cronograma.isEmpty) {
-      _mostrarSnack('Con las fechas y día seleccionados no se genera ningún cobro.');
+      _mostrarSnack(
+        'Con las fechas y día seleccionados no se genera ningún cobro.',
+      );
       return;
     }
 
@@ -315,7 +317,8 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                               controller: _importeCtrl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                    decimal: true,
+                                  ),
                               onChanged: (_) => setState(() {}),
                               decoration: const InputDecoration(
                                 hintText: 'Ej. 10',
@@ -325,16 +328,17 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                                 ),
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding:
-                                    EdgeInsets.symmetric(vertical: 10),
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Ingresa el monto';
                                 }
                                 final n = double.tryParse(value);
-                                if (n == null || n <= 0) {
-                                  return 'Monto inválido';
+                                if (n == null || n < 1) {
+                                  return 'El mínimo es Bs. 1.00';
                                 }
                                 return null;
                               },
@@ -556,7 +560,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                     titulo: 'Conductores Participantes',
                     subtitulo: 'Conductores que aportarán a esta cuota',
                     child: InkWell(
-                      onTap: _cargandoConductores ? null : _abrirSelectorConductores,
+                      onTap: _cargandoConductores
+                          ? null
+                          : _abrirSelectorConductores,
                       borderRadius: BorderRadius.circular(14),
                       child: _buildInputContainer(
                         child: Row(
@@ -566,7 +572,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: _kMintBg,
                                     borderRadius: BorderRadius.circular(8),
@@ -687,9 +695,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
       width: double.infinity,
       decoration: const BoxDecoration(
         color: _kVerdeOscuro,
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(32),
-        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 20),
@@ -787,11 +793,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
             color: _kMintBg,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icono,
-            color: _kVerdeOscuro,
-            size: 28,
-          ),
+          child: Icon(icono, color: _kVerdeOscuro, size: 28),
         ),
       ],
     );
@@ -807,10 +809,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1.2,
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -832,11 +831,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                   color: _kMintBg,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icono,
-                  color: _kVerdeOscuro,
-                  size: 20,
-                ),
+                child: Icon(icono, color: _kVerdeOscuro, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -923,7 +918,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.bold,
-                      color: seleccionado ? _kVerdeOscuro : const Color(0xFF0F172A),
+                      color: seleccionado
+                          ? _kVerdeOscuro
+                          : const Color(0xFF0F172A),
                     ),
                   ),
                   Text(
@@ -1007,10 +1004,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
             ),
             child: const Text(
               'Cancelar',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
             ),
           ),
 
@@ -1042,7 +1036,11 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.check_rounded, size: 20, color: Colors.white),
+                        Icon(
+                          Icons.check_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                         SizedBox(width: 8),
                         Text(
                           'Guardar Cuota',

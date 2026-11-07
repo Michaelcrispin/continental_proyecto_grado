@@ -321,7 +321,7 @@ class _CrearReunionScreenState extends State<CrearReunionScreen> {
                     icono: Icons.checklist_rounded,
                     titulo: 'Modo de Asistencia Inicial',
                     subtitulo:
-                        'Define cómo se precargará la lista de los 20 conductores',
+                        'Define cómo se precargará la lista de los conductores',
                     child: Row(
                       children: [
                         Expanded(
