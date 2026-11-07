@@ -165,12 +165,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   bool _mapaListo = false;
   String? _errorGps;
   _Estilo _estilo = _Estilo.satelite;
-
-  // Conteo de vueltas por GPS real
-  String? _ladoBase;
-  String? _ladoActual;
-  int _vueltasUsuario = 0;
-  DateTime? _ultimaVuelta;
+  final int _vueltasUsuario = 0;
 
   @override
   void initState() {
@@ -333,7 +328,14 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             orElse: () => _vehiculos.first,
           );
         } else if (_vehiculos.isNotEmpty) {
-          _vehiculoSeleccionado = _vehiculos.first;
+          // Si entra como administrador sin especificar conductor, priorizar al que tiene vueltas de castigo pendientes (ej. Luis Mamani Condori)
+          _vehiculoSeleccionado = _vehiculos.firstWhere(
+            (v) => v.metaVueltasCastigo > v.vueltasCastigoCumplidas,
+            orElse: () => _vehiculos.firstWhere(
+              (v) => v.nombre.toLowerCase().contains('luis mamani'),
+              orElse: () => _vehiculos.first,
+            ),
+          );
         }
       });
 
@@ -493,7 +495,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             lat2: filtrada.latitude,
             lon2: filtrada.longitude,
           );
-    var vueltaCompletada = false;
     _Parada? paradaDetectadaParaAsistencia;
 
     setState(() {
@@ -535,18 +536,17 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           accuracy: p.accuracy,
           radio: pa.radio,
         );
-        final ahoraDentro = RutaContinental.estaDentroDeRectangulo(
-          filtrada,
-          poligono,
-          margenMetros: 0.0,
-        );
+        final ahoraDentro = pa.etiqueta == 'A'
+            ? (RutaContinental.estaEnZonaParadaA(filtrada, poligono) ||
+                RutaContinental.estaEnZonaParadaA(cruda, poligono))
+            : (RutaContinental.estaEnZonaParadaB(filtrada, poligono) ||
+                RutaContinental.estaEnZonaParadaB(cruda, poligono));
         _estados[pa.id]!.dentro = ahoraDentro;
-        // La asistencia SOLO se marca cuando el usuario pisa estrictamente el rectángulo del Punto A
-        if (ahoraDentro && pa.etiqueta == 'A' && permitirMarcarAsistencia) {
+        // Marcar asistencia cuando el usuario pisa el punto de control (Punto A o Punto B)
+        if (ahoraDentro && permitirMarcarAsistencia) {
           paradaDetectadaParaAsistencia = pa;
         }
       }
-      vueltaCompletada = _procesarTransicion();
 
       if (p.accuracy <= 45) {
         if (_rastroUsuario.isEmpty) {
@@ -578,25 +578,16 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     if (_seguir && _mapaListo) {
       _map.move(filtrada, math.max(_map.camera.zoom, 18.0));
     }
-
-    if (vueltaCompletada) _alCompletarVuelta();
   }
 
   LatLng _filtrarPosicion(Position p, LatLng cruda) {
     final previa = _posFiltrada;
     if (previa == null) return cruda;
 
-    // Si el usuario acaba de pisar el Punto A o Punto B, actualizar de inmediato sin retener posición previa
-    final enPuntoControl = RutaContinental.estaDentroDeRectangulo(
-          cruda,
-          RutaContinental.rectanguloParadaA,
-          margenMetros: 0.0,
-        ) ||
-        RutaContinental.estaDentroDeRectangulo(
-          cruda,
-          RutaContinental.rectanguloParadaB,
-          margenMetros: 0.0,
-        );
+    // Si el usuario acaba de pisar el Punto A o Punto B (según rectángulo o coordenadas de vuelta uno / vuelta dos),
+    // actualizar de inmediato sin retener posición previa
+    final enPuntoControl = RutaContinental.estaEnZonaParadaA(cruda) ||
+        RutaContinental.estaEnZonaParadaB(cruda);
     if (enPuntoControl) return cruda;
 
     final d = ReglasAsistencia.calcularDistanciaMetros(
@@ -606,12 +597,15 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       lon2: cruda.longitude,
     );
 
-    // En reposo (velocidad < 1.0 m/s ≈ 3.6 km/h), el GPS bajo techo rebota dentro de su radio de error (±accuracy).
-    // Ignoramos esos saltos fantasma menores al margen de ruido para que el auto no se mueva solo estando quieto.
-    final quieto = p.speed < 1.0;
+    // Si camina por el corredor de las coordenadas de vuelta uno / vuelta dos, ser más sensible al avance
+    final enCorredorVueltas =
+        RutaContinental.distanciaAlCorredorVueltasMetros(cruda) <= 8.5;
+    final quieto = p.speed < (enCorredorVueltas ? 0.55 : 1.0);
     final radioRuido = quieto
-        ? math.max(6.5, (p.accuracy * 0.70).clamp(6.5, 14.0))
-        : 2.5;
+        ? (enCorredorVueltas
+            ? 4.0
+            : math.max(6.5, (p.accuracy * 0.70).clamp(6.5, 14.0)))
+        : 2.0;
     if (d < radioRuido) return previa;
 
     final alpha = d > 18 ? 0.85 : (d > 8 ? 0.65 : 0.45);
@@ -619,82 +613,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       previa.latitude + (cruda.latitude - previa.latitude) * alpha,
       previa.longitude + (cruda.longitude - previa.longitude) * alpha,
     );
-  }
-
-  _Parada? _paradaPorEtiqueta(String etiqueta) {
-    for (final p in _paradas) {
-      if (p.etiqueta == etiqueta) return p;
-    }
-    return null;
-  }
-
-  bool _procesarTransicion() {
-    final a = _paradaPorEtiqueta('A');
-    final b = _paradaPorEtiqueta('B');
-    if (a == null || b == null) return false;
-
-    final enA = _estados[a.id]?.dentro ?? false;
-    final enB = _estados[b.id]?.dentro ?? false;
-
-    if (enA == enB) return false;
-
-    final actual = enA ? 'A' : 'B';
-    if (_ladoBase == null || _ladoActual == null) {
-      _ladoBase = actual;
-      _ladoActual = actual;
-      return false;
-    }
-    if (actual == _ladoActual) return false;
-
-    _ladoActual = actual;
-    if (actual != _ladoBase) return false;
-
-    final ahora = DateTime.now();
-    if (_ultimaVuelta != null &&
-        ahora.difference(_ultimaVuelta!) < const Duration(seconds: 15)) {
-      return false;
-    }
-    _ultimaVuelta = ahora;
-    _vueltasUsuario++;
-    return true;
-  }
-
-  Future<void> _alCompletarVuelta() async {
-    HapticFeedback.mediumImpact();
-    SystemSound.play(SystemSoundType.click);
-
-    final idConductor = SesionService.instance.idConductor ??
-        _vehiculoSeleccionado?.idConductor;
-    if (idConductor != null && idConductor.isNotEmpty) {
-      try {
-        await DatabaseHelper.instance.registrarVuelta(
-          idConductor: idConductor,
-          tipo: 'normal',
-        );
-        await _cargarFlotaConductores();
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      final detalle =
-          '¡Vuelta completada por GPS! $_ladoBase → ${_ladoBase == 'A' ? 'B' : 'A'} → $_ladoBase';
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: _kVerdeContinental,
-            duration: const Duration(seconds: 3),
-            content: Text(
-              detalle,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        );
-    }
   }
 
   // ---------- Control de Cámara y Selección ----------
@@ -779,9 +697,13 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             ..showSnackBar(
               SnackBar(
                 behavior: SnackBarBehavior.floating,
-                backgroundColor: _kVerdeContinental,
+                backgroundColor: res.esTardanza
+                    ? const Color(0xFFD97706)
+                    : _kVerdeContinental,
                 content: Text(
-                  '¡Estás en el punto de control (${parada.nombre})! Asistencia marcada: Asistió.',
+                  res.esTardanza
+                      ? '¡Punto de control (${parada.nombre})! Tardanza registrada (+${res.vueltasCastigo} vueltas de castigo).'
+                      : '¡Estás en el punto de control (${parada.nombre})! Asistencia marcada: A tiempo.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -835,8 +757,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         TileLayer(
           urlTemplate: esSat
               ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-              : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-          subdomains: const ['a', 'b', 'c', 'd'],
+              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.example.continental',
           maxNativeZoom: 19,
           maxZoom: 21,
@@ -925,11 +846,9 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
         ? RutaContinental.rectanguloParadaA
         : RutaContinental.rectanguloParadaB;
     if (_posFiltrada != null) {
-      return RutaContinental.estaDentroDeRectangulo(
-        _posFiltrada!,
-        poligono,
-        margenMetros: 0.0,
-      );
+      return etiqueta == 'A'
+          ? RutaContinental.estaEnZonaParadaA(_posFiltrada!, poligono)
+          : RutaContinental.estaEnZonaParadaB(_posFiltrada!, poligono);
     }
     return false;
   }
@@ -1208,38 +1127,50 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   Widget _tarjetaEstadoReal() {
     final v = _vehiculoSeleccionado;
     final enA = _dispositivoEnParada('A');
-    final enPuntoControl = enA;
+    final enB = _dispositivoEnParada('B');
+    final enPuntoControl = enA || enB;
 
     final dA = _paradas.isNotEmpty
         ? _distanciaDispositivoAParada(_paradas.first)
         : null;
+    final dB = _paradas.length > 1
+        ? _distanciaDispositivoAParada(_paradas.last)
+        : null;
 
     final yaAsistio = v != null && v.estadoAsistencia != 'falta';
 
-    final Color bgCard =
-        enPuntoControl ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2);
-    final Color borderCard =
-        enPuntoControl ? const Color(0xFF10B981) : const Color(0xFFFCA5A5);
-    final Color iconBg =
-        enPuntoControl ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-    final Color titleColor =
-        enPuntoControl ? const Color(0xFF065F46) : const Color(0xFF991B1B);
+    final Color bgCard = enPuntoControl
+        ? const Color(0xFFECFDF5)
+        : const Color(0xFFFEF2F2);
+    final Color borderCard = enPuntoControl
+        ? const Color(0xFF10B981)
+        : const Color(0xFFFCA5A5);
+    final Color iconBg = enPuntoControl
+        ? const Color(0xFF10B981)
+        : const Color(0xFFEF4444);
+    final Color titleColor = enPuntoControl
+        ? const Color(0xFF065F46)
+        : const Color(0xFF991B1B);
 
     final String tituloAlerta = enPuntoControl
         ? '¡Estás en el punto de control!'
         : 'No estás en el punto de control';
 
-    final String subtituloPrincipal = enPuntoControl
+    final String subtituloPrincipal = enA
         ? 'Punto A • Cruce Villadela'
-        : (dA != null
-            ? 'Estás a ${_fmt(dA)} del Punto A (Cruce Villadela)'
-            : 'Obteniendo ubicación GPS del dispositivo…');
+        : (enB
+            ? 'Punto B • Teleférico Amarillo - Mirador'
+            : (dA != null && dB != null
+                ? (dA <= dB
+                    ? 'Estás a ${_fmt(dA)} del Punto A (Cruce Villadela)'
+                    : 'Estás a ${_fmt(dB)} del Punto B (Teleférico)')
+                : 'Obteniendo ubicación GPS del dispositivo…'));
 
     final String subtituloAsistencia = enPuntoControl
         ? 'Asistencia marcada: Asistió${yaAsistio ? " (${v.horaMarcacion})" : ""}'
         : (yaAsistio
             ? 'Asistencia de hoy: Asistió (${v.horaMarcacion})'
-            : 'Pisa el Punto A para marcar tu asistencia');
+            : 'Pisa el Punto A o Punto B para marcar tu asistencia');
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -1414,7 +1345,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     final precisionStr = _posUsuario != null
         ? '±${_posUsuario!.accuracy.toStringAsFixed(0)} m'
         : 'Sin GPS';
-    final vueltasMostradas = v?.vueltasHoy ?? _vueltasUsuario;
+    final vueltasHoy = v?.vueltasHoy ?? _vueltasUsuario;
 
     return Container(
       width: double.infinity,
@@ -1460,7 +1391,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
               ),
               _dato(
                 Icons.repeat_rounded,
-                '$vueltasMostradas v.',
+                '$vueltasHoy v.',
                 'Vueltas hoy',
               ),
               _dato(

@@ -126,6 +126,27 @@ class DatabaseHelper {
               conflictAlgorithm: ConflictAlgorithm.replace,
             );
           }
+
+          // Limpiar sanción semilla de Luis Mamani Condori si existía en la BD
+          final condLuis = await db.query(
+            'conductor',
+            where: "ci = '8392012' OR LOWER(nombre) LIKE '%luis mamani condori%'",
+            limit: 1,
+          );
+          if (condLuis.isNotEmpty) {
+            final idLuis = condLuis.first['id_conductor']?.toString() ?? '';
+            if (idLuis.isNotEmpty) {
+              await db.delete(
+                'sancion',
+                where: 'id_conductor = ? AND id_asistencia IS NULL',
+                whereArgs: [idLuis],
+              );
+              await db.delete(
+                'configuracion',
+                where: "clave = 'seed_sancion_luis_mamani_v1'",
+              );
+            }
+          }
         } catch (_) {}
         // Eliminar conductores que estaban en la semilla de 20 (dejando únicamente 10 conductores iniciales)
         try {
@@ -155,6 +176,10 @@ class DatabaseHelper {
             }
           }
           await _reordenarConductoresEnTxn(db);
+        } catch (_) {}
+        // Sembrar cuotas iniciales de Ayuda Económica y Reunión (sin Canastón todavía)
+        try {
+          await _seedCuotasAyudaYReunion(db, _now());
         } catch (_) {}
       },
     );
@@ -1088,6 +1113,9 @@ class DatabaseHelper {
 
     // 2. Siembra de los 10 conductores oficiales del sindicato con sus vehículos
     await _seedConductores(db, now);
+
+    // 3. Siembra de cuotas iniciales: Ayuda Económica y Reunión (sin Canastón todavía)
+    await _seedCuotasAyudaYReunion(db, now);
   }
 
   /// Siembra o repara los 10 conductores institucionales con su usuario, licencia y vehículo asignado.
@@ -1251,6 +1279,376 @@ class DatabaseHelper {
         );
       } catch (_) {}
     }
+  }
+
+  /// Siembra cuotas iniciales de Ayuda Económica y Multas por Falta a Reunión (sin Canastón todavía).
+  Future<void> _seedCuotasAyudaYReunion(Database db, String now) async {
+    final yaSembrado = await db.query(
+      'configuracion',
+      where: "clave = 'seed_cuotas_ayuda_reunion_v1'",
+      limit: 1,
+    );
+    final cantTipos = Sqflite.firstIntValue(
+          await db.rawQuery(
+            "SELECT COUNT(*) FROM tipo_cuota WHERE categoria IN ('ayuda', 'multa') AND activo = 1",
+          ),
+        ) ??
+        0;
+    if (yaSembrado.isNotEmpty && cantTipos > 0) return;
+
+    final conductores = await db.query(
+      'conductor',
+      where: "LOWER(estado) = 'activo'",
+      orderBy: 'CAST(numero_interno AS INTEGER) ASC, nombre ASC',
+    );
+    if (conductores.isEmpty) return;
+
+    final usuariosAdmin = await db.query(
+      'usuario',
+      orderBy: "CASE WHEN rol = 'superadmin' THEN 0 ELSE 1 END",
+      limit: 1,
+    );
+    if (usuariosAdmin.isEmpty) return;
+    final idUsuarioReg = usuariosAdmin.first['id_usuario'].toString();
+
+    final ahora = DateTime.now();
+    final hoyStr = ahora.toIso8601String().substring(0, 10);
+    final hace3DiasStr =
+        ahora.subtract(const Duration(days: 3)).toIso8601String().substring(0, 10);
+    final vencimientoStr =
+        ahora.add(const Duration(days: 7)).toIso8601String().substring(0, 10);
+
+    Map<String, dynamic>? buscarPorCi(String ci) {
+      for (final c in conductores) {
+        if ((c['ci']?.toString() ?? '') == ci) return c;
+      }
+      return null;
+    }
+
+    final benef1 = buscarPorCi('4839201') ?? conductores.last; // Roberto Vargas
+    final idBenef1 = benef1['id_conductor'].toString();
+    final nomBenef1 = benef1['nombre']?.toString() ?? 'Roberto Vargas';
+
+    final benef2 =
+        buscarPorCi('5928374') ?? conductores[conductores.length ~/ 2]; // Pedro Apaza Cruz
+    final idBenef2 = benef2['id_conductor'].toString();
+    final nomBenef2 = benef2['nombre']?.toString() ?? 'Pedro Apaza Cruz';
+
+    // -------------------------------------------------------------------------
+    // 1. AYUDA ECONÓMICA #1 (En cobro - Bs. 100 por chofer)
+    // -------------------------------------------------------------------------
+    final nombreAyuda1 = 'Apoyo Económico - Salud $nomBenef1';
+    final existeAyuda1 = await db.query(
+      'tipo_cuota',
+      where: 'LOWER(nombre) = ?',
+      whereArgs: [nombreAyuda1.toLowerCase()],
+      limit: 1,
+    );
+    if (existeAyuda1.isEmpty) {
+      final idTipoAyuda1 = _uuid.v4();
+      final idLote1 = _uuid.v4();
+      await db.insert('tipo_cuota', {
+        'id_tipo_cuota': idTipoAyuda1,
+        'nombre': nombreAyuda1,
+        'descripcion':
+            'Beneficiario: $nomBenef1 | Modalidad: Obligatoria | Motivo: Gastos médicos y recuperación por intervención quirúrgica',
+        'categoria': 'ayuda',
+        'monto_sugerido': 100.0,
+        'activo': 1,
+        'es_fijo': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      int pagadosCount = 0;
+      for (final c in conductores) {
+        final idC = c['id_conductor'].toString();
+        final ciC = c['ci']?.toString() ?? '';
+        if (idC == idBenef1) continue;
+
+        // Dejar pendientes a Juan Carlos Quispe (6849201) y Luis Mamani Condori (8392012) + 2 más;
+        // marcar como pagados a 5 conductores.
+        final esPendienteDemo = ciC == '6849201' || ciC == '8392012' || pagadosCount >= 5;
+        final pagado = !esPendienteDemo;
+        if (pagado) pagadosCount++;
+
+        final idCuota = _uuid.v4();
+        await db.insert('cuota', {
+          'id_cuota': idCuota,
+          'id_conductor': idC,
+          'id_tipo_cuota': idTipoAyuda1,
+          'monto': 100.0,
+          'monto_pagado': pagado ? 100.0 : 0.0,
+          'fecha': hoyStr,
+          'fecha_vencimiento': vencimientoStr,
+          'concepto': '$nombreAyuda1 · Solidaridad con $nomBenef1',
+          'id_lote': idLote1,
+          'registrado_por': idUsuarioReg,
+          'estado': pagado ? 'pagado' : 'pendiente',
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+
+        if (pagado) {
+          final nroRec =
+              'REC-${ahora.year}-${(100 + pagadosCount).toString().padLeft(6, '0')}';
+          await db.insert(
+            'pago',
+            {
+              'id_pago': _uuid.v4(),
+              'id_cuota': idCuota,
+              'monto': 100.0,
+              'fecha': hoyStr,
+              'metodo': pagadosCount.isOdd ? 'efectivo' : 'qr',
+              'nro_recibo': nroRec,
+              'observacion': 'Aporte solidario registrado',
+              'id_usuario': idUsuarioReg,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. AYUDA ECONÓMICA #2 (Completada 100% - Bs. 50 por chofer)
+    // -------------------------------------------------------------------------
+    final nombreAyuda2 = 'Apoyo Solidario - Auxilio Mecánico $nomBenef2';
+    final existeAyuda2 = await db.query(
+      'tipo_cuota',
+      where: 'LOWER(nombre) = ?',
+      whereArgs: [nombreAyuda2.toLowerCase()],
+      limit: 1,
+    );
+    if (existeAyuda2.isEmpty) {
+      final idTipoAyuda2 = _uuid.v4();
+      final idLote2 = _uuid.v4();
+      await db.insert('tipo_cuota', {
+        'id_tipo_cuota': idTipoAyuda2,
+        'nombre': nombreAyuda2,
+        'descripcion':
+            'Beneficiario: $nomBenef2 | Modalidad: Obligatoria | Motivo: Auxilio mecánico por siniestro vial en ruta',
+        'categoria': 'ayuda',
+        'monto_sugerido': 50.0,
+        'activo': 1,
+        'es_fijo': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      int idxRec = 0;
+      for (final c in conductores) {
+        final idC = c['id_conductor'].toString();
+        if (idC == idBenef2) continue;
+        idxRec++;
+
+        final idCuota = _uuid.v4();
+        await db.insert('cuota', {
+          'id_cuota': idCuota,
+          'id_conductor': idC,
+          'id_tipo_cuota': idTipoAyuda2,
+          'monto': 50.0,
+          'monto_pagado': 50.0,
+          'fecha': hace3DiasStr,
+          'fecha_vencimiento': hoyStr,
+          'concepto': '$nombreAyuda2 · Solidaridad con $nomBenef2',
+          'id_lote': idLote2,
+          'registrado_por': idUsuarioReg,
+          'estado': 'pagado',
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+
+        final nroRec =
+            'REC-${ahora.year}-${(200 + idxRec).toString().padLeft(6, '0')}';
+        await db.insert(
+          'pago',
+          {
+            'id_pago': _uuid.v4(),
+            'id_cuota': idCuota,
+            'monto': 50.0,
+            'fecha': hace3DiasStr,
+            'metodo': idxRec.isEven ? 'qr' : 'efectivo',
+            'nro_recibo': nroRec,
+            'observacion': 'Aporte solidario cancelado al 100%',
+            'id_usuario': idUsuarioReg,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. REUNIÓN #1 (Cerrada y con Multas por Falta a Reunión en Cuotas)
+    // -------------------------------------------------------------------------
+    const temaReunion1 = 'Asamblea General Ordinaria - Noviembre';
+    final existeReunion1 = await db.query(
+      'reunion',
+      where: 'LOWER(tema) = ?',
+      whereArgs: [temaReunion1.toLowerCase()],
+      limit: 1,
+    );
+    if (existeReunion1.isEmpty) {
+      final idReunion1 = _uuid.v4();
+      final idTipoMulta1 = _uuid.v4();
+
+      await db.insert('reunion', {
+        'id_reunion': idReunion1,
+        'fecha': hace3DiasStr,
+        'tema': temaReunion1,
+        'monto_multa': 50.0,
+        'estado': 'cerrada',
+        'cerrada_en': now,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      await db.insert('tipo_cuota', {
+        'id_tipo_cuota': idTipoMulta1,
+        'nombre': 'Multa: $temaReunion1',
+        'descripcion':
+            'Multas por falta a la asamblea "$temaReunion1" ($hace3DiasStr). Sanción individual: Bs. 50.00',
+        'categoria': 'multa',
+        'monto_sugerido': 50.0,
+        'activo': 1,
+        'es_fijo': 1,
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      // 3 conductores con falta (Juan Carlos Quispe 6849201, Miguel Angel Choque 9012834, Carlos Nina Huanca 6938475)
+      // 1 conductor con licencia (Roberto Vargas 4839201), el resto presente
+      int idxMulta = 0;
+      for (final c in conductores) {
+        final idC = c['id_conductor'].toString();
+        final ciC = c['ci']?.toString() ?? '';
+        final esFalta = ciC == '6849201' || ciC == '9012834' || ciC == '6938475';
+        final esLicencia = ciC == '4839201';
+        final estadoAsist = esFalta
+            ? 'falta'
+            : (esLicencia ? 'licencia' : 'presente');
+
+        await db.insert('asistencia_reunion', {
+          'id_asistencia_reunion': _uuid.v4(),
+          'id_reunion': idReunion1,
+          'id_conductor': idC,
+          'estado': estadoAsist,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+
+        if (esFalta) {
+          idxMulta++;
+          // Carlos Nina Huanca ya pagó su multa; Juan Carlos Quispe y Miguel Angel Choque la tienen pendiente
+          final multaPagada = ciC == '6938475';
+          final idCuotaMulta = _uuid.v4();
+          await db.insert('cuota', {
+            'id_cuota': idCuotaMulta,
+            'id_conductor': idC,
+            'id_tipo_cuota': idTipoMulta1,
+            'monto': 50.0,
+            'monto_pagado': multaPagada ? 50.0 : 0.0,
+            'fecha': hace3DiasStr,
+            'concepto': 'Multa por falta a reunión: $temaReunion1',
+            'registrado_por': idUsuarioReg,
+            'estado': multaPagada ? 'pagado' : 'pendiente',
+            'id_reunion': idReunion1,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+
+          if (multaPagada) {
+            final nroRec =
+                'REC-${ahora.year}-${(300 + idxMulta).toString().padLeft(6, '0')}';
+            await db.insert(
+              'pago',
+              {
+                'id_pago': _uuid.v4(),
+                'id_cuota': idCuotaMulta,
+                'monto': 50.0,
+                'fecha': hoyStr,
+                'metodo': 'efectivo',
+                'nro_recibo': nroRec,
+                'observacion': 'Pago de multa por inasistencia a asamblea',
+                'id_usuario': idUsuarioReg,
+                'created_at': now,
+                'updated_at': now,
+                'sincronizado': 0,
+              },
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+          }
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. REUNIÓN #2 (En curso hoy - lista para pasar asistencia y cerrar en vivo)
+    // -------------------------------------------------------------------------
+    const temaReunion2 = 'Reunión Extraordinaria de Directorio y Bases';
+    final existeReunion2 = await db.query(
+      'reunion',
+      where: 'LOWER(tema) = ?',
+      whereArgs: [temaReunion2.toLowerCase()],
+      limit: 1,
+    );
+    if (existeReunion2.isEmpty) {
+      final idReunion2 = _uuid.v4();
+      await db.insert('reunion', {
+        'id_reunion': idReunion2,
+        'fecha': hoyStr,
+        'tema': temaReunion2,
+        'monto_multa': 50.0,
+        'estado': 'pendiente',
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      });
+
+      for (int i = 0; i < conductores.length; i++) {
+        final idC = conductores[i]['id_conductor'].toString();
+        final ciC = conductores[i]['ci']?.toString() ?? '';
+        final estadoAsist =
+            (ciC == '8392012' || ciC == '4928371') ? 'falta' : 'presente';
+        await db.insert('asistencia_reunion', {
+          'id_asistencia_reunion': _uuid.v4(),
+          'id_reunion': idReunion2,
+          'id_conductor': idC,
+          'estado': estadoAsist,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+      }
+    }
+
+    await db.insert(
+      'configuracion',
+      {
+        'clave': 'seed_cuotas_ayuda_reunion_v1',
+        'valor': '1',
+        'descripcion':
+            'Semilla inicial de cuotas de Ayuda Económica y Reunión (sin Canastón)',
+        'created_at': now,
+        'updated_at': now,
+        'sincronizado': 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -2514,6 +2912,9 @@ class DatabaseHelper {
     String? fecha,
   }) async {
     final db = await database;
+    try {
+      await _sincronizarHorariosSancionesEnTxn(db);
+    } catch (_) {}
     final condiciones = <String>[];
     final args = <Object?>[];
     if (idConductor != null) {
@@ -2592,7 +2993,7 @@ class DatabaseHelper {
       String tipoFinal = tipo ?? 'normal';
       String? idAsistFinal = idAsistencia;
 
-      if (sancionesPendientes.isNotEmpty) {
+      if (tipoFinal == 'sancion' && sancionesPendientes.isNotEmpty) {
         final s = sancionesPendientes.first;
         final idSancion = s['id_sancion']?.toString() ?? '';
         final asignadas = (s['vueltas_asignadas'] as num?)?.toInt() ?? 2;
@@ -2640,6 +3041,9 @@ class DatabaseHelper {
     String? estado,
   }) async {
     final db = await database;
+    try {
+      await _sincronizarHorariosSancionesEnTxn(db);
+    } catch (_) {}
     final condiciones = <String>[];
     final args = <Object?>[];
     if (idConductor != null) {
@@ -2753,45 +3157,75 @@ class DatabaseHelper {
   }
 
   static Future<void> _sincronizarHorariosSancionesEnTxn(DatabaseExecutor db) async {
-    try {
-      // 1. Actualizar sanciones demo a horas después de las 08:00 AM
-      await db.execute('''
-        UPDATE sancion 
-        SET hora = '08:12 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
-        WHERE (hora LIKE '07:42%' OR (hora LIKE '07:%' AND estado = 'cumplida')) AND origen = 'demo_castigo';
-      ''');
-      await db.execute('''
-        UPDATE sancion 
-        SET hora = '08:21 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
-        WHERE (hora LIKE '07:51%' OR (hora LIKE '07:%' AND vueltas_cumplidas = 1)) AND origen = 'demo_castigo';
-      ''');
-      await db.execute('''
-        UPDATE sancion 
-        SET hora = '08:35 AM', motivo = 'Tardanza en asistencia (> 08:00 AM)'
-        WHERE (hora LIKE '07:%' AND vueltas_cumplidas = 0) AND origen = 'demo_castigo';
-      ''');
-      await db.execute('''
-        UPDATE sancion 
-        SET motivo = 'Tardanza en asistencia (> 08:00 AM)'
-        WHERE motivo LIKE '%> 07:30%' OR motivo LIKE '%> 07:00%';
-      ''');
+    // Si una asistencia de hoy se registró después de las 08:00 AM y había quedado como 'presente',
+    // corregirla automáticamente a 'tardanza' y crear su sanción de +2 vueltas de castigo.
+    final ahora = DateTime.now();
+    final hoy = ahora.toIso8601String().substring(0, 10);
+    final nowIso = ahora.toIso8601String();
+    final asistenciasHoy = await db.query(
+      'asistencia',
+      where: 'fecha = ?',
+      whereArgs: [hoy],
+    );
+    for (final r in asistenciasHoy) {
+      final idAsist = r['id_asistencia']?.toString() ?? '';
+      final idCond = r['id_conductor']?.toString() ?? '';
+      final horaStr = r['hora_llegada']?.toString() ?? '';
+      final estadoActual = r['estado']?.toString().toLowerCase() ?? 'presente';
+      if (idAsist.isEmpty || idCond.isEmpty || horaStr.isEmpty) continue;
 
-      // 2. Si alguna asistencia entre 07:30 y 08:00 fue guardada erróneamente como tardanza,
-      // regularizar a 'presente' porque está dentro de la tolerancia de 30 minutos
-      await db.execute('''
-        UPDATE asistencia
-        SET estado = 'presente', minutos_retraso = 0
-        WHERE hora_llegada >= '07:30' AND hora_llegada <= '08:00' AND estado = 'tardanza' AND es_simulada = 1;
-      ''');
+      final limpia = horaStr.replaceAll('AM', '').replaceAll('PM', '').trim();
+      final partes = limpia.split(':');
+      if (partes.length < 2) continue;
+      final h = int.tryParse(partes[0]) ?? 0;
+      final m = int.tryParse(partes[1]) ?? 0;
+      final minLlegada = (h * 60) + m;
+      const minLimite = 8 * 60; // 08:00 AM
 
-      // 3. Eliminar sanciones vinculadas a asistencias regulares (<= 08:00 AM)
-      await db.execute('''
-        DELETE FROM sancion
-        WHERE id_asistencia IN (
-          SELECT id_asistencia FROM asistencia WHERE hora_llegada >= '07:30' AND hora_llegada <= '08:00' AND estado = 'presente'
+      if (minLlegada > minLimite) {
+        final retraso = minLlegada - minLimite;
+        if (estadoActual != 'tardanza') {
+          await db.update(
+            'asistencia',
+            {
+              'estado': 'tardanza',
+              'minutos_retraso': retraso,
+              'updated_at': nowIso,
+              'sincronizado': 0,
+            },
+            where: 'id_asistencia = ?',
+            whereArgs: [idAsist],
+          );
+        }
+
+        final sancionExistente = await db.query(
+          'sancion',
+          where: 'id_asistencia = ? OR (id_conductor = ? AND fecha = ?)',
+          whereArgs: [idAsist, idCond, hoy],
+          limit: 1,
         );
-      ''');
-    } catch (_) {}
+        if (sancionExistente.isEmpty) {
+          await db.insert('sancion', {
+            'id_sancion': _uuid.v4(),
+            'id_conductor': idCond,
+            'id_asistencia': idAsist,
+            'motivo':
+                'Tardanza (llegó $horaStr, límite 08:00, $retraso min de retraso)',
+            'vueltas_asignadas': 2,
+            'vueltas_cumplidas': 0,
+            'estado': 'pendiente',
+            'origen': 'tardanza_auto',
+            'tipo': 'tardanza',
+            'es_simulada': 0,
+            'fecha': hoy,
+            'hora': horaStr,
+            'created_at': nowIso,
+            'updated_at': nowIso,
+            'sincronizado': 0,
+          });
+        }
+      }
+    }
   }
 
   Future<void> sembrarVueltasCastigoDemo() async {

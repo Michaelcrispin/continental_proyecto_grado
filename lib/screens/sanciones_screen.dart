@@ -5,6 +5,7 @@ import '../services/database_helper.dart';
 import '../services/sesion_service.dart';
 import '../widgets/avatar_conductor.dart';
 import '../widgets/informe_sanciones_whatsapp_dialog.dart';
+import '../widgets/vuelta_castigo_sheet.dart';
 import 'cuotas/widgets/dialogo_informe_whatsapp.dart';
 
 import '../widgets/app_bottom_bar.dart';
@@ -1189,55 +1190,65 @@ class _SancionesScreenState extends State<SancionesScreen> {
     required int faltan,
   }) {
     if (cumplida) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFECFDF5),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFA7F3D0)),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.verified_rounded, color: Color(0xFF02634C), size: 19),
-            SizedBox(width: 7),
-            Text(
-              'Sanción cumplida y cerrada',
-              style: TextStyle(
-                color: Color(0xFF02634C),
-                fontWeight: FontWeight.w800,
-                fontSize: 12.5,
+      return InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await VueltaCastigoSheet.mostrar(context, sancion);
+          if (mounted) await _cargar();
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFECFDF5),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFA7F3D0)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.verified_rounded, color: Color(0xFF02634C), size: 19),
+              SizedBox(width: 7),
+              Text(
+                'Sanción cumplida (2/2) • Ver vueltas GPS',
+                style: TextStyle(
+                  color: Color(0xFF02634C),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
     if (!_puedeEditar) {
-      return Container(
+      return SizedBox(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFBEB),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFFDE68A)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_rounded, color: Color(0xFFB45309), size: 18),
-            const SizedBox(width: 7),
-            Text(
-              'Debes completar $faltan vuelta(s) de castigo',
-              style: const TextStyle(
-                color: Color(0xFFB45309),
-                fontWeight: FontWeight.w800,
-                fontSize: 12.5,
-              ),
+        child: ElevatedButton.icon(
+          onPressed: () async {
+            await VueltaCastigoSheet.mostrar(context, sancion);
+            if (mounted) await _cargar();
+          },
+          icon: const Icon(Icons.satellite_alt_rounded, size: 18, color: Colors.white),
+          label: Text(
+            'Cumplir vueltas con GPS (faltan $faltan)',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: Colors.white,
             ),
-          ],
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _kVerdeContinental,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
         ),
       );
     }

@@ -413,14 +413,6 @@ class _DashboardCuotasScreenState extends State<DashboardCuotasScreen> {
         fondo: const Color(0xFFEFF6FF),
       ),
       _kpiCard(
-        titulo: 'Ticket promedio',
-        valor: _bs(_num(_data?['ticket_promedio'])),
-        detalle: 'por pago',
-        icono: Icons.analytics_rounded,
-        color: _kVioleta,
-        fondo: const Color(0xFFF5F3FF),
-      ),
-      _kpiCard(
         titulo: 'Por cobrar',
         valor: _bs(_num(_data?['pendiente'])),
         detalle: 'cartera pendiente',

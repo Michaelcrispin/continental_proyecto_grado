@@ -100,21 +100,93 @@ class RutaContinental {
   /// Circuito completo continuo (Ida + Vuelta)
   static List<LatLng> get circuitoCompleto => [...puntosIda, ...puntosVuelta];
 
-  /// Geocerca Rectangular Oficial de Parada A (11 m x 8 m estrictamente sobre la calle en Punto A)
-  static const List<LatLng> rectanguloParadaA = [
-    LatLng(-16.575605, -68.237635),
-    LatLng(-16.575650, -68.237590),
-    LatLng(-16.575715, -68.237655),
-    LatLng(-16.575670, -68.237700),
+  /// Coordenadas exactas grabadas en "vuelta uno" (7_nov_2026,_10_24_27.gpx): A -> B
+  static const List<LatLng> puntosCrudosVueltaUno = [
+    LatLng(-16.57568833, -68.23764500),
+    LatLng(-16.57575000, -68.23772667),
+    LatLng(-16.57583000, -68.23779500),
+    LatLng(-16.57588833, -68.23787667),
+    LatLng(-16.57595167, -68.23795333),
+    LatLng(-16.57601667, -68.23803000),
+    LatLng(-16.57607667, -68.23810500),
+    LatLng(-16.57613500, -68.23817667),
   ];
 
-  /// Geocerca Rectangular Oficial de Parada B (11 m x 8 m estrictamente sobre la calle en Punto B)
-  static const List<LatLng> rectanguloParadaB = [
-    LatLng(-16.576115, -68.238193),
-    LatLng(-16.576160, -68.238148),
-    LatLng(-16.576225, -68.238213),
-    LatLng(-16.576180, -68.238258),
+  /// Coordenadas exactas grabadas en "vuelta dos" (7_nov_2026,_10_26_04.gpx): B -> A
+  static const List<LatLng> puntosCrudosVueltaDos = [
+    LatLng(-16.57617500, -68.23820333),
+    LatLng(-16.57610500, -68.23813667),
+    LatLng(-16.57602833, -68.23807833),
+    LatLng(-16.57596500, -68.23800667),
+    LatLng(-16.57589833, -68.23793000),
+    LatLng(-16.57583667, -68.23785833),
+    LatLng(-16.57576500, -68.23778500),
+    LatLng(-16.57570167, -68.23770667),
+    LatLng(-16.57564167, -68.23762667),
   ];
+
+  /// Geocerca Rectangular Oficial de Parada A (cubre inicio de vuelta uno y cierre de vuelta dos sobre la calle,
+  /// manteniéndose alejada del interior de la vivienda en -16.575788, -68.237622).
+  static const List<LatLng> rectanguloParadaA = [
+    LatLng(-16.575595, -68.237625),
+    LatLng(-16.575650, -68.237575),
+    LatLng(-16.575735, -68.237685),
+    LatLng(-16.575680, -68.237735),
+  ];
+
+  /// Geocerca Rectangular Oficial de Parada B (cubre el final de vuelta uno [-16.576135, -68.23817667]
+  /// y el inicio de vuelta dos [-16.576175, -68.23820333] / [-16.576105, -68.23813667]).
+  static const List<LatLng> rectanguloParadaB = [
+    LatLng(-16.576065, -68.238145),
+    LatLng(-16.576125, -68.238085),
+    LatLng(-16.576230, -68.238210),
+    LatLng(-16.576170, -68.238270),
+  ];
+
+  /// Verifica si [p] está en el Punto A usando el rectángulo y las coordenadas finales/iniciales
+  /// de vuelta uno y vuelta dos (excluyendo siempre la zona interior de la casa al sur de -16.575740).
+  static bool estaEnZonaParadaA(LatLng p, [List<LatLng>? poligonoCustom]) {
+    if (p.latitude < -16.575740) return false;
+    final poly = poligonoCustom ?? rectanguloParadaA;
+    if (estaDentroDeRectangulo(p, poly, margenMetros: 0.0)) return true;
+    const puntosClaveA = [
+      LatLng(-16.57568833, -68.23764500), // Inicio vuelta uno
+      LatLng(-16.57570167, -68.23770667), // Llegada vuelta dos (penúltimo punto)
+      LatLng(-16.57564167, -68.23762667), // Cierre vuelta dos (último punto)
+    ];
+    for (final pa in puntosClaveA) {
+      if (_distanciaMetros(p, pa) <= 5.0) return true;
+    }
+    return false;
+  }
+
+  /// Verifica si [p] está en el Punto B usando el rectángulo y las coordenadas de retorno
+  /// de vuelta uno y vuelta dos.
+  static bool estaEnZonaParadaB(LatLng p, [List<LatLng>? poligonoCustom]) {
+    final poly = poligonoCustom ?? rectanguloParadaB;
+    if (estaDentroDeRectangulo(p, poly, margenMetros: 4.0)) return true;
+    const puntosClaveB = [
+      LatLng(-16.57613500, -68.23817667), // Fin vuelta uno
+      LatLng(-16.57607667, -68.23810500), // Penúltimo vuelta uno
+      LatLng(-16.57617500, -68.23820333), // Inicio vuelta dos
+      LatLng(-16.57610500, -68.23813667), // Segundo punto vuelta dos
+    ];
+    for (final pb in puntosClaveB) {
+      if (_distanciaMetros(p, pb) <= 7.5) return true;
+    }
+    return false;
+  }
+
+  /// Retorna la distancia mínima en metros desde [p] a cualquiera de las coordenadas
+  /// grabadas en vuelta uno y vuelta dos.
+  static double distanciaAlCorredorVueltasMetros(LatLng p) {
+    double minD = double.infinity;
+    for (final pt in [...puntosCrudosVueltaUno, ...puntosCrudosVueltaDos]) {
+      final d = _distanciaMetros(p, pt);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
 
   /// Retorna el rectángulo de Parada A, trasladándolo si [centroCustom] fue movido
   /// manualmente respecto a la coordenada oficial.
@@ -203,5 +275,13 @@ class RutaContinental {
       if (dist < minD) minD = dist;
     }
     return minD;
+  }
+
+  static double _distanciaMetros(LatLng a, LatLng b) {
+    const latScale = 111320.0;
+    final lonScale = 111320.0 * math.cos(a.latitude * math.pi / 180.0);
+    final dx = (b.longitude - a.longitude) * lonScale;
+    final dy = (b.latitude - a.latitude) * latScale;
+    return math.sqrt(dx * dx + dy * dy);
   }
 }

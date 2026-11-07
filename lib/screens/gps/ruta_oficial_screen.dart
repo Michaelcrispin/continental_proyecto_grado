@@ -72,10 +72,22 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
     String? nombreCond = SesionService.instance.nombre;
 
     if (idCond == null || idCond.isEmpty) {
-      final lista = await DatabaseHelper.instance.conductoresConAuto();
-      if (lista.isNotEmpty) {
-        idCond = lista.first['id_conductor']?.toString();
-        nombreCond = lista.first['nombre']?.toString();
+      final sancionesPend =
+          await DatabaseHelper.instance.sancionesDetalle(estado: 'pendiente');
+      if (sancionesPend.isNotEmpty) {
+        idCond = sancionesPend.first['id_conductor']?.toString();
+        nombreCond = sancionesPend.first['conductor_nombre']?.toString();
+      } else {
+        final lista = await DatabaseHelper.instance.conductoresConAuto();
+        if (lista.isNotEmpty) {
+          final luis = lista.where(
+            (c) => (c['nombre']?.toString().toLowerCase() ?? '')
+                .contains('luis mamani'),
+          );
+          final elegido = luis.isNotEmpty ? luis.first : lista.first;
+          idCond = elegido['id_conductor']?.toString();
+          nombreCond = elegido['nombre']?.toString();
+        }
       }
     }
 
@@ -122,16 +134,8 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
     double precisionM = 5.0,
     bool esSimulacion = false,
   }) async {
-    final enA = RutaContinental.estaDentroDeRectangulo(
-      punto,
-      RutaContinental.rectanguloParadaA,
-      margenMetros: (precisionM * 0.4).clamp(2.0, 8.0),
-    );
-    final enB = RutaContinental.estaDentroDeRectangulo(
-      punto,
-      RutaContinental.rectanguloParadaB,
-      margenMetros: (precisionM * 0.4).clamp(2.0, 8.0),
-    );
+    final enA = RutaContinental.estaEnZonaParadaA(punto);
+    final enB = RutaContinental.estaEnZonaParadaB(punto);
 
     final entroRecienA = enA && !_dentroRectanguloA;
     final entroRecienB = enB && !_dentroRectanguloB;

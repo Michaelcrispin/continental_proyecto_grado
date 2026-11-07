@@ -40,8 +40,85 @@ class AsistenciaRepo {
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
+  /// Repara automáticamente cualquier asistencia de hoy registrada después de las 08:00 AM
+  /// que haya quedado como 'presente', pasándola a 'tardanza' y creando sus +2 vueltas de castigo.
+  Future<void> repararTardanzasHoy([String? fecha]) async {
+    final db = await DatabaseHelper.instance.database;
+    final f = fecha ?? _hoyString();
+    final rows = await db.query(
+      'asistencia',
+      where: "fecha = ? AND LOWER(estado) = 'presente'",
+      whereArgs: [f],
+    );
+    if (rows.isEmpty) return;
+
+    final horario = await DatabaseHelper.instance.obtenerHorarioActivo();
+    final horaEntrada = horario?['hora_entrada']?.toString() ?? '07:30';
+    final toleranciaMin = (horario?['tolerancia_min'] as num?)?.toInt() ?? 30;
+    final vueltasConfig =
+        await DatabaseHelper.instance.getConfig('vueltas_por_tardanza', '2');
+    final vueltasCastigo = int.tryParse(vueltasConfig ?? '2') ?? 2;
+    final nowIso = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      for (final r in rows) {
+        final idAsist = r['id_asistencia']?.toString() ?? '';
+        final idCond = r['id_conductor']?.toString() ?? '';
+        final hora = r['hora_llegada']?.toString() ?? '';
+        if (idAsist.isEmpty || idCond.isEmpty || hora.isEmpty) continue;
+
+        final eval = ReglasAsistencia.evaluarLlegada(
+          horaLlegada: hora,
+          horaEntrada: horaEntrada,
+          toleranciaMin: toleranciaMin,
+          vueltasPorTardanza: vueltasCastigo,
+        );
+        if (!eval.esTardanza) continue;
+
+        await txn.update(
+          'asistencia',
+          {
+            'estado': 'tardanza',
+            'minutos_retraso': eval.minutosRetraso,
+            'updated_at': nowIso,
+            'sincronizado': 0,
+          },
+          where: 'id_asistencia = ?',
+          whereArgs: [idAsist],
+        );
+
+        final sancionExistente = await txn.query(
+          'sancion',
+          where: 'id_asistencia = ? OR (id_conductor = ? AND fecha = ?)',
+          whereArgs: [idAsist, idCond, f],
+          limit: 1,
+        );
+        if (sancionExistente.isEmpty) {
+          await txn.insert('sancion', {
+            'id_sancion': _uuid.v4(),
+            'id_conductor': idCond,
+            'id_asistencia': idAsist,
+            'motivo': eval.motivoSancion ?? 'Tardanza en asistencia (> 08:00 AM)',
+            'vueltas_asignadas': eval.vueltasSancion,
+            'vueltas_cumplidas': 0,
+            'estado': 'pendiente',
+            'origen': 'tardanza_auto',
+            'tipo': 'tardanza',
+            'es_simulada': 0,
+            'fecha': f,
+            'hora': hora,
+            'created_at': nowIso,
+            'updated_at': nowIso,
+            'sincronizado': 0,
+          });
+        }
+      }
+    });
+  }
+
   /// Verifica si el conductor ya cuenta con asistencia registrada en la fecha dada.
   Future<Map<String, dynamic>?> obtenerAsistenciaHoy(String idConductor, [String? fecha]) async {
+    await repararTardanzasHoy(fecha);
     final db = await DatabaseHelper.instance.database;
     final f = fecha ?? _hoyString();
     final res = await db.query(
@@ -74,7 +151,7 @@ class AsistenciaRepo {
     if (yaExiste != null) {
       return ResultadoRegistroAsistencia(
         exito: false,
-        mensaje: 'Ya registraste asistencia hoy (${yaExiste['hora_llegada']} - Asistió).',
+        mensaje: 'Ya registraste asistencia hoy (${yaExiste['hora_llegada']} - ${yaExiste['estado']}).',
         asistencia: yaExiste,
       );
     }
@@ -88,22 +165,13 @@ class AsistenciaRepo {
     final vueltasConfig = await DatabaseHelper.instance.getConfig('vueltas_por_tardanza', '2');
     final vueltasCastigo = int.tryParse(vueltasConfig ?? '2') ?? 2;
 
-    // 3. Al marcar por GPS en tiempo real (horaManual == null), registrar siempre como 'presente' (Asistió)
-    // sin importar la hora de entrada (08:00 AM) para la demostración en vivo.
-    final eval = horaManual == null
-        ? const ResultadoEvaluacionAsistencia(
-            estado: 'presente',
-            minutosRetraso: 0,
-            vueltasSancion: 0,
-            motivoSancion: null,
-            generaSancion: false,
-          )
-        : ReglasAsistencia.evaluarLlegada(
-            horaLlegada: hora,
-            horaEntrada: horaEntrada,
-            toleranciaMin: toleranciaMin,
-            vueltasPorTardanza: vueltasCastigo,
-          );
+    // 3. Evaluar llegada según el horario oficial (límite 08:00 AM -> tardanza + 2 vueltas de castigo)
+    final eval = ReglasAsistencia.evaluarLlegada(
+      horaLlegada: hora,
+      horaEntrada: horaEntrada,
+      toleranciaMin: toleranciaMin,
+      vueltasPorTardanza: vueltasCastigo,
+    );
 
     final idAsistencia = _uuid.v4();
     final idSancion = eval.generaSancion ? _uuid.v4() : null;
@@ -446,6 +514,7 @@ class AsistenciaRepo {
 
   /// Resumen estadístico del día de asistencia.
   Future<Map<String, int>> obtenerEstadisticasHoy([String? fecha]) async {
+    await repararTardanzasHoy(fecha);
     final db = await DatabaseHelper.instance.database;
     final f = fecha ?? _hoyString();
     final res = await db.rawQuery('''

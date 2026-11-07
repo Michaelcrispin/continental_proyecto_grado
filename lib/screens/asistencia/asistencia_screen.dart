@@ -223,10 +223,14 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
               pObj['nombre']?.toString() ?? (esParadaA ? 'Parada A' : 'Parada B');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              backgroundColor: const Color(0xFF02634C),
+              backgroundColor: res.esTardanza
+                  ? const Color(0xFFD97706)
+                  : const Color(0xFF02634C),
               behavior: SnackBarBehavior.floating,
               content: Text(
-                '¡Asistencia registrada automáticamente al pisar el rectángulo de $nombreParada!',
+                res.esTardanza
+                    ? '¡Tardanza registrada en $nombreParada! Se asignaron +${res.vueltasCastigo} vueltas de castigo.'
+                    : '¡Asistencia registrada a tiempo al pisar el rectángulo de $nombreParada!',
               ),
             ),
           );
@@ -236,18 +240,38 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
   }
 
   /// Carga desde SQLite los conductores reales y sus asistencias para la fecha seleccionada.
+  /// Si el usuario tiene rol `conductor`, muestra únicamente su propio registro y su lista de asistencias.
   Future<void> _cargarMarcaciones() async {
     setState(() => _cargandoDatos = true);
     final fechaConsulta = _fechaIsoSeleccionada;
-    final conductores = await DatabaseHelper.instance.conductoresConAuto();
+    final esConductor = SesionService.instance.esConductor;
+    final idPropio = SesionService.instance.idConductor;
+    final nombreSesion = SesionService.instance.nombre?.trim().toLowerCase();
+
+    final todosConductores = await DatabaseHelper.instance.conductoresConAuto();
+    final conductores = esConductor
+        ? todosConductores.where((c) {
+            final idC = c['id_conductor']?.toString() ?? '';
+            if (idPropio != null && idPropio.isNotEmpty) {
+              return idC == idPropio;
+            }
+            final nom = c['nombre']?.toString().trim().toLowerCase() ?? '';
+            return nombreSesion != null && nom == nombreSesion;
+          }).toList()
+        : todosConductores;
+
     final asistenciasBd = await DatabaseHelper.instance.asistenciasDetalle(
-      fecha: fechaConsulta,
+      idConductor: (esConductor && idPropio != null && idPropio.isNotEmpty)
+          ? idPropio
+          : null,
+      fecha: esConductor ? null : fechaConsulta,
     );
 
     final asistenciasPorConductor = <String, Map<String, dynamic>>{};
     for (final a in asistenciasBd) {
       final idC = a['id_conductor']?.toString() ?? '';
-      if (idC.isNotEmpty) {
+      final f = a['fecha']?.toString() ?? '';
+      if (idC.isNotEmpty && (!esConductor || f == fechaConsulta)) {
         asistenciasPorConductor[idC] = a;
       }
     }
@@ -284,6 +308,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           'licencia_vencimiento': licVence,
           'fecha_vencimiento_soat': soatVence,
           'punto': puntoNombre,
+          'fecha': asist['fecha']?.toString() ?? fechaConsulta,
           'hora': hora,
           'estado': esTardanza ? 'tardanza' : (esFalta ? 'falta' : 'tiempo'),
           'etiqueta': esTardanza ? 'Tardanza (+2 v.)' : (esFalta ? 'Falta' : 'A tiempo'),
@@ -304,6 +329,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           'licencia_vencimiento': licVence,
           'fecha_vencimiento_soat': soatVence,
           'punto': 'Sin registrar',
+          'fecha': fechaConsulta,
           'hora': '--:--',
           'estado': 'falta',
           'etiqueta': 'Sin marcar',
@@ -311,16 +337,53 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           'marco_hoy': false,
         });
       }
+
+      // En modo conductor, agregar también sus asistencias de fechas anteriores debajo
+      if (esConductor) {
+        for (final aHist in asistenciasBd) {
+          final fHist = aHist['fecha']?.toString() ?? '';
+          if (fHist.isEmpty || fHist == fechaConsulta) continue;
+          final estadoH = aHist['estado']?.toString().toLowerCase() ?? 'presente';
+          final esTardH = estadoH == 'tardanza';
+          final esFaltaH = estadoH == 'falta';
+          final puntoH = aHist['punto_nombre']?.toString() ?? 'Punto de Control';
+          final horaH = aHist['hora_llegada']?.toString() ?? '--:--';
+          final minRetH = (aHist['minutos_retraso'] as num?)?.toInt() ?? 0;
+
+          listaFinal.add({
+            'id_conductor': idCond,
+            'unidad': nroInterno,
+            'movil': '#$nroInterno',
+            'conductor': nombreCond,
+            'placa': placaCond,
+            'foto': fotoCond,
+            'estado_conductor': estadoCond,
+            'licencia_vencimiento': licVence,
+            'fecha_vencimiento_soat': soatVence,
+            'punto': '$puntoH ($fHist)',
+            'fecha': fHist,
+            'hora': horaH,
+            'estado': esTardH ? 'tardanza' : (esFaltaH ? 'falta' : 'tiempo'),
+            'etiqueta': esTardH ? 'Tardanza (+2 v.)' : (esFaltaH ? 'Falta' : 'A tiempo'),
+            'detalle_sancion': esTardH
+                ? 'Llegó $minRetH min tarde • Debe +2 vueltas'
+                : null,
+            'marco_hoy': true,
+          });
+        }
+      }
     }
 
-    // Ordenar: primero los que ya marcaron hoy, luego los pendientes por nombre
-    listaFinal.sort((a, b) {
-      final aMarco = a['marco_hoy'] as bool;
-      final bMarco = b['marco_hoy'] as bool;
-      if (aMarco && !bMarco) return -1;
-      if (!aMarco && bMarco) return 1;
-      return (a['conductor'] as String).compareTo(b['conductor'] as String);
-    });
+    if (!esConductor) {
+      // Ordenar: primero los que ya marcaron hoy, luego los pendientes por nombre
+      listaFinal.sort((a, b) {
+        final aMarco = a['marco_hoy'] as bool;
+        final bMarco = b['marco_hoy'] as bool;
+        if (aMarco && !bMarco) return -1;
+        if (!aMarco && bMarco) return 1;
+        return (a['conductor'] as String).compareTo(b['conductor'] as String);
+      });
+    }
 
     if (mounted) {
       setState(() {
@@ -1708,10 +1771,11 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
                       tardanzaCount,
                       faltaCount,
                     ),
-                    const SizedBox(height: 16),
-
-                    // Botón Ver Reportes
-                    _buildBotonVerReportes(),
+                    if (!SesionService.instance.esConductor) ...[
+                      const SizedBox(height: 16),
+                      // Botón Ver Reportes
+                      _buildBotonVerReportes(),
+                    ],
                   ],
                 ),
               ),
@@ -1763,9 +1827,11 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Control de Asistencias',
-                    style: TextStyle(
+                  Text(
+                    SesionService.instance.esConductor
+                        ? 'Mi Asistencia'
+                        : 'Control de Asistencias',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1811,7 +1877,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           iconColor: const Color(0xFF02634C),
           iconBg: const Color(0xFFE6F4F0),
           valor: '$total',
-          label: 'Conductores',
+          label: SesionService.instance.esConductor ? 'Mi Registro' : 'Conductores',
           tipo: 'todos',
         ),
         const SizedBox(width: 8),
@@ -2451,10 +2517,12 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Últimas Actividades',
-                style: TextStyle(
+                SesionService.instance.esConductor
+                    ? 'Mi Lista de Asistencia'
+                    : 'Últimas Actividades',
+                style: const TextStyle(
                   color: Color(0xFF0F172A),
                   fontWeight: FontWeight.bold,
                   fontSize: 16,

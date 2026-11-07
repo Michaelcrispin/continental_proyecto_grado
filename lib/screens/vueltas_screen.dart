@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import '../services/database_helper.dart';
+import '../services/sesion_service.dart';
 import '../widgets/app_bottom_bar.dart';
 import '../widgets/avatar_conductor.dart';
 import '../widgets/vuelta_castigo_sheet.dart';
@@ -34,7 +35,6 @@ class _VueltasScreenState extends State<VueltasScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _vueltasConductores = [];
   int _vueltasTotalesHoy = 0;
-  String _horaInicioCastigo = '21:00';
 
   @override
   void initState() {
@@ -54,9 +54,14 @@ class _VueltasScreenState extends State<VueltasScreen> {
           where: "es_simulada = 1 OR origen = 'demo_castigo' OR origen = 'simulado'",
         );
       } catch (_) {}
-      final horaInicio = await helper.getConfig('hora_inicio_castigo', '21:00') ?? '21:00';
       final conductores = await helper.conductoresConAuto();
-      final sanciones = await helper.sancionesDetalle();
+      final esConductor = SesionService.instance.esConductor;
+      final idPropio = SesionService.instance.idConductor;
+      final sanciones = await helper.sancionesDetalle(
+        idConductor: (esConductor && idPropio != null && idPropio.isNotEmpty)
+            ? idPropio
+            : null,
+      );
 
       final conductorPorId = <String, Map<String, dynamic>>{
         for (final c in conductores) (c['id_conductor']?.toString() ?? ''): c,
@@ -65,8 +70,7 @@ class _VueltasScreenState extends State<VueltasScreen> {
       final lista = <Map<String, dynamic>>[];
       int totalVueltasSuma = 0;
 
-      // Cada sanción por tardanza (generada desde Asistencia) es una obligación de
-      // vueltas nocturnas: se muestran las pendientes y las cerradas el día de hoy.
+      // Se muestran las sanciones pendientes de cumplir vueltas y las cerradas el día de hoy.
       for (final s in sanciones) {
         final asignadas = (s['vueltas_asignadas'] as num?)?.toInt() ?? 0;
         if (asignadas <= 0) continue;
@@ -117,7 +121,6 @@ class _VueltasScreenState extends State<VueltasScreen> {
           'fecha_sancion': s['fecha'],
           'hora_llegada': s['hora_llegada'] ?? s['hora'],
           'minutos_retraso': s['minutos_retraso'],
-          'hora_inicio_castigo': horaInicio,
           'horas_cierre': filasCierre.map((f) => f['hora']?.toString() ?? '').toList(),
         });
       }
@@ -129,7 +132,6 @@ class _VueltasScreenState extends State<VueltasScreen> {
         setState(() {
           _vueltasConductores = lista;
           _vueltasTotalesHoy = totalVueltasSuma;
-          _horaInicioCastigo = horaInicio;
           _isLoading = false;
         });
       }
@@ -138,8 +140,11 @@ class _VueltasScreenState extends State<VueltasScreen> {
     }
   }
 
-  void _mostrarOpcionesConductor(Map<String, dynamic> v) {
-    VueltaCastigoSheet.mostrar(context, v);
+  Future<void> _mostrarOpcionesConductor(Map<String, dynamic> v) async {
+    await VueltaCastigoSheet.mostrar(context, v);
+    if (mounted) {
+      await _cargarDatos();
+    }
   }
 
   void _mostrarModalResumenGeneral(int cumplidas, int enCurso, int pendientes) {
@@ -326,10 +331,10 @@ class _VueltasScreenState extends State<VueltasScreen> {
                                   ),
                                   if (_vueltasConductores.isEmpty) ...[
                                     const SizedBox(height: 6),
-                                    Text(
-                                      'Se generan solas cuando un conductor marca asistencia después de las 08:00 AM y se cumplen desde las $_horaInicioCastigo.',
+                                    const Text(
+                                      'Se cumplen recorriendo el circuito Cruce Villadela (Punto A) ⇄ Teleférico (Punto B) con monitoreo GPS en vivo.',
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: Color(0xFF64748B),
                                         fontSize: 11.5,
                                         height: 1.4,
@@ -426,7 +431,7 @@ class _VueltasScreenState extends State<VueltasScreen> {
                       const SizedBox(width: 3),
                       Flexible(
                         child: Text(
-                          'Castigo nocturno desde las $_horaInicioCastigo',
+                          'Control en tiempo real • Parada A ⇄ Parada B',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
