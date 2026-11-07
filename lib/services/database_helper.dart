@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../core/normalizadores.dart';
+import '../domain/puntos_oficiales.dart';
 import 'seed_data.dart';
 
 /// Base de datos local (SQLite) del sistema Continental Trufi.
@@ -85,13 +86,18 @@ class DatabaseHelper {
             'UPDATE automovil SET marca = NULL, modelo = NULL, color = NULL, capacidad = NULL WHERE marca IS NOT NULL OR modelo IS NOT NULL OR color IS NOT NULL OR capacidad IS NOT NULL',
           );
         } catch (_) {}
-        // Sincronizar siempre las coordenadas de la calle en Parada A y Parada B
+        // Sincronizar SIEMPRE las coordenadas oficiales de Parada A (Cruce
+        // Villadela) y Parada B (Teleférico) desde la única fuente de verdad
+        // (PuntosOficiales). No se reescribe radio_m: el radio calibrado por
+        // el administrador en PuntosControlScreen se respeta.
         try {
           await db.execute(
-            "UPDATE punto_de_control SET latitud = -16.57568833, longitud = -68.23764500, radio_m = 20 WHERE nombre LIKE '%Villadela%' OR es_punto_asistencia = 1 OR orden = 1",
+            'UPDATE punto_de_control SET latitud = ?, longitud = ? WHERE nombre LIKE ? OR es_punto_asistencia = 1 OR orden = 1',
+            [PuntosOficiales.paradaAVilladela.latitude, PuntosOficiales.paradaAVilladela.longitude, '%Villadela%'],
           );
           await db.execute(
-            "UPDATE punto_de_control SET latitud = -16.57617500, longitud = -68.23820333, radio_m = 20 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND es_punto_asistencia = 0",
+            'UPDATE punto_de_control SET latitud = ?, longitud = ? WHERE (nombre LIKE ? OR orden = 2) AND es_punto_asistencia = 0',
+            [PuntosOficiales.paradaBTeleferico.latitude, PuntosOficiales.paradaBTeleferico.longitude, '%Telef%'],
           );
         } catch (_) {}
         // Eliminar cualquier dato simulado o de demostración para operar 100% real
@@ -469,8 +475,8 @@ class DatabaseHelper {
           'punto_de_control',
           {
             'nombre': 'Cruce Villadela',
-            'latitud': -16.53454833,
-            'longitud': -68.191605,
+            'latitud': PuntosOficiales.paradaAVilladela.latitude,
+            'longitud': PuntosOficiales.paradaAVilladela.longitude,
             'radio_m': 100,
             'orden': 1,
             'activo': 1,
@@ -485,8 +491,8 @@ class DatabaseHelper {
             'punto_de_control',
             {
               'nombre': 'Teleférico Amarillo - Mirador',
-              'latitud': -16.51834167,
-              'longitud': -68.15143667,
+              'latitud': PuntosOficiales.paradaBTeleferico.latitude,
+              'longitud': PuntosOficiales.paradaBTeleferico.longitude,
               'radio_m': 100,
               'orden': 2,
               'activo': 1,
@@ -502,8 +508,8 @@ class DatabaseHelper {
         await db.insert('punto_de_control', {
           'id_punto': _uuid.v4(),
           'nombre': 'Cruce Villadela',
-          'latitud': -16.53454833,
-          'longitud': -68.191605,
+          'latitud': PuntosOficiales.paradaAVilladela.latitude,
+          'longitud': PuntosOficiales.paradaAVilladela.longitude,
           'radio_m': 100,
           'orden': 1,
           'activo': 1,
@@ -516,8 +522,8 @@ class DatabaseHelper {
         await db.insert('punto_de_control', {
           'id_punto': _uuid.v4(),
           'nombre': 'Teleférico Amarillo - Mirador',
-          'latitud': -16.51834167,
-          'longitud': -68.15143667,
+          'latitud': PuntosOficiales.paradaBTeleferico.latitude,
+          'longitud': PuntosOficiales.paradaBTeleferico.longitude,
           'radio_m': 100,
           'orden': 2,
           'activo': 1,
@@ -1028,8 +1034,8 @@ class DatabaseHelper {
     await db.insert('punto_de_control', {
       'id_punto': _uuid.v4(),
       'nombre': 'Cruce Villadela',
-      'latitud': -16.53454833,
-      'longitud': -68.191605,
+      'latitud': PuntosOficiales.paradaAVilladela.latitude,
+      'longitud': PuntosOficiales.paradaAVilladela.longitude,
       'radio_m': 100,
       'orden': 1,
       'activo': 1,
@@ -1043,8 +1049,8 @@ class DatabaseHelper {
     await db.insert('punto_de_control', {
       'id_punto': _uuid.v4(),
       'nombre': 'Teleférico Amarillo - Mirador',
-      'latitud': -16.51834167,
-      'longitud': -68.15143667,
+      'latitud': PuntosOficiales.paradaBTeleferico.latitude,
+      'longitud': PuntosOficiales.paradaBTeleferico.longitude,
       'radio_m': 100,
       'orden': 2,
       'activo': 1,

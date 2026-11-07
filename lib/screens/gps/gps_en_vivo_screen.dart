@@ -3,7 +3,9 @@
 // Pantalla de monitoreo GPS en tiempo real (100% GPS real y datos reales de SQLite, sin simulaciones):
 //  - Lee conductores, asistencias, vueltas y sanciones reales desde SQLite.
 //  - Usa exclusivamente el chip GPS físico del dispositivo (Geolocator) para posición, velocidad, precisión y distancias.
-//  - Geocercas rectangulares en Parada A y Parada B sobre la calle configurada en RutaContinental.
+//  - Geocercas CIRCULARES Haversine en Parada A y Parada B (mínimo 30-50 m, imposibles de saltar en vehículo).
+//  - La máquina de conteo de vueltas define la UI: vive en GpsTrackingService,
+//    no en el State de esta pantalla (resiste cambios de vista y bloqueo del teléfono).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -15,11 +17,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../domain/puntos_oficiales.dart';
 import '../../domain/reglas_asistencia.dart';
 import '../../domain/ruta_continental.dart';
 import '../../services/asistencia_repo.dart';
 import '../../services/database_helper.dart';
 import '../../services/gps_service.dart';
+import '../../services/gps_tracking_service.dart';
 import '../../services/sesion_service.dart';
 import '../../widgets/ubicacion_azul.dart';
 import '../asistencia/puntos_control_screen.dart';
@@ -90,7 +94,8 @@ class _Parada {
   });
 }
 
-/// Estado Dentro/Fuera estricto respecto al rectángulo del punto de control.
+/// Estado Dentro/Fuera respecto a la geocerca circular del punto de control.
+/// Con histéresis: para CONFIRMAR la salida hay que alejarse al 1.5x del radio.
 class _Geocerca {
   bool dentro = false;
 
@@ -99,7 +104,9 @@ class _Geocerca {
     required double accuracy,
     required double radio,
   }) {
-    dentro = distancia <= 0.5;
+    final margen = accuracy.clamp(0.0, 40.0);
+    final limite = dentro ? radio * 1.3 : radio;
+    dentro = (distancia - margen) <= limite;
   }
 }
 
@@ -125,22 +132,23 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   bool _rumboValido = false;
   bool _brujulaDisponible = false;
 
-  // Paradas y Geocercas inicializadas con las coordenadas oficiales de la ruta
+  // Paradas y Geocercas: las coordenadas se reemplazan por las del registro
+  // activo de `punto_de_control` (SQLite); aquí solo valores por defecto.
   List<_Parada> _paradas = const [
     _Parada(
       id: 'parada_a_villadela',
       nombre: 'Cruce Villadela',
       etiqueta: 'A',
-      punto: RutaContinental.paradaAVilladela,
-      radio: 20,
+      punto: PuntosOficiales.paradaAVilladela,
+      radio: PuntosOficiales.radioAsistenciaM,
       color: _kParadaA,
     ),
     _Parada(
       id: 'parada_b_teleferico',
       nombre: 'Teleférico Amarillo - Mirador',
       etiqueta: 'B',
-      punto: RutaContinental.paradaBTeleferico,
-      radio: 20,
+      punto: PuntosOficiales.paradaBTeleferico,
+      radio: PuntosOficiales.radioAsistenciaM,
       color: _kParadaB,
     ),
   ];
@@ -166,11 +174,8 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   String? _errorGps;
   _Estilo _estilo = _Estilo.satelite;
 
-  // Conteo de vueltas por GPS real
-  String? _ladoBase;
-  String? _ladoActual;
-  int _vueltasUsuario = 0;
-  DateTime? _ultimaVuelta;
+  // Conteo de vueltas: delega 100% en el servicio singleton (fuera de la UI)
+  StreamSubscription<EventoCircuito>? _subEventosCircuito;
 
   @override
   void initState() {
@@ -184,6 +189,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     _cargarFlotaConductores();
     _iniciarGps();
     _iniciarBrujula();
+    _escucharEventosCircuito();
   }
 
   @override
@@ -191,9 +197,51 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     _timerRefrescoGps?.cancel();
     _subGps?.cancel();
     _subBrujula?.cancel();
+    _subEventosCircuito?.cancel();
     _rumboNotifier.dispose();
     _pulso.dispose();
     super.dispose();
+  }
+
+  /// Suscribe la pantalla a los eventos del servicio singleton de vueltas:
+  /// de esta manera el aviso es el mismo aunque el usuario venga de otra vista.
+  void _escucharEventosCircuito() {
+    _subEventosCircuito?.cancel();
+    _subEventosCircuito =
+        GpsTrackingService.instance.eventos.listen((e) async {
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      SystemSound.play(SystemSoundType.click);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor:
+                e.tipo == 'vuelta_completada' ? _kVerdeContinental : _kParadaB,
+            duration: const Duration(seconds: 3),
+            content: Text(
+              e.mensaje,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        );
+      if (e.tipo == 'vuelta_completada') {
+        await _cargarFlotaConductores();
+      }
+    });
+
+    // Garantiza que el servicio esté corriendo aunque entre directo a esta vista.
+    if (!GpsTrackingService.instance.activo.value) {
+      GpsTrackingService.instance
+          .iniciar(idConductor: SesionService.instance.idConductor)
+          .catchError((_) {});
+    } else {
+      GpsTrackingService.instance.refrescarVueltas();
+    }
   }
 
   // ---------- Carga 100% Real desde SQLite ----------
@@ -401,16 +449,23 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       final nombre = f['nombre']?.toString() ?? 'Parada';
       final id = f['id_punto']?.toString() ?? nombre;
       final esA = id == idA;
-      final puntoOficial = esA
-          ? RutaContinental.paradaAVilladela
-          : RutaContinental.paradaBTeleferico;
+      // Coordenadas del REGISTRO ACTIVO de punto_de_control; sin BD se usa
+      // la única constante oficial (PuntosOficiales).
+      final lat = (f['latitud'] as num?)?.toDouble() ??
+          (esA
+              ? PuntosOficiales.paradaAVilladela.latitude
+              : PuntosOficiales.paradaBTeleferico.latitude);
+      final lon = (f['longitud'] as num?)?.toDouble() ??
+          (esA
+              ? PuntosOficiales.paradaAVilladela.longitude
+              : PuntosOficiales.paradaBTeleferico.longitude);
       lista.add(
         _Parada(
           id: id,
           nombre: nombre,
           etiqueta: esA ? 'A' : 'B',
-          punto: puntoOficial,
-          radio: (f['radio_m'] as num?)?.toDouble() ?? 20,
+          punto: LatLng(lat, lon),
+          radio: (f['radio_m'] as num?)?.toDouble() ?? PuntosOficiales.radioAsistenciaM,
           color: esA ? _kParadaA : _kParadaB,
         ),
       );
@@ -493,7 +548,8 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
             lat2: filtrada.latitude,
             lon2: filtrada.longitude,
           );
-    var vueltaCompletada = false;
+    // La máquina de vueltas ahora vive en GpsTrackingService (singleton),
+    // que sigue procesando el GPS aunque esta pantalla esté cerrada.
     _Parada? paradaDetectadaParaAsistencia;
 
     setState(() {
@@ -522,31 +578,29 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       }
 
       for (final pa in _paradas) {
-        final poligono = pa.etiqueta == 'A'
-            ? RutaContinental.rectanguloParadaA
-            : RutaContinental.rectanguloParadaB;
-        final d = RutaContinental.distanciaAlRectanguloMetros(
-          filtrada,
-          poligono,
-        );
+        // Distancia Haversine DIRECTA al centro de la parada (geocerca circular)
+        final d = RutaContinental.distanciaAParadaMetros(filtrada, pa.punto);
+        // Radio efectivo: máximo entre el radio calibrado en BD y el mínimo
+        // oficial (45 m) para que el GPS a 30-40 km/h nunca salte la geocerca.
+        final radioEfectivo = RutaContinental.radioEfectivoVueltas(pa.radio);
         _estados.putIfAbsent(pa.id, () => _Geocerca());
         _estados[pa.id]!.actualizar(
           distancia: d,
           accuracy: p.accuracy,
-          radio: pa.radio,
+          radio: radioEfectivo,
         );
-        final ahoraDentro = RutaContinental.estaDentroDeRectangulo(
+        final ahoraDentro = RutaContinental.estaDentroDeGeocercaCircular(
           filtrada,
-          poligono,
+          pa.punto,
+          radioEfectivo,
           margenMetros: 0.0,
         );
         _estados[pa.id]!.dentro = ahoraDentro;
-        // La asistencia SOLO se marca cuando el usuario pisa estrictamente el rectángulo del Punto A
+        // La asistencia SOLO se marca cuando el usuario entra en la geocerca circular del Punto A
         if (ahoraDentro && pa.etiqueta == 'A' && permitirMarcarAsistencia) {
           paradaDetectadaParaAsistencia = pa;
         }
       }
-      vueltaCompletada = _procesarTransicion();
 
       if (p.accuracy <= 45) {
         if (_rastroUsuario.isEmpty) {
@@ -578,25 +632,18 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     if (_seguir && _mapaListo) {
       _map.move(filtrada, math.max(_map.camera.zoom, 18.0));
     }
-
-    if (vueltaCompletada) _alCompletarVuelta();
   }
 
   LatLng _filtrarPosicion(Position p, LatLng cruda) {
     final previa = _posFiltrada;
     if (previa == null) return cruda;
 
-    // Si el usuario acaba de pisar el Punto A o Punto B, actualizar de inmediato sin retener posición previa
-    final enPuntoControl = RutaContinental.estaDentroDeRectangulo(
-          cruda,
-          RutaContinental.rectanguloParadaA,
-          margenMetros: 0.0,
-        ) ||
-        RutaContinental.estaDentroDeRectangulo(
-          cruda,
-          RutaContinental.rectanguloParadaB,
-          margenMetros: 0.0,
-        );
+    // Si el usuario acaba de pisar el Punto A o Punto B (geocerca circular),
+    // actualizar de inmediato sin retener posición previa
+    final enPuntoControl = _paradas.any((pa) {
+      final radio = RutaContinental.radioEfectivoVueltas(pa.radio);
+      return RutaContinental.estaDentroDeGeocercaCircular(cruda, pa.punto, radio);
+    });
     if (enPuntoControl) return cruda;
 
     final d = ReglasAsistencia.calcularDistanciaMetros(
@@ -626,75 +673,6 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
       if (p.etiqueta == etiqueta) return p;
     }
     return null;
-  }
-
-  bool _procesarTransicion() {
-    final a = _paradaPorEtiqueta('A');
-    final b = _paradaPorEtiqueta('B');
-    if (a == null || b == null) return false;
-
-    final enA = _estados[a.id]?.dentro ?? false;
-    final enB = _estados[b.id]?.dentro ?? false;
-
-    if (enA == enB) return false;
-
-    final actual = enA ? 'A' : 'B';
-    if (_ladoBase == null || _ladoActual == null) {
-      _ladoBase = actual;
-      _ladoActual = actual;
-      return false;
-    }
-    if (actual == _ladoActual) return false;
-
-    _ladoActual = actual;
-    if (actual != _ladoBase) return false;
-
-    final ahora = DateTime.now();
-    if (_ultimaVuelta != null &&
-        ahora.difference(_ultimaVuelta!) < const Duration(seconds: 15)) {
-      return false;
-    }
-    _ultimaVuelta = ahora;
-    _vueltasUsuario++;
-    return true;
-  }
-
-  Future<void> _alCompletarVuelta() async {
-    HapticFeedback.mediumImpact();
-    SystemSound.play(SystemSoundType.click);
-
-    final idConductor = SesionService.instance.idConductor ??
-        _vehiculoSeleccionado?.idConductor;
-    if (idConductor != null && idConductor.isNotEmpty) {
-      try {
-        await DatabaseHelper.instance.registrarVuelta(
-          idConductor: idConductor,
-          tipo: 'normal',
-        );
-        await _cargarFlotaConductores();
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      final detalle =
-          '¡Vuelta completada por GPS! $_ladoBase → ${_ladoBase == 'A' ? 'B' : 'A'} → $_ladoBase';
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: _kVerdeContinental,
-            duration: const Duration(seconds: 3),
-            content: Text(
-              detalle,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        );
-    }
   }
 
   // ---------- Control de Cámara y Selección ----------
@@ -799,10 +777,7 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
 
   double? _distanciaDispositivoAParada(_Parada p) {
     if (_posFiltrada == null) return null;
-    final poligono = p.etiqueta == 'A'
-        ? RutaContinental.rectanguloParadaA
-        : RutaContinental.rectanguloParadaB;
-    return RutaContinental.distanciaAlRectanguloMetros(_posFiltrada!, poligono);
+    return RutaContinental.distanciaAParadaMetros(_posFiltrada!, p.punto);
   }
 
   String _fmt(double m) => m < 1000
@@ -870,28 +845,28 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
           ],
         ),
 
-        // Geocercas Rectangulares Oficiales orientadas sobre la calle (Parada A y Parada B)
+        // Geocercas CIRCULARES oficiales dibujadas con el radio real de la BD
         PolygonLayer(
           polygons: [
-            Polygon(
-              points: RutaContinental.rectanguloParadaA,
-              color: (_dispositivoEnParada('A')
-                      ? _kVerdeActivo
-                      : const Color(0xFF2563EB))
-                  .withValues(alpha: 0.28),
-              borderColor: _dispositivoEnParada('A')
-                  ? _kVerdeActivo
-                  : const Color(0xFF2563EB),
-              borderStrokeWidth: 3.2,
-            ),
-            Polygon(
-              points: RutaContinental.rectanguloParadaB,
-              color: (_dispositivoEnParada('B') ? _kVerdeActivo : _kParadaB)
-                  .withValues(alpha: 0.26),
-              borderColor:
-                  _dispositivoEnParada('B') ? _kVerdeActivo : _kParadaB,
-              borderStrokeWidth: 3.0,
-            ),
+            for (final pa in _paradas)
+              Polygon(
+                points: RutaContinental.anilloGeocerca(
+                  pa.punto,
+                  RutaContinental.radioEfectivoVueltas(pa.radio),
+                ),
+                color: (_dispositivoEnParada(pa.etiqueta)
+                        ? _kVerdeActivo
+                        : (pa.etiqueta == 'A'
+                            ? const Color(0xFF2563EB)
+                            : _kParadaB))
+                    .withValues(alpha: 0.26),
+                borderColor: _dispositivoEnParada(pa.etiqueta)
+                    ? _kVerdeActivo
+                    : (pa.etiqueta == 'A'
+                        ? const Color(0xFF2563EB)
+                        : _kParadaB),
+                borderStrokeWidth: pa.etiqueta == 'A' ? 3.2 : 3.0,
+              ),
           ],
         ),
 
@@ -921,17 +896,14 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
   }
 
   bool _dispositivoEnParada(String etiqueta) {
-    final poligono = etiqueta == 'A'
-        ? RutaContinental.rectanguloParadaA
-        : RutaContinental.rectanguloParadaB;
-    if (_posFiltrada != null) {
-      return RutaContinental.estaDentroDeRectangulo(
-        _posFiltrada!,
-        poligono,
-        margenMetros: 0.0,
-      );
-    }
-    return false;
+    if (_posFiltrada == null) return false;
+    final parada = _paradaPorEtiqueta(etiqueta);
+    if (parada == null) return false;
+    return RutaContinental.estaDentroDeGeocercaCircular(
+      _posFiltrada!,
+      parada.punto,
+      RutaContinental.radioEfectivoVueltas(parada.radio),
+    );
   }
 
   Marker _marcadorParada(_Parada p) {
@@ -1414,7 +1386,10 @@ class _GpsEnVivoScreenState extends State<GpsEnVivoScreen>
     final precisionStr = _posUsuario != null
         ? '±${_posUsuario!.accuracy.toStringAsFixed(0)} m'
         : 'Sin GPS';
-    final vueltasMostradas = v?.vueltasHoy ?? _vueltasUsuario;
+    final vueltasMostradas = v != null &&
+            v.idConductor == GpsTrackingService.instance.idConductor
+        ? math.max(v.vueltasHoy, GpsTrackingService.instance.vueltasHoy.value)
+        : v?.vueltasHoy ?? 0;
 
     return Container(
       width: double.infinity,

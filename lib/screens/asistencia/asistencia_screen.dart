@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import '../cuotas/widgets/dialogo_informe_whatsapp.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import '../../domain/puntos_oficiales.dart';
 import '../../domain/reglas_asistencia.dart';
-import '../../domain/ruta_continental.dart';
 import '../../services/sesion_service.dart';
 import '../../services/asistencia_repo.dart';
 import '../../services/database_helper.dart';
@@ -38,15 +38,19 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
   String _filtroEstado = 'todos'; // 'todos' | 'tiempo' | 'tardanza' | 'falta'
   StreamSubscription<Position>? _subGps;
 
-  // Parada A: Cruce Villadela
-  double _latA = -16.57568833;
-  double _lonA = -68.237645;
+  // Parada A: Cruce Villadela — coordenadas SIEMPRE leídas del registro activo
+  // de `punto_de_control` en SQLite. Sin valores quemados: si la BD no trae
+  // lat/lon, la detección se desactiva con mensaje claro.
+  double? _latA;
+  double? _lonA;
+  double _radioA = PuntosOficiales.radioAsistenciaM;
   double? _distanciaA;
   bool _dentroA = false;
 
-  // Parada B: Teleférico Amarillo
-  double _latB = -16.576175;
-  double _lonB = -68.23820333;
+  // Parada B: Teleférico Amarillo (idem fuente única)
+  double? _latB;
+  double? _lonB;
+  double _radioB = PuntosOficiales.radioAsistenciaM;
   double? _distanciaB;
   bool _dentroB = false;
 
@@ -95,25 +99,27 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
 
   Future<void> _inicializarMonitoreoGps() async {
     try {
-      final db = await DatabaseHelper.instance.database;
-      await db.execute(
-        "UPDATE punto_de_control SET latitud = -16.57568833, longitud = -68.23764500, radio_m = 20 WHERE nombre LIKE '%Villadela%' OR es_punto_asistencia = 1 OR orden = 1",
-      );
-      await db.execute(
-        "UPDATE punto_de_control SET latitud = -16.57617500, longitud = -68.23820333, radio_m = 20 WHERE (nombre LIKE '%Telef%' OR orden = 2) AND es_punto_asistencia = 0",
-      );
+      // IMPORTANTE: ninguna pantalla debe reescribir las coordenadas de
+      // `punto_de_control` al abrirse. Las coordenadas oficiales viven en un
+      // único lugar (PuntosOficiales + sincronización de DatabaseHelper.onOpen),
+      // y la calibración manual del superadmin se respeta siempre.
       final puntos = await DatabaseHelper.instance.obtenerPuntosControl(soloActivos: false);
       if (puntos.isNotEmpty && mounted) {
         for (int i = 0; i < puntos.length; i++) {
           final p = puntos[i];
           final nombre = p['nombre']?.toString() ?? '';
+          final lat = (p['latitud'] as num?)?.toDouble();
+          final lon = (p['longitud'] as num?)?.toDouble();
+          final radio = (p['radio_m'] as num?)?.toDouble();
           final esA = nombre.contains('Villadela') || i == 0;
           if (esA) {
-            _latA = (p['latitud'] as num?)?.toDouble() ?? -16.57568833;
-            _lonA = (p['longitud'] as num?)?.toDouble() ?? -68.237645;
+            _latA = lat;
+            _lonA = lon;
+            if (radio != null && radio > 0) _radioA = radio;
           } else {
-            _latB = (p['latitud'] as num?)?.toDouble() ?? -16.576175;
-            _lonB = (p['longitud'] as num?)?.toDouble() ?? -68.23820333;
+            _latB = lat;
+            _lonB = lon;
+            if (radio != null && radio > 0) _radioB = radio;
           }
         }
       }
@@ -126,22 +132,44 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
       void procesarPos(Position pos, {bool permitirMarcarAsistencia = true}) {
         if (!mounted) return;
         final pt = LatLng(pos.latitude, pos.longitude);
-        final rectA = RutaContinental.obtenerRectanguloParadaA(LatLng(_latA, _lonA));
-        final rectB = RutaContinental.obtenerRectanguloParadaB(LatLng(_latB, _lonB));
 
-        final dA = RutaContinental.distanciaAlRectanguloMetros(pt, rectA);
-        final dB = RutaContinental.distanciaAlRectanguloMetros(pt, rectB);
+        // Geocerca CIRCULAR (Haversine) con margen por precisión del GPS:
+        // nada de rectángulos de 8 m que el bus "salta" a 30-40 km/h.
+        final dA = _latA != null && _lonA != null
+            ? ReglasAsistencia.calcularDistanciaMetros(
+                lat1: pt.latitude,
+                lon1: pt.longitude,
+                lat2: _latA!,
+                lon2: _lonA!,
+              )
+            : null;
+        final dB = _latB != null && _lonB != null
+            ? ReglasAsistencia.calcularDistanciaMetros(
+                lat1: pt.latitude,
+                lon1: pt.longitude,
+                lat2: _latB!,
+                lon2: _lonB!,
+              )
+            : null;
 
-        final inA = RutaContinental.estaDentroDeRectangulo(
-          pt,
-          rectA,
-          margenMetros: 0.0,
-        );
-        final inB = RutaContinental.estaDentroDeRectangulo(
-          pt,
-          rectB,
-          margenMetros: 0.0,
-        );
+        final inA = dA != null &&
+            ReglasAsistencia.estaDentroDeGeocerca(
+              latUsuario: pt.latitude,
+              lonUsuario: pt.longitude,
+              latPunto: _latA!,
+              lonPunto: _lonA!,
+              radioMetros: _radioA,
+              accuracyMetros: pos.accuracy,
+            );
+        final inB = dB != null &&
+            ReglasAsistencia.estaDentroDeGeocerca(
+              latUsuario: pt.latitude,
+              lonUsuario: pt.longitude,
+              latPunto: _latB!,
+              lonPunto: _lonB!,
+              radioMetros: _radioB,
+              accuracyMetros: pos.accuracy,
+            );
 
         setState(() {
           _precisionVivoM = pos.accuracy;
@@ -151,7 +179,7 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
           _dentroB = inB;
         });
 
-        // Solo marca asistencia cuando pisa estrictamente el rectángulo del Punto A en vivo
+        // Solo marca asistencia cuando entra en la geocerca circular del Punto A en vivo
         if (inA && permitirMarcarAsistencia) {
           _registrarAsistenciaAlPisarRectangulo(
             esParadaA: true,
@@ -1262,8 +1290,10 @@ class _AsistenciaScreenState extends State<AsistenciaScreen> {
             try {
               final pt = await DatabaseHelper.instance.obtenerPuntoAsistencia();
               final idPunto = pt?['id_punto']?.toString() ?? 'punto_villadela';
-              final lat = (pt?['latitud'] as num?)?.toDouble() ?? _latA;
-              final lon = (pt?['longitud'] as num?)?.toDouble() ?? _lonA;
+              final lat = (pt?['latitud'] as num?)?.toDouble() ??
+                  PuntosOficiales.paradaAVilladela.latitude;
+              final lon = (pt?['longitud'] as num?)?.toDouble() ??
+                  PuntosOficiales.paradaAVilladela.longitude;
 
               final res = await AsistenciaRepo.instance.simularLlegada(
                 idConductor: idConductor,

@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import '../domain/puntos_oficiales.dart';
 import '../domain/reglas_asistencia.dart';
 import 'database_helper.dart';
 
@@ -490,8 +491,10 @@ class AsistenciaRepo {
     final punto = await DatabaseHelper.instance.obtenerPuntoAsistencia();
     final idPunto = punto?['id_punto']?.toString() ?? '';
     if (idPunto.isEmpty) return;
-    final latP = (punto?['latitud'] as num?)?.toDouble() ?? -16.57568833;
-    final lonP = (punto?['longitud'] as num?)?.toDouble() ?? -68.237645;
+    final latP = (punto?['latitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.latitude;
+    final lonP = (punto?['longitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.longitude;
 
     final horario = await DatabaseHelper.instance.obtenerHorarioActivo();
     final idHorario = horario?['id_horario']?.toString() ?? 'horario_manana';

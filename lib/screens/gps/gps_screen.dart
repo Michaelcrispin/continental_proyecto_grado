@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../domain/puntos_oficiales.dart';
 import '../../domain/ruta_continental.dart';
 import '../../services/database_helper.dart';
 import '../../services/sesion_service.dart';
@@ -47,10 +48,27 @@ class _GpsScreenState extends State<GpsScreen> {
     }
   }
 
+  /// Radio de geocerca del punto A o B desde la BD (mínimo oficial).
+  double _radioDe(List<Map<String, dynamic>> puntos, {required bool esParadaA}) {
+    for (int i = 0; i < puntos.length; i++) {
+      final nombre = puntos[i]['nombre']?.toString() ?? '';
+      final esA = nombre.contains('Villadela') || i == 0;
+      if (esA == esParadaA || puntos.length == 1) {
+        final radio = (puntos[i]['radio_m'] as num?)?.toDouble();
+        if (radio != null && radio > 0) {
+          return RutaContinental.radioEfectivoVueltas(radio);
+        }
+      }
+    }
+    return RutaContinental.radioDibujoM;
+  }
+
   void _centrarPunto(Map<String, dynamic> punto) {
-    final lat = (punto['latitud'] as num?)?.toDouble() ?? -16.57568833;
-    final lon = (punto['longitud'] as num?)?.toDouble() ?? -68.237645;
-    final radio = (punto['radio_m'] as num?)?.toDouble() ?? 100.0;
+    final lat = (punto['latitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.latitude;
+    final lon = (punto['longitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.longitude;
+    final radio = (punto['radio_m'] as num?)?.toDouble() ?? PuntosOficiales.radioAsistenciaM;
     _mapController.move(LatLng(lat, lon), radio <= 15 ? 18.5 : 15.0);
   }
 
@@ -145,17 +163,23 @@ class _GpsScreenState extends State<GpsScreen> {
                 ],
               ),
 
-              // Geocercas Rectangulares Oficiales orientadas sobre la calzada (Parada A y Parada B)
+              // Geocercas CIRCULARES oficiales (radio real de la BD, mínimo Haversine)
               PolygonLayer(
                 polygons: [
                   Polygon(
-                    points: RutaContinental.obtenerRectanguloParadaA(coordVilladela),
+                    points: RutaContinental.anilloGeocerca(
+                      coordVilladela,
+                      _radioDe(_puntos, esParadaA: true),
+                    ),
                     color: const Color(0xFF2563EB).withValues(alpha: 0.28),
                     borderColor: const Color(0xFF2563EB),
                     borderStrokeWidth: 3.2,
                   ),
                   Polygon(
-                    points: RutaContinental.obtenerRectanguloParadaB(coordTeleferico),
+                    points: RutaContinental.anilloGeocerca(
+                      coordTeleferico,
+                      _radioDe(_puntos, esParadaA: false),
+                    ),
                     color: const Color(0xFFD97706).withValues(alpha: 0.26),
                     borderColor: const Color(0xFFD97706),
                     borderStrokeWidth: 3.0,
@@ -166,8 +190,10 @@ class _GpsScreenState extends State<GpsScreen> {
               // Marcadores de puntos de control
               MarkerLayer(
                 markers: _puntos.map((p) {
-                  final lat = (p['latitud'] as num?)?.toDouble() ?? -16.57568833;
-                  final lon = (p['longitud'] as num?)?.toDouble() ?? -68.237645;
+                  final lat = (p['latitud'] as num?)?.toDouble() ??
+                      PuntosOficiales.paradaAVilladela.latitude;
+                  final lon = (p['longitud'] as num?)?.toDouble() ??
+                      PuntosOficiales.paradaAVilladela.longitude;
                   final esAsistencia = (p['es_punto_asistencia'] as num?)?.toInt() == 1;
                   final color = esAsistencia ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
 

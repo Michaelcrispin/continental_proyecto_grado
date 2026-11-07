@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../domain/puntos_oficiales.dart';
 import '../../../services/asistencia_repo.dart';
 import '../../../services/database_helper.dart';
 
@@ -44,8 +45,10 @@ class _SimulacionAsistenciaDialogState extends State<SimulacionAsistenciaDialog>
     setState(() => _procesando = true);
 
     final idPunto = _puntoAsistencia!['id_punto']?.toString() ?? '';
-    final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
-    final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
+    final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.latitude;
+    final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ??
+        PuntosOficiales.paradaAVilladela.longitude;
 
     final res = await AsistenciaRepo.instance.simularLlegada(
       idConductor: _conductorSeleccionado!,

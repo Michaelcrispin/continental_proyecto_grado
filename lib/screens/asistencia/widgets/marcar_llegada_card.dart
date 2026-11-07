@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../domain/puntos_oficiales.dart';
 import '../../../domain/reglas_asistencia.dart';
 import '../../../services/asistencia_repo.dart';
 import '../../../services/database_helper.dart';
@@ -72,9 +73,13 @@ class _MarcarLlegadaCardState extends State<MarcarLlegadaCard> {
     _subPosicion = GpsService.instance.obtenerStreamPosicion(distanceFilterM: 0).listen(
       (pos) {
         if (!mounted || _puntoAsistencia == null) return;
-        final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
-        final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
-        final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? 100.0;
+        final coordP = _coordenadasPuntoAsistencia();
+        if (coordP == null) {
+          setState(() => _errorMensaje = 'El punto de control no tiene coordenadas (revisa la BD).');
+          return;
+        }
+        final (latP, lonP) = coordP;
+        final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? PuntosOficiales.radioAsistenciaM;
 
         final dist = ReglasAsistencia.calcularDistanciaMetros(
           lat1: pos.latitude,
@@ -96,6 +101,16 @@ class _MarcarLlegadaCardState extends State<MarcarLlegadaCard> {
     );
   }
 
+  /// Lee SIEMPRE el registro activo de `punto_de_control` en SQLite.
+  /// Sin valores quemados: si la BD no tiene coordenadas devuelve null y la
+  /// pantalla avisa el problema en lugar de validar contra datos falsos.
+  (double, double)? _coordenadasPuntoAsistencia() {
+    final lat = (_puntoAsistencia?['latitud'] as num?)?.toDouble();
+    final lon = (_puntoAsistencia?['longitud'] as num?)?.toDouble();
+    if (lat == null || lon == null) return null;
+    return (lat, lon);
+  }
+
   Future<void> _actualizarUbicacion() async {
     try {
       _puntos = await DatabaseHelper.instance.obtenerPuntosControl(soloActivos: false);
@@ -107,11 +122,10 @@ class _MarcarLlegadaCardState extends State<MarcarLlegadaCard> {
       }
 
       final pos = await GpsService.instance.obtenerPosicionActual();
-      if (pos == null || _puntoAsistencia == null) return;
-
-      final latP = (_puntoAsistencia!['latitud'] as num?)?.toDouble() ?? -16.57568833;
-      final lonP = (_puntoAsistencia!['longitud'] as num?)?.toDouble() ?? -68.237645;
-      final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? 100.0;
+      final coordP = _coordenadasPuntoAsistencia();
+      if (pos == null || coordP == null) return;
+      final (latP, lonP) = coordP;
+      final radioP = (_puntoAsistencia!['radio_m'] as num?)?.toDouble() ?? PuntosOficiales.radioAsistenciaM;
 
       final dist = ReglasAsistencia.calcularDistanciaMetros(
         lat1: pos.latitude,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/gps_tracking_service.dart';
 import '../services/sesion_service.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
@@ -36,9 +37,16 @@ class _SplashScreenState extends State<SplashScreen> {
     // Verificar si existe sesión persistida válida en SQLite
     final haySesion = await SesionService.instance.cargarSesion();
 
-    if (!mounted) return;
-
     if (haySesion) {
+      // Arranca el conteo automático de vueltas A→B→A en segundo plano:
+      // vive fuera de la UI y sobrevive el bloqueo del teléfono.
+      GpsTrackingService.instance
+          .iniciar(
+        idConductor: SesionService.instance.idConductor,
+      )
+          .catchError((_) {});
+
+      if (!mounted) return;
       // Si ya tiene sesión activa, redirigir directamente al Home
       Navigator.pushReplacement(
         context,

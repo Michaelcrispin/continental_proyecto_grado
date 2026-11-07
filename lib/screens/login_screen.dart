@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/database_helper.dart';
+import '../services/gps_tracking_service.dart';
 import '../services/sesion_service.dart';
 import 'home_screen.dart';
 
@@ -57,6 +58,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (usuarioMap != null) {
         await SesionService.instance.iniciarSesion(usuarioMap);
+
+        // Arranca el conteo automático de vueltas A→B→A en segundo plano
+        // (fuera de las pantallas, sobrevive cambios de vista y bloqueo del teclado)
+        final idConductor = SesionService.instance.idConductor;
+        GpsTrackingService.instance
+            .iniciar(idConductor: idConductor)
+            .catchError((_) {});
 
         if (!mounted) return;
         Navigator.pushReplacement(

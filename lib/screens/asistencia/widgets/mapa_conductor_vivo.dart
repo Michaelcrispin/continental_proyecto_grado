@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../domain/puntos_oficiales.dart';
 import '../../../domain/ruta_continental.dart';
 
 /// Mapa en tiempo real para el modo Conductor.
@@ -144,11 +145,19 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
                   ],
                 ),
 
-                // Geocercas Rectangulares Oficiales de Parada A y Parada B
+                // Geocercas CIRCULARES de Parada A y Parada B (radio real de la BD)
                 PolygonLayer(
                   polygons: [
                     Polygon(
-                      points: RutaContinental.obtenerRectanguloParadaA(_coordA),
+                      points: RutaContinental.anilloGeocerca(
+                        _coordA,
+                        ((widget.puntos.isNotEmpty
+                                    ? (widget.puntos[0]['radio_m'] as num?)
+                                        ?.toDouble()
+                                    : null) ??
+                                PuntosOficiales.radioAsistenciaM)
+                            .clamp(5.0, 300.0),
+                      ),
                       color: (widget.dentroDeGeocerca
                               ? const Color(0xFF10B981)
                               : const Color(0xFF2563EB))
@@ -159,7 +168,15 @@ class _MapaConductorVivoState extends State<MapaConductorVivo> {
                       borderStrokeWidth: 3.2,
                     ),
                     Polygon(
-                      points: RutaContinental.obtenerRectanguloParadaB(_coordB),
+                      points: RutaContinental.anilloGeocerca(
+                        _coordB,
+                        ((widget.puntos.length > 1
+                                    ? (widget.puntos[1]['radio_m'] as num?)
+                                        ?.toDouble()
+                                    : null) ??
+                                PuntosOficiales.radioAsistenciaM)
+                            .clamp(5.0, 300.0),
+                      ),
                       color: const Color(0xFFF59E0B).withValues(alpha: 0.26),
                       borderColor: const Color(0xFFF59E0B),
                       borderStrokeWidth: 3.0,

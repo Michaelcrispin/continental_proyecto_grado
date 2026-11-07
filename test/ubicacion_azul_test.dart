@@ -14,7 +14,7 @@ void main() {
 
     expect(find.byType(UbicacionAzul), findsOneWidget);
     expect(find.byType(CustomPaint), findsWidgets);
-    expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.directions_car_filled_rounded), findsOneWidget);
 
     // Simula el cambio de rumbo para comprobar que se actualiza.
     await tester.pumpWidget(

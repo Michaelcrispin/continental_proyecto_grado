@@ -190,24 +190,26 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
       _distanciaActualM = null;
       return;
     }
-    final esVilladela =
-        (_puntoSeleccionado?['nombre']?.toString() ?? '').contains('Villadela');
-    final poligono = esVilladela
-        ? RutaContinental.obtenerRectanguloParadaA(_coordenadaTemp)
-        : RutaContinental.obtenerRectanguloParadaB(_coordenadaTemp);
 
-    _distanciaActualM = RutaContinental.distanciaAlRectanguloMetros(
-      _miUbicacionActual!,
-      poligono,
+    // Geocerca CIRCULAR Haversine (misma lógica que detección de vueltas):
+    // el centro es la coordenada calibrada y el radio el radio en BD.
+    _distanciaActualM = ReglasAsistencia.calcularDistanciaMetros(
+      lat1: _miUbicacionActual!.latitude,
+      lon1: _miUbicacionActual!.longitude,
+      lat2: _coordenadaTemp!.latitude,
+      lon2: _coordenadaTemp!.longitude,
     );
     final acc = _precisionActual ?? 10.0;
-    final enRectangulo = RutaContinental.estaDentroDeRectangulo(
-      _miUbicacionActual!,
-      poligono,
-      margenMetros: (acc * 0.4).clamp(2.0, 8.0),
+    final enGeocerca = ReglasAsistencia.estaDentroDeGeocerca(
+      latUsuario: _miUbicacionActual!.latitude,
+      lonUsuario: _miUbicacionActual!.longitude,
+      latPunto: _coordenadaTemp!.latitude,
+      lonPunto: _coordenadaTemp!.longitude,
+      radioMetros: _radioM,
+      accuracyMetros: acc,
     );
     final estabaDentro = _dentroConfirmado;
-    if (enRectangulo) {
+    if (enGeocerca) {
       _dentroConfirmado = true;
     } else if (confirmarConsecutivas) {
       _dentroConfirmado = _estadoGeocerca.actualizar(
@@ -225,11 +227,11 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
     }
 
     if (!estabaDentro && _dentroConfirmado) {
-      _registrarAsistenciaAlPisarRectangulo();
+      _registrarAsistenciaAlEntrarGeocerca();
     }
   }
 
-  Future<void> _registrarAsistenciaAlPisarRectangulo() async {
+  Future<void> _registrarAsistenciaAlEntrarGeocerca() async {
     final idCond = SesionService.instance.idConductor;
     final idPunto = _puntoSeleccionado?['id_punto']?.toString() ?? '';
     if (idCond == null ||
@@ -258,7 +260,7 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
               _puntoSeleccionado?['nombre']?.toString() ?? 'Parada';
           AppSnackBar.exito(
             context,
-            '¡Asistencia registrada automáticamente al pisar el rectángulo de $nombreP!',
+            '¡Asistencia registrada automáticamente al entrar en la geocerca de $nombreP!',
           );
         }
       }
@@ -828,14 +830,14 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
                             ],
                           ),
 
-                          // Geocercas Rectangulares orientadas sobre la calzada (Parada A y Parada B)
+                          // Geocercas CIRCULARES con el radio real calibrado en la BD
                           PolygonLayer(
                             polygons: [
                               if (coordA != null)
                                 Polygon(
-                                  points:
-                                      RutaContinental.obtenerRectanguloParadaA(
+                                  points: RutaContinental.anilloGeocerca(
                                     coordA,
+                                    radioA.clamp(5.0, 300.0),
                                   ),
                                   color: (esVilladela && _dentroConfirmado
                                           ? const Color(0xFF10B981)
@@ -848,9 +850,9 @@ class _PuntosControlScreenState extends State<PuntosControlScreen> {
                                 ),
                               if (coordB != null)
                                 Polygon(
-                                  points:
-                                      RutaContinental.obtenerRectanguloParadaB(
+                                  points: RutaContinental.anilloGeocerca(
                                     coordB,
+                                    radioB.clamp(5.0, 300.0),
                                   ),
                                   color: (!esVilladela && _dentroConfirmado
                                           ? const Color(0xFF10B981)

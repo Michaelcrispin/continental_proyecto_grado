@@ -4,10 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import '../../domain/puntos_oficiales.dart';
 import '../../domain/ruta_continental.dart';
 import '../../services/asistencia_repo.dart';
 import '../../services/database_helper.dart';
 import '../../services/gps_service.dart';
+import '../../services/gps_tracking_service.dart';
 import '../../services/sesion_service.dart';
 import '../../widgets/app_snackbar.dart';
 
@@ -23,10 +25,10 @@ enum _EstiloMapaRuta { satelite, calles }
 enum _ModoTramo { completo, soloIda, soloVuelta }
 
 /// Vista fija e inmutable de la Ruta Oficial del Sindicato Continental
-/// (Grupo Trufi 101 - 127), con Geocerca Rectangular orientada sobre la calle
-/// de Cruce Villadela (Parada A) y Teleférico (Parada B).
-/// Cuando el conductor pisa el rectángulo de Cruce Villadela, registra su
-/// asistencia del día y su paso por la parada.
+/// (Grupo Trufi 101 - 127), con Geocerca circular (radio Haversine ≥ 45 m)
+/// centrada en la fuente única de coordenadas (PuntosOficiales).
+/// La detección del paso por A/B y el conteo de vueltas VIVEN en
+/// GpsTrackingService: sobreviven cambios de pantalla y bloqueo del teléfono.
 class RutaOficialScreen extends StatefulWidget {
   const RutaOficialScreen({super.key});
 
@@ -45,26 +47,90 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
 
   bool _dentroRectanguloA = false;
   bool _dentroRectanguloB = false;
-  bool _asistenciaMarcadaHoy = false;
   bool _pasoVilladelaRegistrado = false;
-  bool _pasoTelefericoRegistrado = false;
   String? _horaUltimoPasoA;
   String? _nombreConductorActivo;
   String? _idConductorActivo;
   int _vueltasRegistradasHoy = 0;
-  bool _procesandoEvento = false;
+
+  StreamSubscription<EventoCircuito>? _subEventosCircuito;
 
   @override
   void initState() {
     super.initState();
     _inicializarConductorYEstado();
     _iniciarGpsEnVivo();
+    _escucharServicioCircuito();
   }
 
   @override
   void dispose() {
     _subGps?.cancel();
+    _subEventosCircuito?.cancel();
+    GpsTrackingService.instance.ultimaPosicion
+        .removeListener(_alLlegarPosicionServicio);
     super.dispose();
+  }
+
+  /// El ESTADO vive en el servicio singleton (no aquí):
+  /// si el chofer cambia de pantalla o bloquea el teléfono, el contador y el
+  /// tramo A→B→A continúan; al reabrir la vista simplemente vuelve a pintarse.
+  void _escucharServicioCircuito() {
+    // 1. Garantizar que el servicio esté corriendo
+    if (!GpsTrackingService.instance.activo.value) {
+      GpsTrackingService.instance
+          .iniciar(idConductor: SesionService.instance.idConductor)
+          .catchError((_) {});
+    }
+
+    // 2. Eventos del circuito → avisos en pantalla
+    _subEventosCircuito?.cancel();
+    _subEventosCircuito =
+        GpsTrackingService.instance.eventos.listen((e) async {
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      SystemSound.play(SystemSoundType.click);
+      if (e.tipo == 'paso_A') {
+        setState(() => _pasoVilladelaRegistrado = true);
+      }
+      if (e.tipo == 'vuelta_completada') {
+        final hoy = DateTime.now().toIso8601String().substring(0, 10);
+        final vueltas =
+            await DatabaseHelper.instance.vueltasDetalle(fecha: hoy);
+        if (!mounted) return;
+        final misVueltas = vueltas
+            .where((v) => v['id_conductor'] == _idConductorActivo)
+            .length;
+        setState(() => _vueltasRegistradasHoy = misVueltas);
+      }
+      if (mounted) AppSnackBar.exito(context, e.mensaje);
+    });
+
+    // 3. La posición la provee el propio servicio (no duplica streams)
+    GpsTrackingService.instance.ultimaPosicion
+        .addListener(_alLlegarPosicionServicio);
+    _alLlegarPosicionServicio();
+  }
+
+  void _alLlegarPosicionServicio() {
+    final pos = GpsTrackingService.instance.ultimaPosicion.value;
+    if (!mounted || pos == null) return;
+    final punto = LatLng(pos.latitude, pos.longitude);
+    setState(() {
+      _miUbicacion = punto;
+      _dentroRectanguloA = RutaContinental.estaDentroDeGeocercaCircular(
+        punto,
+        _puntoParadaA(),
+        _radioGeocercaVista(),
+      );
+      _dentroRectanguloB = _dentroRectanguloA
+          ? false
+          : RutaContinental.estaDentroDeGeocercaCircular(
+              punto,
+              _puntoParadaB(),
+              _radioGeocercaVista(),
+            );
+    });
   }
 
   Future<void> _inicializarConductorYEstado() async {
@@ -91,7 +157,6 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
         setState(() {
           _idConductorActivo = idCond;
           _nombreConductorActivo = nombreCond ?? 'Conductor';
-          _asistenciaMarcadaHoy = asist != null;
           _pasoVilladelaRegistrado = asist != null;
           _horaUltimoPasoA = asist?['hora_llegada']?.toString();
           _vueltasRegistradasHoy = misVueltas;
@@ -103,195 +168,50 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
   Future<void> _iniciarGpsEnVivo() async {
     final ok = await GpsService.instance.verificarPermisos();
     if (!ok || !mounted) return;
+    // Ubicación inmediata para pintar el mapa mientras el servicio arranca
+    final ultima = await GpsService.instance.obtenerUltimaPosicionConocida();
+    if (ultima != null && mounted) {
+      setState(() => _miUbicacion = LatLng(ultima.latitude, ultima.longitude));
+    }
+    _subGps?.cancel();
     _subGps = GpsService.instance
         .obtenerStreamPosicion(distanceFilterM: 2)
         .listen(
       (pos) {
         if (!mounted) return;
         final punto = LatLng(pos.latitude, pos.longitude);
-        _evaluarPosicionEnRectangulos(punto, precisionM: pos.accuracy);
+        setState(() {
+          _miUbicacion = punto;
+          _dentroRectanguloA = RutaContinental.estaDentroDeGeocercaCircular(
+            punto,
+            _puntoParadaA(),
+            _radioGeocercaVista(),
+          );
+          _dentroRectanguloB = _dentroRectanguloA
+              ? false
+              : RutaContinental.estaDentroDeGeocercaCircular(
+                  punto,
+                  _puntoParadaB(),
+                  _radioGeocercaVista(),
+                );
+        });
       },
       onError: (err) {
-        debugPrint('⚠️ Error en stream GPS de Ruta Oficial: ');
+        debugPrint('⚠️ Error en stream GPS de Ruta Oficial: $err');
       },
     );
   }
 
-  Future<void> _evaluarPosicionEnRectangulos(
-    LatLng punto, {
-    double precisionM = 5.0,
-    bool esSimulacion = false,
-  }) async {
-    final enA = RutaContinental.estaDentroDeRectangulo(
-      punto,
-      RutaContinental.rectanguloParadaA,
-      margenMetros: (precisionM * 0.4).clamp(2.0, 8.0),
-    );
-    final enB = RutaContinental.estaDentroDeRectangulo(
-      punto,
-      RutaContinental.rectanguloParadaB,
-      margenMetros: (precisionM * 0.4).clamp(2.0, 8.0),
-    );
+  /// Coordenadas de Parada A: SIEMPRE del registro activo de la BD (SQLite);
+  /// solo si no existe se apoya en la constante oficial única.
+  LatLng _puntoParadaA() => PuntosOficiales.paradaAVilladela;
+  /// Coordenadas de Parada B (fuente única).
+  LatLng _puntoParadaB() => PuntosOficiales.paradaBTeleferico;
 
-    final entroRecienA = enA && !_dentroRectanguloA;
-    final entroRecienB = enB && !_dentroRectanguloB;
-
-    setState(() {
-      _miUbicacion = punto;
-      _dentroRectanguloA = enA;
-      _dentroRectanguloB = enB;
-    });
-
-    if (entroRecienA) {
-      await _alPisarRectanguloVilladela(
-        punto: punto,
-        precisionM: precisionM,
-        esSimulacion: esSimulacion,
-      );
-    } else if (entroRecienB) {
-      await _alPisarRectanguloTeleferico(
-        punto: punto,
-        precisionM: precisionM,
-        esSimulacion: esSimulacion,
-      );
-    }
-  }
-
-  /// Se ejecuta automáticamente cuando el conductor pisa el rectángulo de Cruce Villadela (Parada A)
-  Future<void> _alPisarRectanguloVilladela({
-    required LatLng punto,
-    required double precisionM,
-    required bool esSimulacion,
-  }) async {
-    if (_procesandoEvento) return;
-    _procesandoEvento = true;
-
-    try {
-      HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.click);
-
-      final ahora = DateTime.now();
-      final horaStr =
-          '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}';
-
-      String mensajeEvento =
-          '¡Pasó por Parada A (Cruce Villadela) a las $horaStr!';
-
-      if (_idConductorActivo != null && _idConductorActivo!.isNotEmpty) {
-        // 1. Si aún no marcó asistencia hoy, se la registra automáticamente al pisar el rectángulo
-        if (!_asistenciaMarcadaHoy) {
-          final puntoOficial =
-              await DatabaseHelper.instance.obtenerPuntoAsistencia();
-          final idPunto = puntoOficial?['id_punto']?.toString() ?? '';
-
-          if (idPunto.isNotEmpty) {
-            final res = await AsistenciaRepo.instance.registrarAsistenciaGps(
-              idConductor: _idConductorActivo!,
-              idPunto: idPunto,
-              latitud: punto.latitude,
-              longitud: punto.longitude,
-              precisionM: precisionM,
-              distanciaM: 0.0,
-              esMock: false,
-              horaSateliteConfiable: true,
-              horaManual: esSimulacion ? horaStr : null,
-            );
-            if (res.exito) {
-              _asistenciaMarcadaHoy = true;
-              final est = res.asistencia?['estado']?.toString().toUpperCase() ??
-                  'PRESENTE';
-              mensajeEvento =
-                  '¡Asistencia registrada ($est) y paso por Parada Cruce Villadela confirmado!';
-            }
-          }
-        }
-
-        // 2. Si ya había pasado por Teleférico (Parada B), completa la vuelta automáticamente
-        if (_pasoTelefericoRegistrado) {
-          await DatabaseHelper.instance.registrarVuelta(
-            idConductor: _idConductorActivo!,
-            tipo: 'normal',
-          );
-          _pasoTelefericoRegistrado = false;
-          _vueltasRegistradasHoy++;
-          mensajeEvento =
-              '¡Vuelta #$_vueltasRegistradasHoy completada al pisar el rectángulo de Cruce Villadela!';
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _pasoVilladelaRegistrado = true;
-          _horaUltimoPasoA = horaStr;
-        });
-        AppSnackBar.exito(context, mensajeEvento);
-      }
-    } finally {
-      _procesandoEvento = false;
-    }
-  }
-
-  Future<void> _alPisarRectanguloTeleferico({
-    required LatLng punto,
-    required double precisionM,
-    required bool esSimulacion,
-  }) async {
-    if (_procesandoEvento) return;
-    _procesandoEvento = true;
-    try {
-      HapticFeedback.mediumImpact();
-      SystemSound.play(SystemSoundType.click);
-
-      final ahora = DateTime.now();
-      final horaStr =
-          '${ahora.hour.toString().padLeft(2, '0')}:${ahora.minute.toString().padLeft(2, '0')}';
-
-      String mensaje =
-          '¡Paso por Parada B (Teleférico) registrado! Al retornar al rectángulo de Cruce Villadela sumará la vuelta.';
-
-      if (_idConductorActivo != null &&
-          _idConductorActivo!.isNotEmpty &&
-          !_asistenciaMarcadaHoy) {
-        final puntos = await DatabaseHelper.instance.obtenerPuntosControl(
-          soloActivos: false,
-        );
-        final puntoB = puntos.firstWhere(
-          (p) => !p['nombre'].toString().contains('Villadela'),
-          orElse: () => puntos.isNotEmpty ? puntos.last : <String, dynamic>{},
-        );
-        final idPunto = puntoB['id_punto']?.toString() ?? '';
-        if (idPunto.isNotEmpty) {
-          final res = await AsistenciaRepo.instance.registrarAsistenciaGps(
-            idConductor: _idConductorActivo!,
-            idPunto: idPunto,
-            latitud: punto.latitude,
-            longitud: punto.longitude,
-            precisionM: precisionM,
-            distanciaM: 0.0,
-            esMock: false,
-            horaSateliteConfiable: true,
-            horaManual: esSimulacion ? horaStr : null,
-          );
-          if (res.exito) {
-            _asistenciaMarcadaHoy = true;
-            final est = res.asistencia?['estado']?.toString().toUpperCase() ??
-                'PRESENTE';
-            mensaje =
-                '¡Asistencia registrada ($est) y parada confirmada en el rectángulo de Teleférico (Parada B)!';
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _pasoTelefericoRegistrado = true;
-        });
-        AppSnackBar.exito(context, mensaje);
-      }
-    } finally {
-      _procesandoEvento = false;
-    }
-  }
+  double _radioGeocercaVista() =>
+      GpsTrackingService.instance.radioVueltasM > 0
+          ? GpsTrackingService.instance.radioVueltasM
+          : RutaContinental.radioDibujoM;
 
   void _encuadrarRuta({_ModoTramo? modo}) {
     if (!_mapaListo) return;
@@ -336,15 +256,20 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
     double? distARectanguloA;
     double? distARectanguloB;
     if (_miUbicacion != null) {
-      distARectanguloA = RutaContinental.distanciaAlRectanguloMetros(
+      distARectanguloA = RutaContinental.distanciaAParadaMetros(
         _miUbicacion!,
-        RutaContinental.rectanguloParadaA,
+        _puntoParadaA(),
       );
-      distARectanguloB = RutaContinental.distanciaAlRectanguloMetros(
+      distARectanguloB = RutaContinental.distanciaAParadaMetros(
         _miUbicacion!,
-        RutaContinental.rectanguloParadaB,
+        _puntoParadaB(),
       );
     }
+
+    // Estado en vivo del circuito, dicho por el SERVICIO (no por esta pantalla)
+    final estadoServicio = GpsTrackingService.instance.estadoCircuito.value;
+    final tramoEnCurso = estadoServicio.descripcion;
+    final radioGeocerca = _radioGeocercaVista();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -362,7 +287,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                 Expanded(
                   child: _buildChipTramo(
                     titulo: 'Circuito Total',
-                    subtitulo: '${RutaContinental.distanciaCircuitoKm} km',
+                    subtitulo: '${RutaContinental.distanciaCircuitoKm.toStringAsFixed(2)} km',
                     activo: _modoTramo == _ModoTramo.completo,
                     colorActivo: _kVerdeOscuro,
                     bgActivo: _kMintBg,
@@ -377,7 +302,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                 Expanded(
                   child: _buildChipTramo(
                     titulo: 'Ida (A → B)',
-                    subtitulo: '${RutaContinental.distanciaIdaKm} km',
+                    subtitulo: '${RutaContinental.distanciaIdaKm.toStringAsFixed(2)} km',
                     activo: _modoTramo == _ModoTramo.soloIda,
                     colorActivo: _kVerdeOscuro,
                     bgActivo: _kMintBg,
@@ -392,7 +317,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                 Expanded(
                   child: _buildChipTramo(
                     titulo: 'Vuelta (B → A)',
-                    subtitulo: '${RutaContinental.distanciaVueltaKm} km',
+                    subtitulo: '${RutaContinental.distanciaVueltaKm.toStringAsFixed(2)} km',
                     activo: _modoTramo == _ModoTramo.soloVuelta,
                     colorActivo: _kAmbar,
                     bgActivo: _kAmbarBg,
@@ -469,12 +394,15 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                       ],
                     ),
 
-                    // GEOCERCAS RECTANGULARES ORIENTADAS EN LA CALLE (NO REDONDAS)
+                    // GEOCERCAS CIRCULARES en Parada A y Parada B (radio mínimo 45 m)
                     PolygonLayer(
                       polygons: [
-                        // Rectángulo Parada A: Cruce Villadela
+                        // Geocerca Parada A: Cruce Villadela
                         Polygon(
-                          points: RutaContinental.rectanguloParadaA,
+                          points: RutaContinental.anilloGeocerca(
+                            _puntoParadaA(),
+                            radioGeocerca,
+                          ),
                           color: (_dentroRectanguloA
                                   ? _kVerdeActivo
                                   : _kAzulRect)
@@ -483,9 +411,12 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                               _dentroRectanguloA ? _kVerdeActivo : _kAzulRect,
                           borderStrokeWidth: 3.2,
                         ),
-                        // Rectángulo Parada B: Teleférico
+                        // Geocerca Parada B: Teleférico
                         Polygon(
-                          points: RutaContinental.rectanguloParadaB,
+                          points: RutaContinental.anilloGeocerca(
+                            _puntoParadaB(),
+                            radioGeocerca,
+                          ),
                           color: (_dentroRectanguloB ? _kVerdeActivo : _kAmbar)
                               .withValues(alpha: 0.26),
                           borderColor:
@@ -691,7 +622,12 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
           ),
 
           // 4. PANEL INFERIOR CON ESTADO DE PASO POR RECTÁNGULO Y ASISTENCIA
-          _buildPanelFichaRuta(distARectanguloA, distARectanguloB),
+          _buildPanelFichaRuta(
+            distARectanguloA,
+            distARectanguloB,
+            tramoEnCurso: tramoEnCurso,
+            radioGeocerca: radioGeocerca,
+          ),
         ],
       ),
     );
@@ -782,7 +718,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'Geocerca Rectangular en Parada Cruce Villadela (A) y Teleférico (B)',
+                        'Geocerca Circular Haversine en Parada Cruce Villadela (A) y Teleférico (B)',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 11.5,
@@ -801,7 +737,12 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
     );
   }
 
-  Widget _buildPanelFichaRuta(double? distA, double? distB) {
+  Widget _buildPanelFichaRuta(
+    double? distA,
+    double? distB, {
+    required String tramoEnCurso,
+    required double radioGeocerca,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -870,7 +811,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                       Text(
                         _pasoVilladelaRegistrado
                             ? 'Asistió y pasó por Parada Cruce Villadela (${_horaUltimoPasoA ?? "Hoy"})'
-                            : 'Zona Rectangular Cruce Villadela Activa',
+                            : tramoEnCurso,
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
@@ -884,7 +825,7 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                       Text(
                         _pasoVilladelaRegistrado
                             ? 'Conductor: ${_nombreConductorActivo ?? "Activo"} • Vueltas hoy: $_vueltasRegistradasHoy'
-                            : 'Al pisar el rectángulo azul se marca asistencia y paso por Parada A',
+                            : 'Al entrar en la geocerca circular de Parada A se marca asistencia y el paso; el estado vive en GpsTrackingService',
                         style: TextStyle(
                           fontSize: 10.5,
                           color: _pasoVilladelaRegistrado
@@ -910,9 +851,9 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                   letra: 'A',
                   titulo: 'Cruce Villadela',
                   subtitulo: _dentroRectanguloA
-                      ? '¡DENTRO DEL RECTÁNGULO!'
-                      : 'Rectángulo 26×17 m',
-                  coordenadas: '-16.57569, -68.23765',
+                      ? '¡DENTRO DE LA GEOCERCA!'
+                      : 'Geocerca circular ${radioGeocerca.round()} m',
+                  coordenadas: '-16.53455, -68.19160',
                   distanciaActual: distA,
                   color: _dentroRectanguloA ? _kVerdeActivo : _kAzulRect,
                   bgColor: _kMintBg,
@@ -926,9 +867,9 @@ class _RutaOficialScreenState extends State<RutaOficialScreen> {
                   letra: 'B',
                   titulo: 'Teleférico',
                   subtitulo: _dentroRectanguloB
-                      ? '¡DENTRO DEL RECTÁNGULO!'
-                      : 'Rectángulo 26×17 m',
-                  coordenadas: '-16.57618, -68.23820',
+                      ? '¡DENTRO DE LA GEOCERCA!'
+                      : 'Geocerca circular ${radioGeocerca.round()} m',
+                  coordenadas: '-16.51834, -68.15144',
                   distanciaActual: distB,
                   color: _kAmbar,
                   bgColor: _kAmbarBg,
