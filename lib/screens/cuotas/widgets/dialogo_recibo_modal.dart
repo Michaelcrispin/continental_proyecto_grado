@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../core/formato_moneda.dart';
 
 /// Modal estilizado para visualizar los detalles del recibo / comprobante de pago
 /// en interfaz nativa (reemplaza el visor PDF por una tarjeta visual estética).
 class DialogoReciboModal extends StatelessWidget {
   final Map<String, dynamic> datos;
+
+  static const _kVerdeOscuro = Color(0xFF02634C);
+  static const _kMintBg = Color(0xFFE8F5EF);
 
   const DialogoReciboModal({
     super.key,
@@ -74,9 +78,16 @@ class DialogoReciboModal extends StatelessWidget {
         datos['tipo_nombre']?.toString() ??
         'Cuota Sindicato';
     final tipoNombre = datos['tipo_nombre']?.toString() ?? 'Cuota';
-    final montoPagado = (datos['monto_pagado'] as num?)?.toDouble() ?? 0.0;
-    final totalCuota = (datos['total_cuota'] as num?)?.toDouble() ?? montoPagado;
-    final saldoRestante = (datos['saldo_restante'] as num?)?.toDouble() ?? 0.0;
+    final montoPagado = (datos['monto_pagado'] as num?)?.toDouble() ??
+        (datos['monto'] as num?)?.toDouble() ??
+        0.0;
+    final totalCuota = (datos['total_cuota'] as num?)?.toDouble() ??
+        (datos['monto_total'] as num?)?.toDouble() ??
+        montoPagado;
+    final saldoRestante = (datos['saldo_restante'] as num?)?.toDouble() ??
+        (datos['saldo'] as num?)?.toDouble() ??
+        (datos['monto_falta'] as num?)?.toDouble() ??
+        0.0;
     final metodo = (datos['metodo']?.toString() ?? 'efectivo').toLowerCase();
     final fechaRaw = datos['fecha'] ?? datos['created_at'];
     final fechaFormateada = _formatearFechaLarga(fechaRaw);
@@ -126,7 +137,7 @@ class DialogoReciboModal extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
+                          color: _kMintBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
@@ -134,7 +145,7 @@ class DialogoReciboModal extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1D4ED8),
+                            color: _kVerdeOscuro,
                             letterSpacing: 0.6,
                           ),
                         ),
@@ -185,7 +196,7 @@ class DialogoReciboModal extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F2B5B),
+                      color: _kVerdeOscuro,
                       letterSpacing: -0.3,
                     ),
                     textAlign: TextAlign.center,
@@ -211,12 +222,12 @@ class DialogoReciboModal extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFF0FDF4), Color(0xFFDCFCE7)],
+                        colors: [_kMintBg, Color(0xFFDCFCE7)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFF86EFAC)),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
                     child: Column(
                       children: [
@@ -225,17 +236,17 @@ class DialogoReciboModal extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF15803D),
+                            color: _kVerdeOscuro,
                             letterSpacing: 0.8,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Bs. ${montoPagado.toStringAsFixed(2)}',
+                          formatearBs(montoPagado),
                           style: const TextStyle(
                             fontSize: 27,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F2B5B),
+                            color: _kVerdeOscuro,
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -246,7 +257,7 @@ class DialogoReciboModal extends StatelessWidget {
                             vertical: 3.5,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981),
+                            color: _kVerdeOscuro,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Row(
@@ -294,7 +305,7 @@ class DialogoReciboModal extends StatelessWidget {
                           children: [
                             CircleAvatar(
                               radius: 16,
-                              backgroundColor: const Color(0xFF3B82F6),
+                              backgroundColor: _kVerdeOscuro,
                               child: Text(
                                 iniciales,
                                 style: const TextStyle(
@@ -314,7 +325,7 @@ class DialogoReciboModal extends StatelessWidget {
                                     style: const TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F2B5B),
+                                      color: Color(0xFF0F172A),
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -337,14 +348,14 @@ class DialogoReciboModal extends StatelessWidget {
                         // Cuota / Concepto
                         _buildFilaDetalle(
                           icon: Icons.event_note_rounded,
-                          iconColor: const Color(0xFF2563EB),
+                          iconColor: _kVerdeOscuro,
                           label: 'Cuota:',
                           valorWidget: Text(
                             concepto,
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F2B5B),
+                              color: Color(0xFF0F172A),
                             ),
                             textAlign: TextAlign.end,
                             maxLines: 1,
@@ -379,7 +390,7 @@ class DialogoReciboModal extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF0F2B5B),
+                              color: Color(0xFF0F172A),
                             ),
                             textAlign: TextAlign.end,
                           ),
@@ -391,9 +402,7 @@ class DialogoReciboModal extends StatelessWidget {
                           icon: metodo == 'qr'
                               ? Icons.qr_code_2_rounded
                               : Icons.payments_outlined,
-                          iconColor: metodo == 'qr'
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFF059669),
+                          iconColor: _kVerdeOscuro,
                           label: 'Método:',
                           valorWidget: Container(
                             padding: const EdgeInsets.symmetric(
@@ -401,24 +410,18 @@ class DialogoReciboModal extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: metodo == 'qr'
-                                  ? const Color(0xFFEFF6FF)
-                                  : const Color(0xFFECFDF5),
+                              color: _kMintBg,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: metodo == 'qr'
-                                    ? const Color(0xFFBFDBFE)
-                                    : const Color(0xFFA7F3D0),
+                                color: const Color(0xFFA7F3D0),
                               ),
                             ),
                             child: Text(
                               metodo == 'qr' ? 'Pago con QR' : 'Efectivo',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.bold,
-                                color: metodo == 'qr'
-                                    ? const Color(0xFF1D4ED8)
-                                    : const Color(0xFF059669),
+                                color: _kVerdeOscuro,
                               ),
                             ),
                           ),
@@ -448,7 +451,7 @@ class DialogoReciboModal extends StatelessWidget {
                             iconColor: const Color(0xFFDC2626),
                             label: 'Saldo restante:',
                             valorWidget: Text(
-                              'Bs. ${saldoRestante.toStringAsFixed(2)} de ${totalCuota.toStringAsFixed(2)}',
+                              '${formatearBs(saldoRestante)} de ${formatearBs(totalCuota)}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
@@ -487,7 +490,7 @@ class DialogoReciboModal extends StatelessWidget {
                     height: 48,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F2B5B),
+                        backgroundColor: _kVerdeOscuro,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(

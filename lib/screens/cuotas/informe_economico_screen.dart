@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/formato_moneda.dart';
 import '../../services/economia_repo.dart';
 import '../../services/recibo_pdf_service.dart';
 
@@ -185,7 +186,7 @@ class _InformeEconomicoScreenState extends State<InformeEconomicoScreen> {
                     children: [
                       _buildMetricCard(
                         titulo: 'Recaudado',
-                        monto: 'Bs. ${recaudado.toStringAsFixed(2)}',
+                        monto: formatearBs(recaudado),
                         icono: Icons.payments_outlined,
                         color: const Color(0xFF059669),
                         bgColor: const Color(0xFFECFDF5),
@@ -194,7 +195,7 @@ class _InformeEconomicoScreenState extends State<InformeEconomicoScreen> {
                       const SizedBox(width: 10),
                       _buildMetricCard(
                         titulo: 'Pendiente',
-                        monto: 'Bs. ${pendiente.toStringAsFixed(2)}',
+                        monto: formatearBs(pendiente),
                         icono: Icons.hourglass_top,
                         color: const Color(0xFFDC2626),
                         bgColor: const Color(0xFFFEF2F2),
@@ -347,7 +348,7 @@ class _InformeEconomicoScreenState extends State<InformeEconomicoScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E293B)),
                 ),
                 Text(
-                  'Comprometido: Bs. ${total.toStringAsFixed(2)}',
+                  'Comprometido: ${formatearBs(total)}',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                 ),
               ],
@@ -372,7 +373,7 @@ class _InformeEconomicoScreenState extends State<InformeEconomicoScreen> {
                     Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
                     const SizedBox(width: 6),
                     Text(
-                      'Recaudado: Bs. ${rec.toStringAsFixed(2)} (${(porcentaje * 100).toStringAsFixed(0)}%)',
+                      'Recaudado: ${formatearBs(rec)} (${(porcentaje * 100).toStringAsFixed(0)}%)',
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
                     ),
                   ],
@@ -382,7 +383,7 @@ class _InformeEconomicoScreenState extends State<InformeEconomicoScreen> {
                     Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle)),
                     const SizedBox(width: 6),
                     Text(
-                      'Pendiente: Bs. ${pend.toStringAsFixed(2)}',
+                      'Pendiente: ${formatearBs(pend)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,

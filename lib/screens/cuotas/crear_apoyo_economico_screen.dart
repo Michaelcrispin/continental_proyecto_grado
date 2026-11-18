@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/formato_moneda.dart';
 import '../../services/economia_repo.dart';
 import '../../services/sesion_service.dart';
 import '../../widgets/app_snackbar.dart';
@@ -168,7 +169,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
     final importe = double.tryParse(_importeCtrl.text.trim()) ?? 0.0;
 
     if (importe < 1) {
-      _mostrarSnack('El importe mínimo por conductor es Bs. 1.00.');
+      _mostrarSnack('El importe mínimo por conductor es Bs. 1.');
       return;
     }
 
@@ -431,7 +432,7 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                                 }
                                 final n = double.tryParse(value);
                                 if (n == null || n < 1) {
-                                  return 'El mínimo es Bs. 1.00';
+                                  return 'El mínimo es Bs. 1';
                                 }
                                 return null;
                               },
@@ -663,11 +664,11 @@ class _CrearApoyoEconomicoScreenState extends State<CrearApoyoEconomicoScreen> {
                             ),
                             _buildResumenDato(
                               titulo: 'Por Chofer',
-                              valor: 'Bs. ${importe.toStringAsFixed(2)}',
+                              valor: formatearBs(importe),
                             ),
                             _buildResumenDato(
                               titulo: 'Total Estimado',
-                              valor: 'Bs. ${totalFondo.toStringAsFixed(2)}',
+                              valor: formatearBs(totalFondo),
                               destacado: true,
                             ),
                           ],

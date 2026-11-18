@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/formato_moneda.dart';
 import '../../../core/permisos.dart';
 import '../../../services/economia_repo.dart';
 import '../../../services/sesion_service.dart';
@@ -527,7 +528,7 @@ class _DetalleConductorCuotasSheetState
                                                         : 'Al día con esta semana ($pagadasCount pagadas)')
                                                   : (esCanaston
                                                         ? 'Pendiente · Debe cuota de esta semana'
-                                                        : 'Pendiente · Debe Bs. ${falta.toStringAsFixed(0)}'),
+                                                        : 'Pendiente · Debe ${formatearBs(falta)}'),
                                               style: TextStyle(
                                                 fontSize: 12.5,
                                                 fontWeight: FontWeight.bold,
@@ -618,7 +619,7 @@ class _DetalleConductorCuotasSheetState
                                       MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      'Monto: Bs. ${montoAMostrar.toStringAsFixed(2)}',
+                                      'Monto: ${formatearBs(montoAMostrar)}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 15.5,
@@ -965,8 +966,8 @@ class _DetalleConductorCuotasSheetState
                   icon: const Icon(Icons.payments_rounded, size: 20),
                   label: Text(
                     esCanaston
-                        ? 'Pagar Cuota de Esta Semana (Bs. ${deudaHastaEstaSemana.toStringAsFixed(0)})'
-                        : 'Registrar Pago (Falta Bs. ${falta.toStringAsFixed(0)})',
+                        ? 'Pagar Cuota de Esta Semana (${formatearBs(deudaHastaEstaSemana)})'
+                        : 'Registrar Pago (Falta ${formatearBs(falta)})',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
@@ -1117,7 +1118,7 @@ class _DetalleConductorCuotasSheetState
                           ),
                         ),
                         Text(
-                          'Bs. ${monto.toStringAsFixed(0)}',
+                          formatearBs(monto),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,

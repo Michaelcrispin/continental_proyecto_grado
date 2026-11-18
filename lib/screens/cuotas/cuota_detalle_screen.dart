@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/formato_moneda.dart';
 import '../../core/permisos.dart';
 import '../../services/economia_repo.dart';
 import '../../services/recibo_pdf_service.dart';
@@ -415,10 +416,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
   }
 
   String _fmtMonto(double v) {
-    if ((v - v.roundToDouble()).abs() < 0.005) {
-      return v.round().toString();
-    }
-    return v.toStringAsFixed(2);
+    return FormatoMoneda.numero(v);
   }
 
   @override
@@ -585,7 +583,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                         runSpacing: 4,
                         children: [
                           Text(
-                            'Bs. ${montoSugerido.toStringAsFixed(0)} / chofer',
+                            '${formatearBs(montoSugerido)} / chofer',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.9),
                               fontSize: 12,
@@ -955,7 +953,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                 Expanded(
                   child: _buildMiniStat(
                     'Recaudado',
-                    'Bs. ${totalRecaudado.toStringAsFixed(0)}',
+                    formatearBs(totalRecaudado),
                     const Color(0xFF059669),
                   ),
                 ),
@@ -963,7 +961,7 @@ class _CuotaDetalleScreenState extends State<CuotaDetalleScreen> {
                 Expanded(
                   child: _buildMiniStat(
                     'Por cobrar',
-                    'Bs. ${totalFalta.toStringAsFixed(0)}',
+                    formatearBs(totalFalta),
                     const Color(0xFFDC2626),
                   ),
                 ),

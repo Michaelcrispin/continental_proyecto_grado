@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+const _kVerdeOscuro = Color(0xFF02634C);
+const _kMintBg = Color(0xFFE6F4F0);
+const _kMintBorde = Color(0xFFBBE5D8);
+const _kTextoOscuro = Color(0xFF0F291E);
+
 /// Resultado de la selección del día del mes.
 class DiaCobroMesResult {
   final int dia;
@@ -72,12 +77,12 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
               width: 58,
               height: 58,
               decoration: const BoxDecoration(
-                color: Color(0xFFEFF6FF),
+                color: _kMintBg,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.calendar_month_rounded,
-                color: Color(0xFF2563EB),
+                color: _kVerdeOscuro,
                 size: 30,
               ),
             ),
@@ -89,7 +94,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
               style: TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F2B5B),
+                color: _kTextoOscuro,
                 letterSpacing: -0.2,
               ),
               textAlign: TextAlign.center,
@@ -132,16 +137,16 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                     duration: const Duration(milliseconds: 150),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: seleccionado ? const Color(0xFF2563EB) : const Color(0xFFF8FAFC),
+                      color: seleccionado ? _kVerdeOscuro : const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: seleccionado ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                        color: seleccionado ? _kVerdeOscuro : const Color(0xFFE2E8F0),
                         width: seleccionado ? 1.5 : 1.0,
                       ),
                       boxShadow: seleccionado
                           ? [
                               BoxShadow(
-                                color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                                color: _kVerdeOscuro.withValues(alpha: 0.35),
                                 blurRadius: 6,
                                 offset: const Offset(0, 2),
                               ),
@@ -173,10 +178,10 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
-                  color: _esFinDeMes ? const Color(0xFFEFF6FF) : Colors.transparent,
+                  color: _esFinDeMes ? _kMintBg : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: _esFinDeMes ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                    color: _esFinDeMes ? _kVerdeOscuro : const Color(0xFFE2E8F0),
                     width: 1.2,
                   ),
                 ),
@@ -186,7 +191,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                     Icon(
                       _esFinDeMes ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
                       size: 16,
-                      color: _esFinDeMes ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                      color: _esFinDeMes ? _kVerdeOscuro : const Color(0xFF94A3B8),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -194,7 +199,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: _esFinDeMes ? FontWeight.bold : FontWeight.w500,
-                        color: _esFinDeMes ? const Color(0xFF2563EB) : const Color(0xFF475569),
+                        color: _esFinDeMes ? _kVerdeOscuro : const Color(0xFF475569),
                       ),
                     ),
                   ],
@@ -207,9 +212,9 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: _kMintBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFDBEAFE)),
+                border: Border.all(color: _kMintBorde),
               ),
               child: Row(
                 children: [
@@ -217,7 +222,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                     width: 26,
                     height: 26,
                     decoration: const BoxDecoration(
-                      color: Color(0xFF2563EB),
+                      color: _kVerdeOscuro,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -247,7 +252,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                           style: const TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F2B5B),
+                            color: _kTextoOscuro,
                           ),
                         ),
                       ],
@@ -273,7 +278,7 @@ class _SelectorDiaMesDialogState extends State<SelectorDiaMesDialog> {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E40AF),
+                  backgroundColor: _kVerdeOscuro,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

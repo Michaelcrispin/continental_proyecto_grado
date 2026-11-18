@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/cronograma_cuotas.dart';
+import '../../core/formato_moneda.dart';
 import '../../services/economia_repo.dart';
 import '../../services/sesion_service.dart';
 import '../../widgets/app_snackbar.dart';
@@ -24,6 +25,8 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
 
   late final TextEditingController _nombreCtrl;
   late final TextEditingController _importeCtrl;
+
+  int _anioGestion = DateTime.now().year;
 
   String _frecuencia = 'semanal'; // 'semanal' | 'mensual'
   int _diaSemana = 2; // 2 = Martes
@@ -57,8 +60,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
     _nombreCtrl = TextEditingController();
     _importeCtrl = TextEditingController();
 
+    _anioGestion = now.year;
     _fechaInicio = DateTime(now.year, now.month, now.day);
-    _fechaLimite = DateTime(now.year, 12, 31);
+    _fechaLimite = DateTime(now.year, 12, 20); // Sugerido 20 de diciembre antes de Navidad
 
     _cargarConductores();
   }
@@ -68,6 +72,22 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
     _nombreCtrl.dispose();
     _importeCtrl.dispose();
     super.dispose();
+  }
+
+  void _cambiarGestion(int anio) {
+    if (_anioGestion == anio) return;
+    final now = DateTime.now();
+    setState(() {
+      _anioGestion = anio;
+      if (anio == now.year) {
+        _fechaInicio = DateTime(now.year, now.month, now.day);
+        _fechaLimite = DateTime(now.year, 12, 20);
+      } else {
+        // Próxima gestión comenzando desde enero
+        _fechaInicio = DateTime(anio, 1, 1);
+        _fechaLimite = DateTime(anio, 12, 20);
+      }
+    });
   }
 
   Future<void> _cargarConductores() async {
@@ -89,10 +109,12 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
   }
 
   List<DateTime> _calcularCronogramaActual() {
-    final limite = _fechaLimite ?? DateTime(_fechaInicio.year, 12, 31);
+    final topeNavidad = DateTime(_anioGestion, 12, 25);
+    final limite = _fechaLimite ?? DateTime(_anioGestion, 12, 20);
+    final limiteSeguro = limite.isAfter(topeNavidad) ? topeNavidad : limite;
     return CronogramaCuotas.generarFechas(
       fechaInicio: _fechaInicio,
-      fechaLimite: limite,
+      fechaLimite: limiteSeguro,
       frecuencia: _frecuencia,
       diaSemana: _diaSemana,
       diaMes: _diaMes,
@@ -101,30 +123,55 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
   }
 
   Future<void> _seleccionarFechaInicio() async {
+    final now = DateTime.now();
+    final hoy = DateTime(now.year, now.month, now.day);
+
+    // Si es el año en curso, no permite fechas anteriores a hoy.
+    // Si es la siguiente gestión, permite desde el 1 de enero de ese año.
+    final firstDate =
+        (_anioGestion == now.year) ? hoy : DateTime(_anioGestion, 1, 1);
+    final lastDate = DateTime(_anioGestion, 12, 25);
+
+    DateTime initDate = _fechaInicio;
+    if (initDate.isBefore(firstDate)) initDate = firstDate;
+    if (initDate.isAfter(lastDate)) initDate = lastDate;
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: _fechaInicio,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
+      initialDate: initDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: 'Fecha de inicio del Ahorro Navideño',
       builder: (context, child) => _tematizarPicker(child),
     );
     if (picked != null) {
       setState(() {
         _fechaInicio = picked;
-        if (_fechaLimite != null && _fechaLimite!.isBefore(_fechaInicio)) {
-          _fechaLimite = _fechaInicio.add(const Duration(days: 30));
+        if (_fechaLimite == null || _fechaLimite!.isBefore(_fechaInicio)) {
+          final topeNavidad = DateTime(_anioGestion, 12, 25);
+          final tentativa = _fechaInicio.add(const Duration(days: 30));
+          _fechaLimite =
+              tentativa.isAfter(topeNavidad) ? topeNavidad : tentativa;
         }
       });
     }
   }
 
   Future<void> _seleccionarFechaLimite() async {
-    final inicial = _fechaLimite ?? DateTime(_fechaInicio.year, 12, 31);
+    final topeNavidad = DateTime(_anioGestion, 12, 25);
+    final firstDate = _fechaInicio;
+    final lastDate = topeNavidad;
+
+    DateTime initDate = _fechaLimite ?? DateTime(_anioGestion, 12, 20);
+    if (initDate.isBefore(firstDate)) initDate = firstDate;
+    if (initDate.isAfter(lastDate)) initDate = lastDate;
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: inicial.isBefore(_fechaInicio) ? _fechaInicio : inicial,
-      firstDate: _fechaInicio,
-      lastDate: DateTime(2035),
+      initialDate: initDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      helpText: 'Fecha límite de Ahorro Navideño (máx. 25 Dic)',
       builder: (context, child) => _tematizarPicker(child),
     );
     if (picked != null) {
@@ -183,6 +230,47 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
 
     if (_idsConductoresSeleccionados.isEmpty) {
       _mostrarSnack('Selecciona al menos un conductor.');
+      return;
+    }
+
+    final anio = _fechaInicio.year;
+    final now = DateTime.now();
+    final hoy = DateTime(now.year, now.month, now.day);
+
+    if (_fechaLimite == null) {
+      _mostrarSnack('Por favor selecciona una fecha límite.');
+      return;
+    }
+
+    // Validación 1: No debe durar dos años (ambas fechas del mismo año)
+    if (_fechaLimite!.year != anio) {
+      _mostrarSnack(
+        'El Ahorro Navideño no puede durar dos años. Ambas fechas deben pertenecer a la gestión $anio.',
+      );
+      return;
+    }
+
+    // Validación 2: Límite tope hasta el 25 de diciembre
+    if (_fechaLimite!.isAfter(DateTime(anio, 12, 25))) {
+      _mostrarSnack(
+        'El Ahorro Navideño solo se puede programar hasta el 25 de diciembre (Navidad).',
+      );
+      return;
+    }
+
+    // Validación 3: No permitir fechas pasadas para el año en curso
+    if (anio == now.year && _fechaInicio.isBefore(hoy)) {
+      _mostrarSnack(
+        'No se pueden seleccionar fechas pasadas para el año en curso ($anio).',
+      );
+      return;
+    }
+
+    // Validación 4: Fecha límite posterior a fecha de inicio
+    if (_fechaLimite!.isBefore(_fechaInicio)) {
+      _mostrarSnack(
+        'La fecha límite debe ser igual o posterior a la fecha de inicio.',
+      );
       return;
     }
 
@@ -256,9 +344,9 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                 children: [
                   // TÍTULO Y DESCRIPCIÓN DE LA CATEGORÍA
                   _buildHeaderInfo(
-                    titulo: 'Canastón / Ahorro',
+                    titulo: 'Ahorro Navideño',
                     subtitulo:
-                        'Programa un fondo de cuotas periódicas (semanal o mensual) para el canastón o ahorro de fin de año.',
+                        'Programa un fondo de cuotas periódicas (semanal o mensual) para el ahorro de fin de año.',
                     icono: Icons.card_giftcard_rounded,
                   ),
 
@@ -274,7 +362,7 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                         controller: _nombreCtrl,
                         textCapitalization: TextCapitalization.sentences,
                         decoration: const InputDecoration(
-                          hintText: 'Ej. Canastón Navideño',
+                          hintText: 'Ej. Ahorro Navideño',
                           hintStyle: TextStyle(
                             color: Color(0xFF94A3B8),
                             fontSize: 14,
@@ -456,97 +544,124 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                   _buildCardContainer(
                     icono: Icons.access_time_rounded,
                     titulo: 'Periodo de Cobro',
-                    subtitulo: 'Fecha de inicio y fecha límite opcional',
-                    child: Row(
+                    subtitulo: 'Fecha de inicio y fecha límite',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Fecha de inicio
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        // Píldoras selectoras de gestión (Año actual vs Siguiente año)
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
                             children: [
-                              const Text(
-                                'Fecha de inicio',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF475569),
-                                ),
+                              _buildGestionTab(
+                                anio: DateTime.now().year,
+                                etiqueta: 'Gestión ${DateTime.now().year}',
                               ),
-                              const SizedBox(height: 6),
-                              InkWell(
-                                onTap: _seleccionarFechaInicio,
-                                borderRadius: BorderRadius.circular(14),
-                                child: _buildInputContainer(
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.calendar_today_rounded,
-                                        size: 16,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _dateFmt.format(_fechaInicio),
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              const SizedBox(width: 4),
+                              _buildGestionTab(
+                                anio: DateTime.now().year + 1,
+                                etiqueta: 'Gestión ${DateTime.now().year + 1}',
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        // Fecha límite
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Fecha límite (opcional)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF475569),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              InkWell(
-                                onTap: _seleccionarFechaLimite,
-                                borderRadius: BorderRadius.circular(14),
-                                child: _buildInputContainer(
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.calendar_today_rounded,
-                                        size: 16,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          _fechaLimite != null
-                                              ? _dateFmt.format(_fechaLimite!)
-                                              : 'Sin límite',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF0F172A),
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            // Fecha de inicio
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Fecha de inicio',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF475569),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 6),
+                                  InkWell(
+                                    onTap: _seleccionarFechaInicio,
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: _buildInputContainer(
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 16,
+                                            color: Color(0xFF64748B),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            _dateFmt.format(_fechaInicio),
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Fecha límite
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Fecha límite',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  InkWell(
+                                    onTap: _seleccionarFechaLimite,
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: _buildInputContainer(
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 16,
+                                            color: Color(0xFF64748B),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _fechaLimite != null
+                                                  ? _dateFmt.format(_fechaLimite!)
+                                                  : '20/12/$_anioGestion',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -623,11 +738,14 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                       color: _kMintBg,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: _kVerdeOscuro.withOpacity(0.25),
-                        width: 1.2,
+                        color: _kVerdeOscuro.withValues(alpha: 0.28),
+                        width: 1.3,
                       ),
                     ),
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
                     child: Column(
                       children: [
                         Row(
@@ -635,36 +753,37 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
                             const Icon(
                               Icons.calculate_rounded,
                               color: _kVerdeOscuro,
-                              size: 20,
+                              size: 24,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 10),
                             const Text(
                               'Resumen de Recaudación Proyectada',
                               style: TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 color: _kVerdeOscuro,
+                                letterSpacing: -0.2,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             _buildResumenDato(
                               titulo: 'Cuotas',
-                              valor: '${cronograma.length}',
+                              valor: formatearNumero(cronograma.length),
                             ),
                             _buildResumenDato(
                               titulo: 'Por Conductor',
-                              valor:
-                                  'Bs. ${totalPorConductor.toStringAsFixed(2)}',
+                              valor: formatearBs(totalPorConductor),
                             ),
                             _buildResumenDato(
                               titulo: 'Fondo Estimado',
-                              valor:
-                                  'Bs. ${(totalPorConductor * seleccionadosCount).toStringAsFixed(2)}',
+                              valor: formatearBs(
+                                totalPorConductor * seleccionadosCount,
+                              ),
                               destacado: true,
                             ),
                           ],
@@ -867,6 +986,42 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
     );
   }
 
+  Widget _buildGestionTab({required int anio, required String etiqueta}) {
+    final seleccionado = _anioGestion == anio;
+    return Expanded(
+      child: InkWell(
+        onTap: () => _cambiarGestion(anio),
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: seleccionado ? _kVerdeOscuro : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: seleccionado
+                ? [
+                    BoxShadow(
+                      color: _kVerdeOscuro.withValues(alpha: 0.25),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            etiqueta,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: seleccionado ? FontWeight.bold : FontWeight.w600,
+              color: seleccionado ? Colors.white : const Color(0xFF64748B),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputContainer({required Widget child}) {
     return Container(
       width: double.infinity,
@@ -950,16 +1105,16 @@ class _CrearCanastonScreenState extends State<CrearCanastonScreen> {
         Text(
           titulo,
           style: const TextStyle(
-            fontSize: 11,
+            fontSize: 12.5,
             fontWeight: FontWeight.w600,
             color: Color(0xFF64748B),
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 4),
         Text(
           valor,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: destacado ? 17.5 : 16.5,
             fontWeight: FontWeight.w800,
             color: destacado ? _kVerdeOscuro : const Color(0xFF0F172A),
           ),

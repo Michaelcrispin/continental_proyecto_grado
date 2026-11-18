@@ -56,8 +56,8 @@ class SesionService {
     _idConductor = null;
     _ci = null;
 
-    // Si el rol es conductor, obtenemos su ficha de conductor asociada
-    if (_rol == 'conductor' && _idUsuario != null) {
+    // Si el usuario tiene ficha de conductor asociada, la vinculamos a la sesión
+    if (_idUsuario != null) {
       final conductor = await DatabaseHelper.instance.conductorDeUsuario(_idUsuario!);
       if (conductor != null) {
         _idConductor = conductor['id_conductor']?.toString();
@@ -110,7 +110,8 @@ class SesionService {
     _idConductor = null;
     _ci = null;
 
-    if (_rol == 'conductor' && _idUsuario != null) {
+    // Vincular ficha de conductor si existe
+    if (_idUsuario != null) {
       final conductor = await DatabaseHelper.instance.conductorDeUsuario(_idUsuario!);
       if (conductor != null) {
         _idConductor = conductor['id_conductor']?.toString();

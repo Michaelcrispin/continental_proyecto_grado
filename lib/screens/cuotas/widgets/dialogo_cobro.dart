@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/formato_moneda.dart';
 import '../../../services/economia_repo.dart';
 import '../../../services/sesion_service.dart';
 import '../../../widgets/app_snackbar.dart';
@@ -171,7 +172,7 @@ class DialogoCobro extends StatefulWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Bs. ${monto.toStringAsFixed(2)}',
+                        formatearBs(monto),
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
@@ -377,7 +378,11 @@ class _DialogoCobroState extends State<DialogoCobro> {
     if (montoDefecto > _maximo) montoDefecto = _maximo;
 
     _montoCtrl = TextEditingController(
-      text: montoDefecto > 0 ? montoDefecto.toStringAsFixed(2) : '',
+      text: montoDefecto > 0
+          ? (montoDefecto % 1 == 0
+              ? montoDefecto.toInt().toString()
+              : montoDefecto.toStringAsFixed(2))
+          : '',
     );
   }
 
@@ -390,12 +395,12 @@ class _DialogoCobroState extends State<DialogoCobro> {
   Future<void> _confirmarCobro() async {
     final monto = double.tryParse(_montoCtrl.text.trim()) ?? 0.0;
     if (monto < 1) {
-      _mostrarSnack('El monto mínimo para cobrar es Bs. 1.00.');
+      _mostrarSnack('El monto mínimo para cobrar es Bs. 1.');
       return;
     }
     if (monto > (_maximo + 0.01)) {
       _mostrarSnack(
-        'El monto no puede superar Bs. ${_maximo.toStringAsFixed(2)} para esta cuota.',
+        'El monto no puede superar ${formatearBs(_maximo)} para esta cuota.',
       );
       return;
     }
@@ -432,10 +437,10 @@ class _DialogoCobroState extends State<DialogoCobro> {
       if (monto == null) {
         error = 'Ingresa un monto válido.';
       } else if (monto < 1) {
-        error = 'El monto mínimo es Bs. 1.00.';
+        error = 'El monto mínimo es Bs. 1.';
       } else if (monto > (_maximo + 0.01)) {
         error =
-            'El máximo para esta cuota es Bs. ${_maximo.toStringAsFixed(2)}.';
+            'El máximo para esta cuota es ${formatearBs(_maximo)}.';
       }
     }
 

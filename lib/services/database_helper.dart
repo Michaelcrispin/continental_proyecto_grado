@@ -177,12 +177,93 @@ class DatabaseHelper {
           }
           await _reordenarConductoresEnTxn(db);
         } catch (_) {}
+        // Sembrar o actualizar conductores institucionales semilla (incluyendo supervisor)
+        try {
+          await _seedConductores(db, _now());
+        } catch (_) {}
+        // Garantizar existencia del usuario institucional Secretario de Hacienda (Tesorero)
+        try {
+          final usuHacienda = await db.query(
+            'usuario',
+            where: "LOWER(gmail) = 'hacienda@continental.com'",
+            limit: 1,
+          );
+          if (usuHacienda.isEmpty) {
+            final now = _now();
+            await db.insert('usuario', {
+              'id_usuario': _uuid.v4(),
+              'rol': 'tesorero',
+              'nombre': 'Secretario de Hacienda',
+              'estado': 'activo',
+              'gmail': 'hacienda@continental.com',
+              'password': hashPassword('Pass1234*'),
+              'fecha_creacion': now,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            });
+          } else {
+            await db.update(
+              'usuario',
+              {
+                'rol': 'tesorero',
+                'estado': 'activo',
+                'password': hashPassword('Pass1234*'),
+              },
+              where: "LOWER(gmail) = 'hacienda@continental.com'",
+            );
+          }
+        } catch (_) {}
         // Sembrar cuotas iniciales de Ayuda Económica y Reunión (sin Canastón todavía)
         try {
           await _seedCuotasAyudaYReunion(db, _now());
         } catch (_) {}
+        // Asegurar columnas extendidas para el módulo de Pasanaco (doble fecha y acta de sorteo)
+        await asegurarColumnasPasanaco(db);
       },
     );
+  }
+
+  /// Asegura en caliente que las tablas de Pasanaco tengan las columnas extendidas,
+  /// incluso si la conexión SQLite quedó abierta tras un Hot Reload.
+  Future<void> asegurarColumnasPasanaco([Database? dbOverride]) async {
+    final db = dbOverride ?? await database;
+    Future<Set<String>> colsDe(String tabla) async {
+      final rows = await db.rawQuery('PRAGMA table_info($tabla)');
+      return rows.map((r) => r['name']?.toString() ?? '').toSet();
+    }
+
+    final colsPasanaco = await colsDe('pasanaco');
+    const alterPasanaco = <String, String>{
+      'dias_margen_entrega':
+          'ALTER TABLE pasanaco ADD COLUMN dias_margen_entrega INTEGER NOT NULL DEFAULT 2',
+      'sorteo_confirmado':
+          'ALTER TABLE pasanaco ADD COLUMN sorteo_confirmado INTEGER NOT NULL DEFAULT 0',
+      'metodo_sorteo': 'ALTER TABLE pasanaco ADD COLUMN metodo_sorteo TEXT',
+      'fecha_sorteo': 'ALTER TABLE pasanaco ADD COLUMN fecha_sorteo TEXT',
+      'id_tipo_cuota': 'ALTER TABLE pasanaco ADD COLUMN id_tipo_cuota TEXT',
+      'dia_mes_cobro': 'ALTER TABLE pasanaco ADD COLUMN dia_mes_cobro INTEGER',
+      'es_fin_de_mes':
+          'ALTER TABLE pasanaco ADD COLUMN es_fin_de_mes INTEGER NOT NULL DEFAULT 0',
+    };
+    for (final entry in alterPasanaco.entries) {
+      if (!colsPasanaco.contains(entry.key)) {
+        await db.execute(entry.value);
+      }
+    }
+
+    final colsRonda = await colsDe('ronda_pasanaco');
+    const alterRonda = <String, String>{
+      'fecha_entrega_programada':
+          'ALTER TABLE ronda_pasanaco ADD COLUMN fecha_entrega_programada TEXT',
+      'observacion_entrega':
+          'ALTER TABLE ronda_pasanaco ADD COLUMN observacion_entrega TEXT',
+    };
+    for (final entry in alterRonda.entries) {
+      if (!colsRonda.contains(entry.key)) {
+        await db.execute(entry.value);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -893,15 +974,22 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE pasanaco (
-        id_pasanaco   TEXT PRIMARY KEY,
-        nombre        TEXT NOT NULL,
-        monto_aporte  REAL NOT NULL,
-        periodicidad  TEXT NOT NULL DEFAULT 'semanal',
-        fecha_inicio  TEXT NOT NULL,
-        estado        TEXT NOT NULL DEFAULT 'activo',
-        created_at    TEXT NOT NULL,
-        updated_at    TEXT NOT NULL,
-        sincronizado  INTEGER NOT NULL DEFAULT 0
+        id_pasanaco          TEXT PRIMARY KEY,
+        nombre               TEXT NOT NULL,
+        monto_aporte         REAL NOT NULL,
+        periodicidad         TEXT NOT NULL DEFAULT 'semanal',
+        fecha_inicio         TEXT NOT NULL,
+        dias_margen_entrega  INTEGER NOT NULL DEFAULT 2,
+        sorteo_confirmado    INTEGER NOT NULL DEFAULT 0,
+        metodo_sorteo        TEXT,
+        fecha_sorteo         TEXT,
+        id_tipo_cuota        TEXT,
+        dia_mes_cobro        INTEGER,
+        es_fin_de_mes        INTEGER NOT NULL DEFAULT 0,
+        estado               TEXT NOT NULL DEFAULT 'activo',
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL,
+        sincronizado         INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -926,9 +1014,11 @@ class DatabaseHelper {
         numero_ronda              INTEGER NOT NULL,
         id_conductor_beneficiario TEXT NOT NULL,
         fecha_limite              TEXT NOT NULL,
+        fecha_entrega_programada  TEXT,
         monto_total               REAL NOT NULL,
         estado                    TEXT NOT NULL DEFAULT 'pendiente',
         fecha_entrega             TEXT,
+        observacion_entrega       TEXT,
         created_at                TEXT NOT NULL,
         updated_at                TEXT NOT NULL,
         sincronizado              INTEGER NOT NULL DEFAULT 0,
@@ -1033,7 +1123,7 @@ class DatabaseHelper {
   Future<void> _seed(Database db) async {
     final now = _now();
 
-    // 1. Único usuario maestro predeterminado: SUPERADMIN
+    // 1. Usuarios maestros predeterminados: SUPERADMIN y SECRETARIO DE HACIENDA
     await db.insert('usuario', {
       'id_usuario': _uuid.v4(),
       'rol': 'superadmin',
@@ -1041,6 +1131,19 @@ class DatabaseHelper {
       'estado': 'activo',
       'gmail': 'superadmin@continental.com',
       'password': hashPassword('super123'),
+      'fecha_creacion': now,
+      'created_at': now,
+      'updated_at': now,
+      'sincronizado': 0,
+    });
+
+    await db.insert('usuario', {
+      'id_usuario': _uuid.v4(),
+      'rol': 'tesorero',
+      'nombre': 'Secretario de Hacienda',
+      'estado': 'activo',
+      'gmail': 'hacienda@continental.com',
+      'password': hashPassword('Pass1234*'),
       'fecha_creacion': now,
       'created_at': now,
       'updated_at': now,
@@ -1131,6 +1234,8 @@ class DatabaseHelper {
         final placaOrig = c['placa']?.toString().trim() ?? '';
         final placaNorm = Normalizadores.normalizarPlaca(placaOrig);
         final passHash = hashPassword(c['password']?.toString() ?? '');
+        final rolSeed =
+            c['rol']?.toString().trim().toLowerCase() ?? 'conductor';
 
         final existe = await db.query(
           'conductor',
@@ -1147,6 +1252,7 @@ class DatabaseHelper {
               {
                 'estado': 'activo',
                 'password': passHash,
+                if (c.containsKey('rol')) 'rol': rolSeed,
                 'updated_at': now,
               },
               where: 'id_usuario = ?',
@@ -1171,7 +1277,7 @@ class DatabaseHelper {
             await db.update(
               'usuario',
               {
-                'rol': 'conductor',
+                'rol': rolSeed,
                 'nombre': c['nombre'],
                 'estado': 'activo',
                 'password': passHash,
@@ -1183,7 +1289,7 @@ class DatabaseHelper {
           } else {
             await db.insert('usuario', {
               'id_usuario': idUsuario,
-              'rol': 'conductor',
+              'rol': rolSeed,
               'nombre': c['nombre'],
               'estado': 'activo',
               'gmail': gmailSeed,
@@ -1197,7 +1303,7 @@ class DatabaseHelper {
         } else {
           await db.insert('usuario', {
             'id_usuario': idUsuario,
-            'rol': 'conductor',
+            'rol': rolSeed,
             'nombre': c['nombre'],
             'estado': 'activo',
             'gmail': null,

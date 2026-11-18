@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/formato_moneda.dart';
 import '../../core/permisos.dart';
 import '../../models/usuario_model.dart';
 import '../../services/database_helper.dart';
@@ -142,7 +143,9 @@ class _CobrarScreenState extends State<CobrarScreen> {
       final saldo =
           (deuda['saldo'] as num?)?.toDouble() ??
           (deuda['monto'] as num).toDouble();
-      _montoCtrl.text = saldo.toStringAsFixed(2);
+      _montoCtrl.text = saldo % 1 == 0
+          ? saldo.toInt().toString()
+          : saldo.toStringAsFixed(2);
     });
   }
 
@@ -164,9 +167,9 @@ class _CobrarScreenState extends State<CobrarScreen> {
       if (monto == null) {
         error = 'Ingresa un monto válido.';
       } else if (monto < 1) {
-        error = 'El monto mínimo es Bs. 1.00.';
+        error = 'El monto mínimo es Bs. 1.';
       } else if (monto > (saldo + 0.01)) {
-        error = 'El máximo para esta deuda es Bs. ${saldo.toStringAsFixed(2)}.';
+        error = 'El máximo para esta deuda es ${formatearBs(saldo)}.';
       }
     }
 
@@ -187,14 +190,14 @@ class _CobrarScreenState extends State<CobrarScreen> {
 
     final monto = double.tryParse(_montoCtrl.text.trim()) ?? 0.0;
     if (monto < 1) {
-      _mostrarAlerta('El monto mínimo para cobrar es Bs. 1.00.');
+      _mostrarAlerta('El monto mínimo para cobrar es Bs. 1.');
       return;
     }
 
     final saldo = (_cuotaSeleccionada!['saldo'] as num).toDouble();
     if (monto > (saldo + 0.01)) {
       _mostrarAlerta(
-        'El monto ingresado (Bs. ${monto.toStringAsFixed(2)}) supera el saldo de la deuda (Bs. ${saldo.toStringAsFixed(2)}).',
+        'El monto ingresado (${formatearBs(monto)}) supera el saldo de la deuda (${formatearBs(saldo)}).',
       );
       return;
     }
@@ -221,7 +224,7 @@ class _CobrarScreenState extends State<CobrarScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '¿Deseas registrar el cobro de Bs. ${monto.toStringAsFixed(2)} para ${_conductorSeleccionado!['nombre']}?',
+              '¿Deseas registrar el cobro de ${formatearBs(monto)} para ${_conductorSeleccionado!['nombre']}?',
               style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 10),
@@ -731,7 +734,7 @@ class _CobrarScreenState extends State<CobrarScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              'Bs. ${saldo.toStringAsFixed(2)}',
+                              formatearBs(saldo),
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -739,7 +742,7 @@ class _CobrarScreenState extends State<CobrarScreen> {
                               ),
                             ),
                             Text(
-                              'de Bs. ${montoTotal.toStringAsFixed(2)}',
+                              'de ${formatearBs(montoTotal)}',
                               style: const TextStyle(
                                 fontSize: 10.5,
                                 color: Color(0xFF94A3B8),
@@ -872,7 +875,9 @@ class _CobrarScreenState extends State<CobrarScreen> {
                 ),
                 onPressed: () {
                   setState(() {
-                    _montoCtrl.text = saldo.toStringAsFixed(2);
+                    _montoCtrl.text = saldo % 1 == 0
+                        ? saldo.toInt().toString()
+                        : saldo.toStringAsFixed(2);
                   });
                 },
                 child: const Text(

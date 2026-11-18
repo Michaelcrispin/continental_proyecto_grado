@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/formato_moneda.dart';
 import '../../../services/economia_repo.dart';
 
 /// Servicio y Modal para generar, configurar y enviar el Informe Económico
@@ -59,10 +60,7 @@ class DialogoInformeWhatsapp {
   }
 
   static String _fmtMonto(double v) {
-    if ((v - v.roundToDouble()).abs() < 0.005) {
-      return v.round().toString();
-    }
-    return v.toStringAsFixed(2);
+    return FormatoMoneda.numero(v);
   }
 
   static String _formatearDiaMesTexto(String fechaIso) {

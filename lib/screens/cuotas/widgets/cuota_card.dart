@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/formato_moneda.dart';
 
 const _kVerdeOscuro = Color(0xFF02634C);
 
@@ -213,10 +214,7 @@ class CuotaCard extends StatelessWidget {
   }
 
   static String _formatearMonto(double monto) {
-    if (monto % 1 == 0) {
-      return monto.toInt().toString();
-    }
-    return monto.toStringAsFixed(2);
+    return FormatoMoneda.numero(monto);
   }
 
   static String _formatearFecha(dynamic raw) {
@@ -247,7 +245,7 @@ class CuotaCard extends StatelessWidget {
     if (cat == 'ayuda' || lower.contains('apoyo') || lower.contains('solidaridad')) {
       return Icons.volunteer_activism_outlined;
     }
-    if (cat == 'canaston' || lower.contains('canast')) {
+    if (cat == 'canaston' || lower.contains('canast') || lower.contains('ahorro')) {
       return Icons.card_giftcard_rounded;
     }
     if (cat == 'multa' ||

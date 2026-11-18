@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/sesion_service.dart';
 import 'crear_apoyo_economico_screen.dart';
 import 'crear_canaston_screen.dart';
+import '../pasanaco_screen.dart';
 import '../reuniones_screen.dart';
 
 const _kVerdeOscuro = Color(0xFF02634C);
@@ -12,10 +13,9 @@ const _kVerdeOscuro = Color(0xFF02634C);
 /// - Tarjetas amplias y destacadas con íconos circulares, badges "Disponible",
 ///   descripción clara y flecha indicadora.
 /// - Categorías:
-///   1. 🎁 Ahorro Navideño (Canastón) [DISPONIBLE]
-///   2. 🤝 Apoyo Económico [DISPONIBLE]
-///   3. ⚖️ Multas por Falta a Reunión [DISPONIBLE]
-///   4. 🔄 Pasanaku [NO DISPONIBLE]
+///   1. Ahorro Navideño (Canastón) [DISPONIBLE]
+///   2. Apoyo Económico [DISPONIBLE]
+///   3. Multas por Falta a Reunión [DISPONIBLE]
 class SeleccionarCategoriaScreen extends StatelessWidget {
   const SeleccionarCategoriaScreen({super.key});
 
@@ -109,7 +109,7 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F2B5B),
+                    color: _kVerdeOscuro,
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -125,10 +125,10 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
 
                 const SizedBox(height: 20),
 
-                // 1. AHORRO NAVIDEÑO (CANASTÓN)
+                // 1. AHORRO NAVIDEÑO
                 _buildCategoryCard(
                   context,
-                  title: 'Ahorro Navideño\n(Canastón)',
+                  title: 'Ahorro Navideño',
                   description:
                       'Aportaciones periódicas con cuota fija para fin de año.',
                   icon: Icons.card_giftcard_rounded,
@@ -194,33 +194,24 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
 
                 const SizedBox(height: 14),
 
-                // 4. PASANAKU (NO DISPONIBLE)
+                // 4. PASANAKU (FONDO ROTATIVO)
                 _buildCategoryCard(
                   context,
-                  title: 'Pasanaku',
+                  title: 'Pasanaku (Fondo Rotativo)',
                   description:
-                      'Ahorro rotativo y crédito mutuo.',
-                  icon: Icons.sync_rounded,
-                  isAvailable: false,
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Row(
-                          children: [
-                            Icon(Icons.info_outline,
-                                color: Colors.white, size: 20),
-                            SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'La categoría "Pasanaku" no se encuentra disponible actualmente.',
-                              ),
-                            ),
-                          ],
-                        ),
-                        backgroundColor: _kVerdeOscuro,
-                        duration: Duration(seconds: 2),
+                      'Sorteo transparente de turnos, fechas de pago y entrega de pozo.',
+                  icon: Icons.savings_rounded,
+                  isAvailable: true,
+                  onTap: () async {
+                    final cambio = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PasanacoScreen(),
                       ),
                     );
+                    if (cambio == true && context.mounted) {
+                      Navigator.pop(context, true);
+                    }
                   },
                 ),
               ],
@@ -300,7 +291,7 @@ class SeleccionarCategoriaScreen extends StatelessWidget {
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16.5,
                                 color: isAvailable
-                                    ? const Color(0xFF0F2B5B)
+                                    ? const Color(0xFF0F172A)
                                     : const Color(0xFF475569),
                                 height: 1.2,
                               ),

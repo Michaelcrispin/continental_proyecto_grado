@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/formato_moneda.dart';
 import '../../services/economia_repo.dart';
 import '../../services/recibo_pdf_service.dart';
 import '../../widgets/avatar_conductor.dart';
@@ -153,7 +154,7 @@ class _CajaDelDiaScreenState extends State<CajaDelDiaScreen> {
                       style: TextStyle(color: Color(0xFF93C5FD), fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Bs. ${totalDia.toStringAsFixed(2)}',
+                      formatearBs(totalDia),
                       style: const TextStyle(color: Color(0xFFA7F3D0), fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -258,7 +259,7 @@ class _CajaDelDiaScreenState extends State<CajaDelDiaScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      '+ Bs. ${monto.toStringAsFixed(2)}',
+                                      '+ ${formatearBs(monto)}',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 14,
@@ -341,7 +342,7 @@ class _CajaDelDiaScreenState extends State<CajaDelDiaScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              'Bs. ${monto.toStringAsFixed(2)}',
+              formatearBs(monto),
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/formato_moneda.dart';
 import '../../core/permisos.dart';
 import '../../services/economia_repo.dart';
 import '../../services/recibo_pdf_service.dart';
@@ -280,7 +281,7 @@ class _EstadoCuentaScreenState extends State<EstadoCuentaScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              'Bs. ${monto.toStringAsFixed(2)}',
+              formatearBs(monto),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -410,7 +411,7 @@ class _EstadoCuentaScreenState extends State<EstadoCuentaScreen>
                   Text('Fecha: $fecha',
                       style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                   Text(
-                    'Saldo: Bs. ${saldo.toStringAsFixed(2)}',
+                    'Saldo: ${formatearBs(saldo)}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
@@ -541,7 +542,7 @@ class _EstadoCuentaScreenState extends State<EstadoCuentaScreen>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '+ Bs. ${monto.toStringAsFixed(2)}',
+                    '+ ${formatearBs(monto)}',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,

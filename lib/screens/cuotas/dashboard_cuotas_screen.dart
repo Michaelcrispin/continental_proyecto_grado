@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/formato_moneda.dart';
 import '../../services/economia_repo.dart';
 
 const _kVerde = Color(0xFF02634C);
@@ -1460,16 +1461,7 @@ String _compacto(double valor) {
 }
 
 String _bs(double valor) {
-  final negativo = valor < 0;
-  final texto = valor.abs().toStringAsFixed(2);
-  final partes = texto.split('.');
-  final entero = partes[0];
-  final buffer = StringBuffer();
-  for (var i = 0; i < entero.length; i++) {
-    if (i > 0 && (entero.length - i) % 3 == 0) buffer.write(',');
-    buffer.write(entero[i]);
-  }
-  return '${negativo ? '-' : ''}Bs. $buffer.${partes[1]}';
+  return FormatoMoneda.bs(valor);
 }
 
 String _fechaLinda(String? iso) {

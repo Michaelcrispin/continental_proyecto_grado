@@ -152,14 +152,14 @@ class EconomiaRepo {
     });
   }
 
-  /// Retorna la lista de todos los conductores con estado activo, con id, nombre, ci y foto.
+  /// Retorna la lista de todos los conductores con estado activo, con id, nombre, ci, foto, interno y grupo.
   Future<List<Map<String, dynamic>>> listarConductoresActivos() async {
     final db = await _dh.database;
     return db.rawQuery('''
-      SELECT id_conductor, nombre, ci, foto, telefono
+      SELECT id_conductor, nombre, ci, foto, telefono, numero_interno, grupo
       FROM conductor
       WHERE LOWER(estado) = 'activo'
-      ORDER BY nombre ASC
+      ORDER BY numero_interno ASC, nombre ASC
     ''');
   }
 
@@ -211,7 +211,7 @@ class EconomiaRepo {
       // 2. Construir detalle informativo descriptivo
       final descFinal = (descripcion != null && descripcion.trim().isNotEmpty)
           ? descripcion.trim()
-          : 'Canastón Navideño · Frecuencia: $frecuencia ($reglaDia) · ${fechasCronograma.length} cuotas fijas de Bs. ${importeCuota.toStringAsFixed(2)}';
+          : 'Ahorro Navideño · Frecuencia: $frecuencia ($reglaDia) · ${fechasCronograma.length} cuotas fijas de Bs. ${importeCuota.toStringAsFixed(2)}';
 
       // 3. Insertar tipo_cuota
       await txn.insert('tipo_cuota', {
@@ -2190,22 +2190,120 @@ class EconomiaRepo {
   }
 
   // ---------------------------------------------------------------------------
-  // 11. PASANACO (GESTIÓN COMPLETA)
+  // 11. PASANACO (GESTIÓN COMPLETA: DOBLE FECHA, SORTEO TRANSPARENTE Y RONDAS)
   // ---------------------------------------------------------------------------
+
+  /// Calcula las dos fechas de cada ronda del Pasanaco:
+  /// - `fecha_limite_pago`: Hasta qué día pagan su cuota todos los participantes.
+  /// - `fecha_entrega_programada`: Qué día recoge el pozo el conductor beneficiario
+  ///   (`diasMargenEntrega` días después de la fecha límite de pago).
+  static List<Map<String, DateTime>> calcularFechasRondasPasanaco({
+    required DateTime fechaPrimerPago,
+    required int diasMargenEntrega,
+    required String periodicidad,
+    required int totalRondas,
+    int? diaMesObjetivo,
+    bool esFinDeMes = false,
+  }) {
+    final base = DateTime(
+      fechaPrimerPago.year,
+      fechaPrimerPago.month,
+      fechaPrimerPago.day,
+    );
+    final margen = diasMargenEntrega < 1 ? 1 : diasMargenEntrega;
+    final per = periodicidad.toLowerCase().trim();
+    final resultado = <Map<String, DateTime>>[];
+
+    for (int i = 0; i < totalRondas; i++) {
+      DateTime fechaPago;
+      if (per == 'mensual') {
+        final targetMonth = base.month + i;
+        final year = base.year + ((targetMonth - 1) ~/ 12);
+        final month = ((targetMonth - 1) % 12) + 1;
+        final maxDay = DateTime(year, month + 1, 0).day;
+        final int day;
+        if (esFinDeMes) {
+          day = maxDay;
+        } else {
+          final deseado = diaMesObjetivo ?? base.day;
+          day = deseado > maxDay ? maxDay : deseado;
+        }
+        fechaPago = DateTime(year, month, day);
+      } else if (per == 'quincenal') {
+        fechaPago = base.add(Duration(days: 15 * i));
+      } else {
+        // semanal por defecto
+        fechaPago = base.add(Duration(days: 7 * i));
+      }
+      final fechaEntrega = fechaPago.add(Duration(days: margen));
+      resultado.add({
+        'fecha_limite_pago': fechaPago,
+        'fecha_entrega_programada': fechaEntrega,
+      });
+    }
+    return resultado;
+  }
+
+  static String _fmtIsoDate(DateTime d) {
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  static String _fmtShortDate(DateTime d) {
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
   Future<List<Map<String, dynamic>>> listarPasanacos() async {
     final db = await _dh.database;
     return db.rawQuery('''
       SELECT 
         p.*,
         COUNT(DISTINCT pp.id_conductor) AS cantidad_participantes,
+        COUNT(DISTINCT CASE WHEN pp.numero_turno > 0 THEN pp.id_conductor END) AS turnos_asignados,
         COUNT(DISTINCT rp.id_ronda) AS total_rondas,
-        SUM(CASE WHEN LOWER(rp.estado) = 'entregada' THEN 1 ELSE 0 END) AS rondas_entregadas
+        COALESCE(SUM(CASE WHEN LOWER(rp.estado) = 'entregada' THEN 1 ELSE 0 END), 0) AS rondas_entregadas
       FROM pasanaco p
       LEFT JOIN participante_pasanaco pp ON pp.id_pasanaco = p.id_pasanaco
       LEFT JOIN ronda_pasanaco rp ON rp.id_pasanaco = p.id_pasanaco
       GROUP BY p.id_pasanaco
-      ORDER BY p.fecha_inicio DESC
+      ORDER BY p.created_at DESC, p.fecha_inicio DESC
     ''');
+  }
+
+  Future<Map<String, dynamic>?> obtenerPasanacoPorId(String idPasanaco) async {
+    final db = await _dh.database;
+    final rows = await db.query(
+      'pasanaco',
+      where: 'id_pasanaco = ?',
+      whereArgs: [idPasanaco],
+      limit: 1,
+    );
+    return rows.isNotEmpty ? rows.first : null;
+  }
+
+  Future<Map<String, dynamic>?> obtenerPasanacoPorTipoCuota(
+    String idTipoCuota,
+  ) async {
+    final db = await _dh.database;
+    final direct = await db.query(
+      'pasanaco',
+      where: 'id_tipo_cuota = ?',
+      whereArgs: [idTipoCuota],
+      limit: 1,
+    );
+    if (direct.isNotEmpty) return direct.first;
+
+    final viaRonda = await db.rawQuery(
+      '''
+      SELECT p.*
+      FROM pasanaco p
+      JOIN ronda_pasanaco rp ON rp.id_pasanaco = p.id_pasanaco
+      JOIN cuota q ON q.id_ronda = rp.id_ronda
+      WHERE q.id_tipo_cuota = ?
+      LIMIT 1
+    ''',
+      [idTipoCuota],
+    );
+    return viaRonda.isNotEmpty ? viaRonda.first : null;
   }
 
   Future<String> crearPasanaco({
@@ -2213,11 +2311,16 @@ class EconomiaRepo {
     required double montoAporte,
     String periodicidad = 'semanal',
     required String fechaInicio,
+    int diasMargenEntrega = 2,
+    int? diaMesCobro,
+    bool esFinDeMes = false,
     required List<String> idsConductores,
   }) async {
     final db = await _dh.database;
+    await _dh.asegurarColumnasPasanaco(db);
     final idPasanaco = _uuid.v4();
     final now = _nowIso();
+    final margenSeguro = diasMargenEntrega < 1 ? 1 : diasMargenEntrega;
 
     return await db.transaction<String>((txn) async {
       await txn.insert('pasanaco', {
@@ -2226,20 +2329,24 @@ class EconomiaRepo {
         'monto_aporte': montoAporte,
         'periodicidad': periodicidad,
         'fecha_inicio': fechaInicio,
+        'dias_margen_entrega': margenSeguro,
+        'dia_mes_cobro': diaMesCobro,
+        'es_fin_de_mes': esFinDeMes ? 1 : 0,
+        'sorteo_confirmado': 0,
         'estado': 'activo',
         'created_at': now,
         'updated_at': now,
         'sincronizado': 0,
       });
 
-      // Crear participantes con orden por defecto
+      // Crear participantes inicialmente con numero_turno = 0 (pendiente de sorteo)
       final batch = txn.batch();
       for (int i = 0; i < idsConductores.length; i++) {
         batch.insert('participante_pasanaco', {
           'id_participante': _uuid.v4(),
           'id_pasanaco': idPasanaco,
           'id_conductor': idsConductores[i],
-          'numero_turno': i + 1,
+          'numero_turno': 0,
           'created_at': now,
           'updated_at': now,
           'sincronizado': 0,
@@ -2261,13 +2368,62 @@ class EconomiaRepo {
         pp.*,
         c.nombre AS conductor_nombre,
         c.ci AS conductor_ci,
-        c.foto AS conductor_foto
+        c.foto AS conductor_foto,
+        c.numero_interno AS conductor_interno,
+        c.grupo AS conductor_grupo
       FROM participante_pasanaco pp
       JOIN conductor c ON c.id_conductor = pp.id_conductor
       WHERE pp.id_pasanaco = ?
-      ORDER BY pp.numero_turno ASC
+      ORDER BY 
+        CASE WHEN pp.numero_turno > 0 THEN 0 ELSE 1 END ASC,
+        pp.numero_turno ASC,
+        c.numero_interno ASC,
+        c.nombre ASC
     ''',
       [idPasanaco],
+    );
+  }
+
+  /// Asigna el número de turno a un participante específico durante el sorteo en vivo.
+  Future<void> asignarTurnoParticipantePasanaco({
+    required String idParticipante,
+    required int numeroTurno,
+  }) async {
+    final db = await _dh.database;
+    await db.update(
+      'participante_pasanaco',
+      {
+        'numero_turno': numeroTurno,
+        'updated_at': _nowIso(),
+        'sincronizado': 0,
+      },
+      where: 'id_participante = ?',
+      whereArgs: [idParticipante],
+    );
+  }
+
+  /// Reinicia los turnos a 0 (solo permitido antes de confirmar el acta de sorteo).
+  Future<void> reiniciarSorteoPasanaco(String idPasanaco) async {
+    final db = await _dh.database;
+    final pList = await db.query(
+      'pasanaco',
+      where: 'id_pasanaco = ?',
+      whereArgs: [idPasanaco],
+      limit: 1,
+    );
+    if (pList.isNotEmpty &&
+        ((pList.first['sorteo_confirmado'] as num?)?.toInt() ?? 0) == 1) {
+      throw Exception('El acta de sorteo ya fue confirmada y bloqueada.');
+    }
+    await db.update(
+      'participante_pasanaco',
+      {
+        'numero_turno': 0,
+        'updated_at': _nowIso(),
+        'sincronizado': 0,
+      },
+      where: 'id_pasanaco = ?',
+      whereArgs: [idPasanaco],
     );
   }
 
@@ -2294,6 +2450,189 @@ class EconomiaRepo {
     await batch.commit(noResult: true);
   }
 
+  /// Confirma el Acta de Sorteo, bloquea el orden de los turnos y genera automáticamente
+  /// el cronograma completo de todas las rondas con sus 2 fechas (Fecha Límite de Pago y
+  /// Fecha de Entrega del Pozo) y las cuotas de aporte correspondientes.
+  Future<void> confirmarSorteoYGenerarCronogramaPasanaco({
+    required String idPasanaco,
+    required String metodoSorteo,
+    required String idUsuario,
+  }) async {
+    final db = await _dh.database;
+    final now = _nowIso();
+    final fechaHoy = now.substring(0, 10);
+
+    await db.transaction((txn) async {
+      final pList = await txn.query(
+        'pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+        limit: 1,
+      );
+      if (pList.isEmpty) {
+        throw Exception('El pasanaco no existe.');
+      }
+      final pasanaco = pList.first;
+      final yaConfirmado =
+          ((pasanaco['sorteo_confirmado'] as num?)?.toInt() ?? 0) == 1;
+      if (yaConfirmado) {
+        return;
+      }
+
+      final participantes = await txn.rawQuery(
+        '''
+        SELECT pp.*, c.nombre AS conductor_nombre
+        FROM participante_pasanaco pp
+        JOIN conductor c ON c.id_conductor = pp.id_conductor
+        WHERE pp.id_pasanaco = ?
+        ORDER BY pp.numero_turno ASC, c.nombre ASC
+      ''',
+        [idPasanaco],
+      );
+
+      if (participantes.isEmpty) {
+        throw Exception('No hay participantes registrados en este pasanaco.');
+      }
+
+      // Verificar que todos tengan turno del 1 al N
+      for (final p in participantes) {
+        final turno = (p['numero_turno'] as num?)?.toInt() ?? 0;
+        if (turno <= 0) {
+          throw Exception(
+            'Aún faltan conductores por recibir su número de turno en el sorteo.',
+          );
+        }
+      }
+
+      final nombrePasanaco =
+          pasanaco['nombre']?.toString().trim() ?? 'Pasanaku';
+      final montoAporte = (pasanaco['monto_aporte'] as num).toDouble();
+      final periodicidad =
+          pasanaco['periodicidad']?.toString() ?? 'semanal';
+      final fechaInicioStr =
+          pasanaco['fecha_inicio']?.toString() ?? fechaHoy;
+      final diasMargen =
+          (pasanaco['dias_margen_entrega'] as num?)?.toInt() ?? 2;
+      final totalParticipantes = participantes.length;
+      final pozoPorRonda = montoAporte * totalParticipantes;
+
+      final fechaBase = DateTime.tryParse(fechaInicioStr) ?? DateTime.now();
+      final fechasRondas = calcularFechasRondasPasanaco(
+        fechaPrimerPago: fechaBase,
+        diasMargenEntrega: diasMargen,
+        periodicidad: periodicidad,
+        totalRondas: totalParticipantes,
+        diaMesObjetivo: (pasanaco['dia_mes_cobro'] as num?)?.toInt(),
+        esFinDeMes: (pasanaco['es_fin_de_mes'] as num?)?.toInt() == 1,
+      );
+
+      // Crear o recuperar el tipo_cuota específico de este Pasanaku
+      String idTipoCuota = pasanaco['id_tipo_cuota']?.toString() ?? '';
+      if (idTipoCuota.isEmpty) {
+        idTipoCuota = _uuid.v4();
+        String nombreTipo = nombrePasanaco;
+        final dup = await txn.query(
+          'tipo_cuota',
+          where: 'LOWER(nombre) = ?',
+          whereArgs: [nombreTipo.toLowerCase()],
+          limit: 1,
+        );
+        if (dup.isNotEmpty) {
+          nombreTipo = '$nombrePasanaco (${fechaHoy.substring(5)})';
+        }
+        await txn.insert('tipo_cuota', {
+          'id_tipo_cuota': idTipoCuota,
+          'nombre': nombreTipo,
+          'descripcion':
+              'Fondo rotativo $periodicidad · Aporte: Bs. ${montoAporte.toStringAsFixed(0)} · Pozo por turno: Bs. ${pozoPorRonda.toStringAsFixed(0)} ($totalParticipantes participantes)',
+          'categoria': 'pasanaco',
+          'monto_sugerido': montoAporte,
+          'activo': 1,
+          'es_fijo': 1,
+          'created_at': now,
+          'updated_at': now,
+          'sincronizado': 0,
+        });
+      }
+
+      // Actualizar cabecera del pasanaco
+      await txn.update(
+        'pasanaco',
+        {
+          'sorteo_confirmado': 1,
+          'metodo_sorteo': metodoSorteo,
+          'fecha_sorteo': now,
+          'id_tipo_cuota': idTipoCuota,
+          'updated_at': now,
+          'sincronizado': 0,
+        },
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
+
+      // Si no se habían generado rondas aún, generar todas las rondas y sus cuotas de aporte
+      final rondasExistentes = await txn.query(
+        'ronda_pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
+
+      if (rondasExistentes.isEmpty) {
+        final batch = txn.batch();
+        for (int i = 0; i < totalParticipantes; i++) {
+          final nroRonda = i + 1;
+          final ben = participantes[i];
+          final idBeneficiario = ben['id_conductor']?.toString() ?? '';
+          final nombreBeneficiario =
+              ben['conductor_nombre']?.toString() ?? 'Conductor';
+
+          final fPago = fechasRondas[i]['fecha_limite_pago']!;
+          final fEntrega = fechasRondas[i]['fecha_entrega_programada']!;
+          final fPagoStr = _fmtIsoDate(fPago);
+          final fEntregaStr = _fmtIsoDate(fEntrega);
+          final fEntregaCorta = _fmtShortDate(fEntrega);
+
+          final idRonda = _uuid.v4();
+          batch.insert('ronda_pasanaco', {
+            'id_ronda': idRonda,
+            'id_pasanaco': idPasanaco,
+            'numero_ronda': nroRonda,
+            'id_conductor_beneficiario': idBeneficiario,
+            'fecha_limite': fPagoStr,
+            'fecha_entrega_programada': fEntregaStr,
+            'monto_total': pozoPorRonda,
+            'estado': 'pendiente',
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+
+          // Crear obligación de aporte de esta ronda para cada participante
+          for (final p in participantes) {
+            batch.insert('cuota', {
+              'id_cuota': _uuid.v4(),
+              'id_conductor': p['id_conductor'],
+              'id_tipo_cuota': idTipoCuota,
+              'monto': montoAporte,
+              'monto_pagado': 0.0,
+              'fecha': fechaHoy,
+              'fecha_vencimiento': fPagoStr,
+              'estado': 'pendiente',
+              'concepto':
+                  'Ronda #$nroRonda · Recoge: $nombreBeneficiario ($fEntregaCorta)',
+              'id_ronda': idRonda,
+              'registrado_por': idUsuario,
+              'created_at': now,
+              'updated_at': now,
+              'sincronizado': 0,
+            });
+          }
+        }
+        await batch.commit(noResult: true);
+      }
+    });
+  }
+
   /// Lista las rondas creadas de un pasanaco con el beneficiario y totales recaudados.
   Future<List<Map<String, dynamic>>> rondasDePasanaco(String idPasanaco) async {
     final db = await _dh.database;
@@ -2304,6 +2643,8 @@ class EconomiaRepo {
         c.nombre AS beneficiario_nombre,
         c.ci AS beneficiario_ci,
         c.foto AS beneficiario_foto,
+        c.numero_interno AS beneficiario_interno,
+        c.grupo AS beneficiario_grupo,
         COUNT(q.id_cuota) AS total_aportes_esperados,
         SUM(CASE WHEN LOWER(q.estado) = 'pagado' THEN 1 ELSE 0 END) AS aportes_pagados,
         SUM(CASE WHEN LOWER(q.estado) IN ('pendiente', 'parcial') THEN 1 ELSE 0 END) AS aportes_pendientes,
@@ -2323,6 +2664,7 @@ class EconomiaRepo {
   Future<String> generarSiguienteRondaPasanaco({
     required String idPasanaco,
     required String fechaLimite,
+    String? fechaEntregaProgramada,
     required String idUsuario,
   }) async {
     final db = await _dh.database;
@@ -2343,6 +2685,8 @@ class EconomiaRepo {
       final pasanaco = pasanacos.first;
       final montoAporte = (pasanaco['monto_aporte'] as num).toDouble();
       final nombrePasanaco = pasanaco['nombre']?.toString() ?? 'Pasanaco';
+      final diasMargen =
+          (pasanaco['dias_margen_entrega'] as num?)?.toInt() ?? 2;
 
       // 2. Participantes ordenados por número de turno
       final participantes = await txn.rawQuery(
@@ -2386,28 +2730,43 @@ class EconomiaRepo {
       final nombreBeneficiario =
           beneficiario['conductor_nombre']?.toString() ?? '';
 
-      // 4. Obtener id_tipo_cuota para Pasanaco
-      final tipoCuotaRes = await txn.query(
-        'tipo_cuota',
-        where: 'nombre = ?',
-        whereArgs: ['Pasanaco'],
-        limit: 1,
-      );
-      String idTipoCuota;
-      if (tipoCuotaRes.isNotEmpty) {
-        idTipoCuota = tipoCuotaRes.first['id_tipo_cuota']?.toString() ?? '';
-      } else {
-        idTipoCuota = _uuid.v4();
-        await txn.insert('tipo_cuota', {
-          'id_tipo_cuota': idTipoCuota,
-          'nombre': 'Pasanaco',
-          'monto_sugerido': montoAporte,
-          'activo': 1,
-          'es_fijo': 1,
-          'created_at': now,
-          'updated_at': now,
-          'sincronizado': 0,
-        });
+      String fEntregaProg = fechaEntregaProgramada ?? '';
+      if (fEntregaProg.isEmpty) {
+        final fLim = DateTime.tryParse(fechaLimite) ?? DateTime.now();
+        fEntregaProg = _fmtIsoDate(fLim.add(Duration(days: diasMargen)));
+      }
+
+      // 4. Obtener id_tipo_cuota para el Pasanaco
+      String idTipoCuota = pasanaco['id_tipo_cuota']?.toString() ?? '';
+      if (idTipoCuota.isEmpty) {
+        final tipoCuotaRes = await txn.query(
+          'tipo_cuota',
+          where: 'nombre = ?',
+          whereArgs: [nombrePasanaco],
+          limit: 1,
+        );
+        if (tipoCuotaRes.isNotEmpty) {
+          idTipoCuota = tipoCuotaRes.first['id_tipo_cuota']?.toString() ?? '';
+        } else {
+          idTipoCuota = _uuid.v4();
+          await txn.insert('tipo_cuota', {
+            'id_tipo_cuota': idTipoCuota,
+            'nombre': nombrePasanaco,
+            'categoria': 'pasanaco',
+            'monto_sugerido': montoAporte,
+            'activo': 1,
+            'es_fijo': 1,
+            'created_at': now,
+            'updated_at': now,
+            'sincronizado': 0,
+          });
+          await txn.update(
+            'pasanaco',
+            {'id_tipo_cuota': idTipoCuota},
+            where: 'id_pasanaco = ?',
+            whereArgs: [idPasanaco],
+          );
+        }
       }
 
       // 5. Crear la ronda
@@ -2420,6 +2779,7 @@ class EconomiaRepo {
         'numero_ronda': siguienteNumero,
         'id_conductor_beneficiario': idBeneficiario,
         'fecha_limite': fechaLimite,
+        'fecha_entrega_programada': fEntregaProg,
         'monto_total': totalRonda,
         'estado': 'pendiente',
         'created_at': now,
@@ -2439,7 +2799,7 @@ class EconomiaRepo {
           'fecha': fechaHoy,
           'estado': 'pendiente',
           'concepto':
-              '$nombrePasanaco - Ronda #$siguienteNumero (Beneficiario: $nombreBeneficiario)',
+              'Ronda #$siguienteNumero · Recoge: $nombreBeneficiario',
           'fecha_vencimiento': fechaLimite,
           'id_ronda': idRonda,
           'registrado_por': idUsuario,
@@ -2454,28 +2814,56 @@ class EconomiaRepo {
     });
   }
 
-  /// Retorna las cuotas de aporte asociadas a una ronda específica de pasanaco.
+  /// Retorna las cuotas de aporte asociadas a una ronda específica de pasanaco,
+  /// incluyendo los datos del último recibo emitido para ver comprobante.
   Future<List<Map<String, dynamic>>> aportesDeRonda(String idRonda) async {
     final db = await _dh.database;
     return db.rawQuery(
       '''
       SELECT 
         q.*,
+        t.nombre AS tipo_nombre,
         c.nombre AS conductor_nombre,
         c.ci AS conductor_ci,
         c.foto AS conductor_foto,
-        (q.monto - COALESCE(q.monto_pagado, 0)) AS saldo
+        c.numero_interno AS conductor_interno,
+        c.grupo AS conductor_grupo,
+        (q.monto - COALESCE(q.monto_pagado, 0)) AS saldo,
+        (
+          SELECT p.nro_recibo FROM pago p
+          WHERE p.id_cuota = q.id_cuota
+          ORDER BY p.created_at DESC LIMIT 1
+        ) AS ultimo_nro_recibo,
+        (
+          SELECT p.metodo FROM pago p
+          WHERE p.id_cuota = q.id_cuota
+          ORDER BY p.created_at DESC LIMIT 1
+        ) AS ultimo_metodo,
+        (
+          SELECT p.fecha FROM pago p
+          WHERE p.id_cuota = q.id_cuota
+          ORDER BY p.created_at DESC LIMIT 1
+        ) AS ultima_fecha_pago,
+        (
+          SELECT p.observacion FROM pago p
+          WHERE p.id_cuota = q.id_cuota
+          ORDER BY p.created_at DESC LIMIT 1
+        ) AS ultima_observacion
       FROM cuota q
       JOIN conductor c ON c.id_conductor = q.id_conductor
+      LEFT JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
       WHERE q.id_ronda = ?
-      ORDER BY c.nombre ASC
+      ORDER BY c.numero_interno ASC, c.nombre ASC
     ''',
       [idRonda],
     );
   }
 
   /// Marca una ronda como entregada al conductor beneficiario.
-  Future<void> entregarRondaPasanaco(String idRonda) async {
+  Future<void> entregarRondaPasanaco(
+    String idRonda, {
+    String? observacion,
+  }) async {
     final db = await _dh.database;
     final now = _nowIso();
     final fechaHoy = now.substring(0, 10);
@@ -2486,6 +2874,10 @@ class EconomiaRepo {
         {
           'estado': 'entregada',
           'fecha_entrega': fechaHoy,
+          'observacion_entrega':
+              (observacion != null && observacion.trim().isNotEmpty)
+                  ? observacion.trim()
+                  : null,
           'updated_at': now,
           'sincronizado': 0,
         },
@@ -2540,6 +2932,94 @@ class EconomiaRepo {
           whereArgs: [idPasanaco],
         );
       }
+    });
+  }
+
+  /// Elimina un pasanaco junto con sus rondas, participantes, cuotas y pagos asociados.
+  Future<void> eliminarPasanaco(String idPasanaco) async {
+    final db = await _dh.database;
+    await db.transaction((txn) async {
+      final pList = await txn.query(
+        'pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+        limit: 1,
+      );
+      final idTipoCuota = pList.isNotEmpty
+          ? pList.first['id_tipo_cuota']?.toString()
+          : null;
+
+      final rondas = await txn.query(
+        'ronda_pasanaco',
+        columns: ['id_ronda'],
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
+      for (final r in rondas) {
+        final idRonda = r['id_ronda']?.toString();
+        if (idRonda != null) {
+          final cuotasRonda = await txn.query(
+            'cuota',
+            columns: ['id_cuota'],
+            where: 'id_ronda = ?',
+            whereArgs: [idRonda],
+          );
+          for (final q in cuotasRonda) {
+            await txn.delete(
+              'pago',
+              where: 'id_cuota = ?',
+              whereArgs: [q['id_cuota']],
+            );
+          }
+          await txn.delete(
+            'cuota',
+            where: 'id_ronda = ?',
+            whereArgs: [idRonda],
+          );
+        }
+      }
+
+      if (idTipoCuota != null && idTipoCuota.isNotEmpty) {
+        final cuotasTipo = await txn.query(
+          'cuota',
+          columns: ['id_cuota'],
+          where: 'id_tipo_cuota = ?',
+          whereArgs: [idTipoCuota],
+        );
+        for (final q in cuotasTipo) {
+          await txn.delete(
+            'pago',
+            where: 'id_cuota = ?',
+            whereArgs: [q['id_cuota']],
+          );
+        }
+        await txn.delete(
+          'cuota',
+          where: 'id_tipo_cuota = ?',
+          whereArgs: [idTipoCuota],
+        );
+        await txn.delete(
+          'tipo_cuota',
+          where: 'id_tipo_cuota = ?',
+          whereArgs: [idTipoCuota],
+        );
+      }
+
+      await txn.delete(
+        'ronda_pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
+      await txn.delete(
+        'participante_pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
+      await txn.delete(
+        'pasanaco',
+        where: 'id_pasanaco = ?',
+        whereArgs: [idPasanaco],
+      );
     });
   }
 
@@ -2623,5 +3103,110 @@ class EconomiaRepo {
       'gran_total_recaudado': granTotalRecaudado,
       'gran_total_pendiente': granTotalPendiente,
     };
+  }
+
+  // ===========================================================================
+  // MÓDULO INFORMATIVO DE CUOTAS PARA CONDUCTORES Y SUPERVISORES
+  // ===========================================================================
+
+  /// Total que debe un conductor, cantidad de cuotas pendientes y vencidas.
+  Future<Map<String, dynamic>> resumenDeudaConductor(String idConductor) async {
+    final db = await _dh.database;
+    final res = await db.rawQuery('''
+      SELECT COALESCE(SUM(monto - monto_pagado), 0) AS debe_total,
+             COUNT(*) AS cuotas_pendientes,
+             COALESCE(SUM(CASE WHEN fecha_vencimiento < DATE('now','localtime') THEN 1 ELSE 0 END), 0) AS vencidas
+      FROM cuota
+      WHERE id_conductor = ?
+        AND estado IN ('pendiente','parcial')
+    ''', [idConductor]);
+
+    if (res.isEmpty) {
+      return {'debe_total': 0.0, 'cuotas_pendientes': 0, 'vencidas': 0};
+    }
+    return {
+      'debe_total': (res.first['debe_total'] as num?)?.toDouble() ?? 0.0,
+      'cuotas_pendientes':
+          (res.first['cuotas_pendientes'] as num?)?.toInt() ?? 0,
+      'vencidas': (res.first['vencidas'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  /// Lista de cuotas de un conductor agrupadas por concepto (tipo de cuota).
+  Future<List<Map<String, dynamic>>> cuotasAgrupadasConductor(
+    String idConductor,
+  ) async {
+    final db = await _dh.database;
+    return await db.rawQuery('''
+      SELECT t.id_tipo_cuota, t.nombre, t.categoria, t.descripcion,
+             COALESCE(SUM(q.monto), 0) AS total,
+             COALESCE(SUM(q.monto_pagado), 0) AS pagado,
+             COALESCE(SUM(q.monto - q.monto_pagado), 0) AS saldo,
+             COALESCE(SUM(CASE WHEN q.fecha_vencimiento < DATE('now','localtime') AND q.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS vencidas,
+             COUNT(*) AS total_cuotas,
+             COALESCE(SUM(CASE WHEN q.estado = 'pagado' THEN 1 ELSE 0 END), 0) AS pagadas,
+             MAX(q.fecha_vencimiento) AS ultima_fecha
+      FROM cuota q
+      JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
+      WHERE q.id_conductor = ? AND q.estado != 'anulado'
+      GROUP BY t.id_tipo_cuota
+      ORDER BY saldo DESC, t.nombre ASC
+    ''', [idConductor]);
+  }
+
+  /// Cronograma de cuotas de un conductor dentro de un tipo de cuota específico.
+  Future<List<Map<String, dynamic>>> cronogramaCuotasConductor(
+    String idConductor,
+    String idTipoCuota,
+  ) async {
+    final db = await _dh.database;
+    return await db.rawQuery('''
+      SELECT q.id_cuota, q.concepto, q.monto, q.monto_pagado,
+             (q.monto - q.monto_pagado) AS saldo,
+             q.fecha, q.fecha_vencimiento, q.estado
+      FROM cuota q
+      WHERE q.id_conductor = ? AND q.id_tipo_cuota = ? AND q.estado != 'anulado'
+      ORDER BY COALESCE(q.fecha_vencimiento, q.fecha) ASC, q.created_at ASC
+    ''', [idConductor, idTipoCuota]);
+  }
+
+  /// Historial de pagos realizados por un conductor para un tipo de cuota específico.
+  Future<List<Map<String, dynamic>>> pagosConductorConcepto(
+    String idConductor,
+    String idTipoCuota,
+  ) async {
+    final db = await _dh.database;
+    return await db.rawQuery('''
+      SELECT p.id_pago, p.nro_recibo, p.fecha, p.metodo,
+             p.monto AS monto_pagado, p.monto, p.observacion,
+             p.created_at, q.concepto, t.nombre AS tipo_nombre,
+             c.nombre AS conductor_nombre, c.ci AS conductor_ci,
+             q.monto AS total_cuota,
+             (q.monto - q.monto_pagado) AS saldo_restante
+      FROM pago p
+      JOIN cuota q ON q.id_cuota = p.id_cuota
+      JOIN conductor c ON c.id_conductor = q.id_conductor
+      JOIN tipo_cuota t ON t.id_tipo_cuota = q.id_tipo_cuota
+      WHERE q.id_conductor = ? AND q.id_tipo_cuota = ?
+      ORDER BY p.fecha DESC, p.created_at DESC
+    ''', [idConductor, idTipoCuota]);
+  }
+
+  /// Resumen general de choferes para la vista del Supervisor (solo lectura).
+  Future<List<Map<String, dynamic>>> resumenChoferesSupervisor() async {
+    final db = await _dh.database;
+    return await db.rawQuery('''
+      SELECT c.id_conductor, c.nombre, c.numero_interno, c.telefono, c.ci, c.foto,
+             COALESCE(SUM(q.monto - q.monto_pagado), 0) AS debe,
+             COALESCE(SUM(CASE WHEN q.fecha_vencimiento < DATE('now','localtime') AND q.estado IN ('pendiente','parcial') THEN 1 ELSE 0 END), 0) AS vencidas,
+             COALESCE(COUNT(CASE WHEN q.estado IN ('pendiente','parcial') THEN 1 END), 0) AS cuotas_debe,
+             COUNT(q.id_cuota) AS total_cuotas_asignadas
+      FROM conductor c
+      LEFT JOIN cuota q ON q.id_conductor = c.id_conductor
+                       AND q.estado IN ('pendiente','parcial')
+      WHERE c.estado = 'activo'
+      GROUP BY c.id_conductor
+      ORDER BY debe DESC, c.numero_interno ASC, c.nombre ASC
+    ''');
   }
 }

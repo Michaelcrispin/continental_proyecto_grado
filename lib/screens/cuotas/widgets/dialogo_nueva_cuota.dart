@@ -46,7 +46,11 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
     final montoSugerido =
         (cuota?['monto_sugerido'] as num?)?.toDouble() ?? 50.0;
     _montoCtrl = TextEditingController(
-      text: cuota != null ? montoSugerido.toStringAsFixed(2) : '50.00',
+      text: cuota != null
+          ? (montoSugerido % 1 == 0
+              ? montoSugerido.toInt().toString()
+              : montoSugerido.toStringAsFixed(2))
+          : '50',
     );
   }
 
@@ -68,7 +72,7 @@ class _DialogoNuevaCuotaState extends State<DialogoNuevaCuota> {
       return;
     }
     if (monto < 1) {
-      _mostrarSnack('El monto mínimo por chofer es Bs. 1.00.');
+      _mostrarSnack('El monto mínimo por chofer es Bs. 1.');
       return;
     }
 

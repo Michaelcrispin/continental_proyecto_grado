@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../core/formato_moneda.dart';
 import 'economia_repo.dart';
 
 /// Servicio para la generación, previsualización, impresión y exportación en PDF
@@ -187,9 +188,9 @@ class ReciboPdfService {
                             ],
                           ),
                         ),
-                        _buildTableCell('Bs. ${totalCuota.toStringAsFixed(2)}'),
-                        _buildTableCell('Bs. ${montoPagado.toStringAsFixed(2)}', esBold: true, color: PdfColors.green800),
-                        _buildTableCell('Bs. ${saldoRestante.toStringAsFixed(2)}', color: saldoRestante > 0 ? PdfColors.red800 : PdfColors.grey700),
+                        _buildTableCell(FormatoMoneda.bs(totalCuota)),
+                        _buildTableCell(FormatoMoneda.bs(montoPagado), esBold: true, color: PdfColors.green800),
+                        _buildTableCell(FormatoMoneda.bs(saldoRestante), color: saldoRestante > 0 ? PdfColors.red800 : PdfColors.grey700),
                       ],
                     ),
                   ],
@@ -212,7 +213,7 @@ class ReciboPdfService {
                         children: [
                           pw.Text('TOTAL COBRADO:  ', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
                           pw.Text(
-                            'Bs. ${montoPagado.toStringAsFixed(2)}',
+                            FormatoMoneda.bs(montoPagado),
                             style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.green800),
                           ),
                         ],
@@ -425,7 +426,7 @@ class ReciboPdfService {
                         children: [
                           pw.Text('TOTAL RECAUDADO', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
                           pw.SizedBox(height: 4),
-                          pw.Text('Bs. ${recaudado.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                          pw.Text(FormatoMoneda.bs(recaudado), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
                         ],
                       ),
                     ),
@@ -444,7 +445,7 @@ class ReciboPdfService {
                         children: [
                           pw.Text('TOTAL PENDIENTE', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
                           pw.SizedBox(height: 4),
-                          pw.Text('Bs. ${pendiente.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                          pw.Text(FormatoMoneda.bs(pendiente), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
                         ],
                       ),
                     ),
@@ -501,9 +502,9 @@ class ReciboPdfService {
                     return pw.TableRow(
                       children: [
                         _buildTableCell(t['tipo_nombre']?.toString() ?? '', esBold: true),
-                        _buildTableCell('Bs. ${rec.toStringAsFixed(2)}', color: PdfColors.green800),
-                        _buildTableCell('Bs. ${pend.toStringAsFixed(2)}', color: pend > 0 ? PdfColors.red800 : PdfColors.grey700),
-                        _buildTableCell('Bs. ${comp.toStringAsFixed(2)}'),
+                        _buildTableCell(FormatoMoneda.bs(rec), color: PdfColors.green800),
+                        _buildTableCell(FormatoMoneda.bs(pend), color: pend > 0 ? PdfColors.red800 : PdfColors.grey700),
+                        _buildTableCell(FormatoMoneda.bs(comp)),
                       ],
                     );
                   }),
@@ -512,9 +513,9 @@ class ReciboPdfService {
                     decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                     children: [
                       _buildTableCell('TOTALES GENERALES', esBold: true),
-                      _buildTableCell('Bs. ${recaudado.toStringAsFixed(2)}', esBold: true, color: PdfColors.green900),
-                      _buildTableCell('Bs. ${pendiente.toStringAsFixed(2)}', esBold: true, color: PdfColors.red900),
-                      _buildTableCell('Bs. ${total.toStringAsFixed(2)}', esBold: true),
+                      _buildTableCell(FormatoMoneda.bs(recaudado), esBold: true, color: PdfColors.green900),
+                      _buildTableCell(FormatoMoneda.bs(pendiente), esBold: true, color: PdfColors.red900),
+                      _buildTableCell(FormatoMoneda.bs(total), esBold: true),
                     ],
                   ),
                 ],
@@ -814,7 +815,7 @@ class ReciboPdfService {
                         ),
                         pw.SizedBox(height: 2.5),
                         pw.Text(
-                          'Bs. ${totalRecaudado.toStringAsFixed(2)}',
+                          FormatoMoneda.bs(totalRecaudado),
                           style: pw.TextStyle(
                             fontSize: 13,
                             fontWeight: pw.FontWeight.bold,
@@ -853,7 +854,7 @@ class ReciboPdfService {
                         ),
                         pw.SizedBox(height: 2.5),
                         pw.Text(
-                          'Bs. ${totalFalta.toStringAsFixed(2)}',
+                          FormatoMoneda.bs(totalFalta),
                           style: pw.TextStyle(
                             fontSize: 13,
                             fontWeight: pw.FontWeight.bold,
@@ -892,7 +893,7 @@ class ReciboPdfService {
                         ),
                         pw.SizedBox(height: 2.5),
                         pw.Text(
-                          'Bs. ${totalMeta.toStringAsFixed(2)}',
+                          FormatoMoneda.bs(totalMeta),
                           style: pw.TextStyle(
                             fontSize: 13,
                             fontWeight: pw.FontWeight.bold,
@@ -1057,7 +1058,7 @@ class ReciboPdfService {
                       ),
                       pw.SizedBox(height: 2),
                       pw.Text(
-                        'Bs. ${montoSugerido.toStringAsFixed(2)}',
+                        FormatoMoneda.bs(montoSugerido),
                         style: pw.TextStyle(
                           fontSize: 16,
                           fontWeight: pw.FontWeight.bold,
@@ -1141,7 +1142,7 @@ class ReciboPdfService {
                         _buildCell('${i + 1}', align: pw.TextAlign.center, esBold: true),
                         _buildCell(nombre, esBold: false, align: pw.TextAlign.left),
                         _buildCell(ci.isNotEmpty ? ci : '--', align: pw.TextAlign.center),
-                        _buildCell(total.toStringAsFixed(2), align: pw.TextAlign.center),
+                        _buildCell(FormatoMoneda.numero(total), align: pw.TextAlign.center),
                         // Badge Estado
                         pw.Padding(
                           padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1189,7 +1190,7 @@ class ReciboPdfService {
                       _buildCell('TOTALES:', esBold: true, align: pw.TextAlign.left, color: const PdfColor.fromInt(0xFF0F2B5B)),
                       _buildCell('$totalConductores CONDUCTORES', esBold: true, align: pw.TextAlign.left, color: const PdfColor.fromInt(0xFF0F2B5B)),
                       _buildCell('', align: pw.TextAlign.center),
-                      _buildCell('Bs. ${totalMeta.toStringAsFixed(2)}', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFF0F2B5B)),
+                      _buildCell(FormatoMoneda.bs(totalMeta), esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFF0F2B5B)),
                       _buildCell('', align: pw.TextAlign.center),
                       _buildCell('$cantPagados PAGOS', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFF1D4ED8)),
                       _buildCell('$cantDeben NO PAGOS', esBold: true, align: pw.TextAlign.center, color: const PdfColor.fromInt(0xFFDC2626)),
@@ -1598,10 +1599,7 @@ class ReciboPdfService {
   }
 
   static String _formatearMontoCorto(double valor) {
-    if ((valor - valor.roundToDouble()).abs() < 0.005) {
-      return valor.round().toString();
-    }
-    return valor.toStringAsFixed(2);
+    return FormatoMoneda.numero(valor);
   }
 
   static pw.Widget _buildCell(
